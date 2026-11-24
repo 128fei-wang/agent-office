@@ -1,0 +1,213 @@
+/* =========================================================
+   HIRING — add agent flow
+   ========================================================= */
+
+.hire-btn {
+  width: 100%;
+  height: 29px;
+  margin-top: 8px;
+  border: 1px solid rgba(85, 214, 194, 0.28);
+  border-radius: 5px;
+  background: rgba(85, 214, 194, 0.06);
+  color: #a4e6dc;
+  font-size: 8px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+}
+.hire-btn:hover { background: rgba(85, 214, 194, 0.13); border-color: rgba(85, 214, 194, 0.5); }
+
+.hire-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 215;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.hire-modal[hidden] { display: none !important; }
+.hire-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 7, 12, 0.7);
+  backdrop-filter: blur(4px);
+}
+.hire-shell {
+  position: relative;
+  width: min(650px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border: 1px solid rgba(85, 214, 194, 0.22);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(85, 214, 194, 0.09), transparent 44%),
+    linear-gradient(180deg, rgba(18, 30, 41, 0.99), rgba(8, 14, 21, 0.995));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+.hire-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 17px 12px;
+  border-bottom: 1px solid rgba(85, 214, 194, 0.13);
+}
+.hire-head > div { flex: 1; min-width: 0; }
+.hire-head span {
+  font-family: var(--mono);
+  font-size: 6.6px;
+  letter-spacing: 1.5px;
+  color: #62cbbb;
+}
+.hire-head h2 { margin: 3px 0 2px; font-size: 15px; color: #e5f2f9; }
+.hire-head p { margin: 0; font-size: 8px; color: #8097aa; line-height: 1.5; }
+.hire-close {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid #2b4153;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #9db2c4;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hire-close:hover { color: #fff; border-color: #4b677c; }
+.hire-body {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 17px 18px;
+}
+.hire-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px;
+  border: 1px solid #223746;
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(85, 214, 194, 0.11), transparent 62%),
+    rgba(5, 11, 16, 0.45);
+}
+.hire-preview #hireAvatar {
+  width: 82px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 3px;
+}
+.hire-preview b { font-size: 11px; color: #d9ebf4; }
+.hire-preview em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 6.5px;
+  color: #7e96a9;
+}
+.hire-preview > span {
+  margin-top: 7px;
+  padding: 2px 5px;
+  border: 1px solid rgba(85, 214, 194, 0.22);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 6.2px;
+  color: #87d9cd;
+  letter-spacing: 0.4px;
+}
+.hire-form { display: flex; flex-direction: column; gap: 8px; }
+.hire-form > label,
+.hire-style label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 7px;
+  color: #7f96a9;
+}
+.hire-form input,
+.hire-form select {
+  width: 100%;
+  height: 29px;
+  padding: 0 8px;
+  border: 1px solid #273e4f;
+  border-radius: 4px;
+  background: rgba(3, 9, 14, 0.6);
+  color: #d2e3ee;
+  font-size: 8.5px;
+  outline: none;
+}
+.hire-form input:focus,
+.hire-form select:focus { border-color: rgba(85, 214, 194, 0.48); }
+.hire-style {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 7px;
+}
+.hire-random {
+  height: 29px;
+  padding: 0 8px;
+  border: 1px solid #2b4558;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #94acbe;
+  font-size: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hire-random:hover { color: #e1f1fa; border-color: #4a687e; }
+.hire-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 8px;
+  border: 1px dashed #2b4558;
+  border-radius: 5px;
+  background: rgba(85, 214, 194, 0.025);
+}
+.hire-desk b { font-size: 7.5px; color: #abdcd5; }
+.hire-desk span { font-size: 7px; color: #758c9e; line-height: 1.45; }
+.hire-actions { display: flex; gap: 6px; margin-top: 3px; }
+.hire-actions button {
+  flex: 1;
+  height: 31px;
+  border-radius: 5px;
+  font-size: 8.5px;
+  cursor: pointer;
+}
+.hire-actions .ghost {
+  border: 1px solid #2b4051;
+  background: rgba(255, 255, 255, 0.025);
+  color: #8ea5b7;
+}
+.hire-actions .primary {
+  border: 1px solid rgba(85, 214, 194, 0.38);
+  background: rgba(85, 214, 194, 0.1);
+  color: #a9eee4;
+}
+.hire-actions button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.hot-label.empty { color: #6b8091; }
+.hot-label.empty i { box-shadow: none; }
+.hot-desk { border-style: dashed; }
+.hot-desk::after {
+  content: "HOT";
+  position: absolute;
+  right: -30px;
+  top: 3px;
+  font-family: var(--mono);
+  font-size: 5px;
+  letter-spacing: 0.6px;
+  color: #5e7789;
+}
+
+@media (max-width: 620px) {
+  .hire-modal { padding: 0; }
+  .hire-shell { width: 100vw; height: 100vh; max-height: none; border-radius: 0; border: 0; }
+  .hire-body { grid-template-columns: 1fr; }
+  .hire-preview { flex-direction: row; justify-content: flex-start; padding: 9px 11px; }
+  .hire-preview #hireAvatar { width: 54px; height: 64px; margin: 0 7px 0 0; }
+  .hire-style { grid-template-columns: 1fr 1fr; }
+  .hire-random { grid-column: 1 / -1; }
+}

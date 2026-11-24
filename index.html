@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Office · 自主协作模拟</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="trace.css" />
+  <link rel="stylesheet" href="hiring.css" />
+  <link rel="stylesheet" href="external.css" />
+</head>
+<body>
+  <div class="boot" id="boot">
+    <div class="boot-grid"></div>
+    <div class="boot-ring"></div>
+    <div class="boot-core">
+      <div class="boot-kicker">AGENT OPERATIONS // SECTOR 07</div>
+      <h2 class="boot-title">AGENT OPS</h2>
+      <p class="boot-sub">MULTI-AGENT OFFICE · SIMULATION ONLINE</p>
+      <div class="boot-track"><i id="bootBar"></i></div>
+      <div class="boot-meta"><span id="bootPct">00%</span><span id="bootPhase">LINKING AGENT GRID</span></div>
+      <div class="boot-log" id="bootLog"></div>
+    </div>
+    <span class="boot-skip">CLICK ANYWHERE TO SKIP</span>
+  </div>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="brand-copy">
+          <h1>AGENT OFFICE</h1>
+          <p>一群会自己干活的 agent</p>
+        </div>
+      </div>
+
+      <div class="top-stats" aria-label="办公室统计">
+        <div class="stat-chip"><span>任务</span><b id="statTasks">0/0</b></div>
+        <div class="stat-chip"><span>会议</span><b id="statMeetings">0</b></div>
+        <div class="stat-chip"><span>消息</span><b id="statMessages">0</b></div>
+        <div class="stat-chip"><span>行动</span><b id="statActions">0</b></div>
+      </div>
+
+      <div class="clock-pill" title="模拟时间">
+        <span id="dayLabel">DAY 1</span>
+        <b id="clockLabel">09:00</b>
+      </div>
+
+      <div class="controls">
+        <select id="scenarioSelect" class="select" aria-label="选择场景">
+          <option value="launch">产品发布冲刺</option>
+          <option value="incident">支付事故响应</option>
+        </select>
+        <button id="playBtn" class="btn primary" type="button">暂停</button>
+        <div class="seg" id="speedSeg" role="group" aria-label="模拟速度">
+          <button type="button" data-speed="1" class="active">1×</button>
+          <button type="button" data-speed="2">2×</button>
+          <button type="button" data-speed="4">4×</button>
+        </div>
+        <button id="meetingBtn" class="btn" type="button">拉个会</button>
+        <button id="eventBtn" class="btn" type="button">制造意外</button>
+        <button id="resetBtn" class="btn ghost" type="button">重置</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel team-panel">
+        <div class="panel-head">
+          <div>
+            <h2>TEAM</h2>
+            <p id="teamSub">6 本地 · 2 热桌</p>
+          </div>
+          <span class="live-dot" title="模拟运行中"></span>
+        </div>
+        <div class="team-list" id="teamList"></div>
+        <div class="team-foot">
+          <div class="foot-row"><span>团队士气</span><b id="teamMorale">—</b></div>
+          <div class="morale-bar"><i id="moraleBar"></i></div>
+          <button type="button" class="hire-btn" id="hireBtn">＋ 添加 Agent</button>
+          <button type="button" class="hire-btn secondary" id="externalBtn">⇢ 接入外部 Agent</button>
+          <p class="hint">点击办公室里的角色，查看 TA 的记忆与状态。</p>
+        </div>
+      </aside>
+
+      <section class="center-col">
+        <section class="panel stage-panel">
+          <div class="stage-head">
+            <div class="stage-title">
+              <span class="pixel-square"></span>
+              <div>
+                <h2 id="officeName">SPRINT OFFICE</h2>
+                <p id="officeSub">DAY 1 · 产品发布冲刺</p>
+              </div>
+            </div>
+            <div class="stage-tools">
+              <span class="hud-readout"><b></b>SIM NET <em>ONLINE</em>
+                <span class="hud-bars"><u></u><u></u><u></u><u></u><u></u></span>
+              </span>
+              <div class="legend">
+                <span><i class="legend-dot working"></i>工作</span>
+                <span><i class="legend-dot meeting"></i>会议</span>
+                <span><i class="legend-dot coffee"></i>休息</span>
+                <span><i class="legend-dot blocked"></i>阻塞</span>
+              </div>
+              <button id="traceBtn" class="trace-trigger" type="button" title="打开 Trace Lab（T）" aria-label="打开 Trace Lab">TRACE</button>
+              <button id="fxBtn" class="icon-btn active" type="button" title="特效开关" aria-label="特效开关">◈</button>
+              <button id="focusBtn" class="icon-btn" type="button" title="全屏查看办公室" aria-label="全屏查看办公室">⛶</button>
+            </div>
+          </div>
+
+          <div class="stage-viewport" id="stageViewport">
+            <div class="stage" id="stage">
+              <div class="office-layer" id="officeLayer"></div>
+              <div class="char-layer" id="charLayer"></div>
+              <div class="confetti-layer" id="confettiLayer"></div>
+              <div class="done-banner" id="doneBanner">
+                <b>SHIPPED</b>
+                <span id="doneText">目标达成</span>
+              </div>
+            </div>
+            <div class="hud-corners" aria-hidden="true">
+              <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
+            </div>
+            <div class="inspector" id="inspector"></div>
+            <div class="stage-hint" id="stageHint">点击 agent / 任务查看轨迹 · A 审计 · L 行动 · T Trace</div>
+          </div>
+        </section>
+
+        <section class="panel feed-panel">
+          <div class="panel-head feed-head">
+            <div>
+              <h2>LIVE FEED</h2>
+              <p>对话、任务与会议纪要</p>
+            </div>
+            <div class="feed-telemetry" aria-hidden="true">
+              <span>LOAD</span>
+              <svg viewBox="0 0 120 22" preserveAspectRatio="none">
+                <polygon id="feedArea" points=""></polygon>
+                <polyline id="feedLine" points=""></polyline>
+              </svg>
+              <b id="feedLoad">0/6</b>
+            </div>
+            <div class="feed-filters" id="feedFilters">
+              <button type="button" data-filter="all" class="active">全部</button>
+              <button type="button" data-filter="chat">对话</button>
+              <button type="button" data-filter="meeting">会议</button>
+              <button type="button" data-filter="ledger">行动</button>
+            </div>
+          </div>
+          <div class="feed-list" id="feedList"></div>
+        </section>
+      </section>
+
+      <aside class="panel board-panel">
+        <div class="panel-head">
+          <div>
+            <h2>SPRINT BOARD</h2>
+            <p id="boardSub">目标：加载中…</p>
+          </div>
+          <div class="goal-ring" id="goalRing"><b>0%</b></div>
+        </div>
+        <div class="board-tabs" id="boardTabs" role="tablist" aria-label="看板视图">
+          <button type="button" data-view="board" class="active" role="tab" aria-selected="true">SPRINT</button>
+          <button type="button" data-view="audit" role="tab" aria-selected="false">AUDIT <b id="auditBadge">0</b></button>
+        </div>
+        <div class="board" id="board" role="tabpanel"></div>
+        <div class="audit-view" id="auditView" role="tabpanel" hidden></div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="hire-modal" id="hireModal" hidden aria-hidden="true"></div>
+  <div class="external-modal" id="externalModal" hidden aria-hidden="true"></div>
+  <div class="rename-modal" id="renameModal" hidden aria-hidden="true"></div>
+  <div class="trace-lab" id="traceLab" hidden aria-hidden="true"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-modal="false" aria-label="详情面板" role="dialog"></aside>
+
+  <script src="src/data.js"></script>
+  <script src="src/sprites.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/fx.js"></script>
+  <script src="src/trace.js"></script>
+  <script src="src/hiring.js"></script>
+  <script src="src/external.js"></script>
+  <script src="src/render.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

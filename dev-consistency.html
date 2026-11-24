@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>consistency</title></head>
+<body>
+<pre id="out">…</pre>
+<script src="src/data.js"></script>
+<script src="src/engine.js"></script>
+<script>
+(function () {
+  const AO = window.AgentOffice;
+  const issues = [];
+  const engine = new AO.Engine("launch");
+  for (let i = 1; i <= 170 && !engine.world.done; i++) {
+    engine.step();
+    const w = engine.world;
+    w.agents.forEach(function (a) {
+      if (a.state === "working") {
+        const t = w.tasks.find(function (x) { return x.id === a.taskId; });
+        if (!t || t.status !== "in_progress") {
+          issues.push({ tick: i, agent: a.name, state: a.state, taskId: a.taskId, taskStatus: t ? t.status : "MISSING" });
+        }
+      }
+      if (a.state === "reviewing") {
+        const t = w.tasks.find(function (x) { return x.id === a.taskId; });
+        if (!t || t.status !== "review") {
+          issues.push({ tick: i, agent: a.name, state: a.state, taskId: a.taskId, taskStatus: t ? t.status : "MISSING" });
+        }
+      }
+      if (a.taskId) {
+        const t = w.tasks.find(function (x) { return x.id === a.taskId; });
+        if (t && t.assignee && t.assignee !== a.id && a.state !== "reviewing" && t.reviewerId !== a.id) {
+          issues.push({ tick: i, agent: a.name, state: a.state, taskId: a.taskId, note: "task assigned to " + t.assignee });
+        }
+      }
+    });
+  }
+  document.getElementById("out").textContent = JSON.stringify({
+    ticks: engine.world.tick,
+    done: engine.world.done,
+    issues: issues.slice(0, 60),
+    issueCount: issues.length
+  }, null, 2);
+  document.title = issues.length ? "ISSUES " + issues.length : "CLEAN";
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Agent Office simulation check</title>
+</head>
+<body>
+  <pre id="out">running…</pre>
+  <script src="src/data.js"></script>
+  <script src="src/engine.js"></script>
+  <script>
+    (function () {
+      "use strict";
+      const AO = window.AgentOffice;
+      function run(id, maxTicks) {
+        const engine = new AO.Engine(id);
+        let ticks = 0;
+        for (; ticks < maxTicks && !engine.world.done; ticks++) {
+          engine.step();
+        }
+        const w = engine.world;
+        return {
+          scenario: id,
+          ticks: ticks,
+          clock: engine.clockLabel(),
+          done: w.done,
+          tasksDone: w.tasks.filter(function (t) { return t.status === "done"; }).length,
+          total: w.tasks.length,
+          meetings: w.stats.meetings,
+          approvals: w.stats.approvals,
+          coffees: w.stats.coffees,
+          messages: w.messages.length,
+          unfinished: w.tasks.filter(function (t) { return t.status !== "done"; }).map(function (t) {
+            return { id: t.id, title: t.title, status: t.status, assignee: t.assignee, reviewer: t.reviewerId, progress: Math.round(t.progress) };
+          }),
+          agents: w.agents.map(function (a) {
+            return { name: a.name, state: a.state, energy: Math.round(a.energy), task: a.taskId, blocked: a.blockedTicks };
+          }),
+          taskStates: w.tasks.map(function (t) {
+            return { id: t.id, status: t.status, assignee: t.assignee, reviewer: t.reviewerId, progress: Math.round(t.progress) };
+          })
+        };
+      }
+      try {
+        document.title = "RUN launch";
+        const results = [run("launch", 300)];
+        document.title = "RUN incident";
+        results.push(run("incident", 300));
+        document.getElementById("out").textContent = JSON.stringify(results, null, 2);
+        document.title = results.every(function (r) { return r.done; }) ? "PASS" : "FAIL";
+      } catch (err) {
+        document.getElementById("out").textContent = "ERROR\n" + err.stack;
+        document.title = "ERROR";
+      }
+    })();
+  </script>
+</body>
+</html>

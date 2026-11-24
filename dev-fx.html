@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>fx toggle</title>
+<style>iframe{width:1200px;height:760px;border:0}</style></head>
+<body>
+<iframe src="index.html?ticks=5" id="f"></iframe>
+<pre id="out">…</pre>
+<script>
+(function(){
+  const frame = document.getElementById("f");
+  frame.addEventListener("load", function () {
+    try {
+      const d = frame.contentDocument;
+      const btn = d.getElementById("fxBtn");
+      const layer = d.querySelector(".fx-layer");
+      const readout = d.querySelector(".hud-readout em");
+      const stage = d.getElementById("stage");
+      const before = {
+        active: btn.classList.contains("active"),
+        hidden: layer.classList.contains("is-off"),
+        readout: readout ? readout.textContent : null
+      };
+      btn.click();
+      const after = {
+        active: btn.classList.contains("active"),
+        hidden: layer.classList.contains("is-off"),
+        stageOff: stage.classList.contains("fx-off"),
+        readout: readout ? readout.textContent : null
+      };
+      document.getElementById("out").textContent = JSON.stringify({ before: before, after: after }, null, 2);
+      document.title = (!before.hidden && after.hidden && after.readout === "OFFLINE") ? "PASS" : "FAIL";
+    } catch (e) {
+      document.getElementById("out").textContent = "ERROR " + e.stack;
+      document.title = "ERROR";
+    }
+  });
+})();
+</script>
+</body></html>

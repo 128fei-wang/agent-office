@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a product or engineering improvement.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and what is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the smallest useful version. Include UI or event-protocol changes if relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Simulation behavior
+        - Trace / audit / evals
+        - External agent integration
+        - Local hiring / rename
+        - Open-source / docs / CI
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This can be implemented without adding a build step or runtime package dependency.
+        - label: This changes the bridge/event protocol and needs a migration note.

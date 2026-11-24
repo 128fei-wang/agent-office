@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in the simulation, UI, bridge or pairing flow is broken.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove secrets, tokens and private endpoints before posting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. open ...
+        2. click ...
+        3. see ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Office simulation
+        - Task / audit / eval
+        - Trace Lab
+        - Local hiring / rename
+        - External agent pairing / bridge
+        - Mobile / accessibility
+        - Documentation / CI
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15 / Chrome 141 / Python 3.9
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or bridge log (redacted)
+      render: shell

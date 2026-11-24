@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>pathdebug</title></head>
+<body><pre id="out">…</pre>
+<script src="src/data.js"></script>
+<script src="src/engine.js"></script>
+<script>
+(function () {
+  const AO = window.AgentOffice;
+  const engine = new AO.Engine("launch");
+  for (let i = 0; i < 180 && !engine.world.done; i++) engine.step();
+  const d = AO.DEBUG;
+  document.getElementById("out").textContent = JSON.stringify({
+    ticks: engine.world.tick,
+    done: engine.world.done,
+    pathFails: d.pathFails.slice(0, 20),
+    pathFailCount: d.pathFails.length,
+    targetBlocked: d.targetBlocked.slice(0, 30),
+    targetBlockedCount: d.targetBlocked.length
+  }, null, 2);
+  document.title = "DEBUG";
+})();
+</script></body></html>

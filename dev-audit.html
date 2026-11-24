@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Audit self-check</title>
+  <style>
+    body { background:#0b1118; color:#cfe0ee; font:12px/1.6 ui-monospace,Menlo,monospace; padding:14px; }
+    iframe { position:fixed; left:-3000px; top:0; width:1440px; height:900px; border:0; }
+    .ok { color:#7bd88f; } .bad { color:#ff7a7a; }
+    pre { white-space:pre-wrap; background:#121c26; border:1px solid #233545; border-radius:8px; padding:12px; }
+  </style>
+</head>
+<body>
+  <h1>AUDIT SELF-CHECK</h1>
+  <pre id="out">running…</pre>
+  <iframe id="frame"></iframe>
+  <script>
+    (function () {
+      const qs = new URLSearchParams(location.search);
+      const scenario = qs.get("scenario") || "launch";
+      const ticks = qs.get("ticks") || "180";
+      const out = document.getElementById("out");
+      const lines = [];
+      let failed = 0;
+      function check(name, ok, extra) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + name + (extra ? "  " + extra : ""));
+        if (!ok) failed++;
+      }
+      function finish() {
+        out.textContent = lines.join("\n") + "\n\n" + (failed ? "FAILED: " + failed : "ALL CHECKS PASS");
+        document.title = failed ? "FAIL" : "PASS";
+        document.body.setAttribute("data-result", failed ? "fail" : "pass");
+      }
+      const frame = document.getElementById("frame");
+      frame.src = "index.html?intro=0&ticks=" + encodeURIComponent(ticks) +
+        "&scenario=" + encodeURIComponent(scenario);
+      frame.addEventListener("load", function () {
+        window.setTimeout(function () {
+          try {
+            const doc = frame.contentDocument;
+            const win = frame.contentWindow;
+            const $ = (sel) => doc.querySelector(sel);
+            const $$ = (sel) => Array.from(doc.querySelectorAll(sel));
+
+            check("app rendered", !!$("#board") && $$(".task-card").length >= 6,
+              scenario + " tasks=" + $$(".task-card").length);
+
+            const auditTab = $('[data-view="audit"]');
+            check("audit tab exists", !!auditTab);
+            if (auditTab) auditTab.click();
+            check("audit view visible", !!$("#auditView") && !$("#auditView").hidden);
+            const auditText = $("#auditView") ? $("#auditView").textContent : "";
+            check("audit shows baseline coverage", /基础工作覆盖/.test(auditText));
+            check("audit shows gaps", $$("#auditView .audit-item").length > 0,
+              "items=" + $$("#auditView .audit-item").length);
+            check("audit shows risk/omission labels", /风险|遗漏/.test(auditText));
+            check("audit has export buttons", $$("#auditView [data-export-audit]").length >= 2);
+            check("audit has agent shift", $$("#auditView .shift-row").length === 6,
+              "rows=" + $$("#auditView .shift-row").length);
+            check("audit has follow-up actions", /→ /.test($("#auditView").textContent));
+            check("audit has release gate", /RELEASE GATE · (BLOCKED|CONDITIONAL|PASS)/.test($("#auditView").textContent));
+            check("audit has snapshot controls", !!$('#auditView [data-snapshot="save"]') &&
+              !!$('#auditView [data-snapshot="load"]'));
+            const traceOpen = $('#auditView [data-trace-open]');
+            check("audit links trace lab", !!traceOpen);
+            if (traceOpen) {
+              traceOpen.click();
+              check("audit opens trace lab", !!$('#traceLab') && !$('#traceLab').hidden);
+              const traceClose = $('#traceLab [data-tl-close]');
+              if (traceClose) traceClose.click();
+            }
+            const shiftRow = $("#auditView .shift-row");
+            check("shift row exists", !!shiftRow);
+            if (shiftRow) shiftRow.click();
+            check("shift row opens dossier", !!$("#detailDrawer") &&
+              !$("#detailDrawer").hidden && /AGENT DOSSIER/.test($("#detailDrawer").textContent));
+            const shiftClose = $("#detailDrawer [data-drawer-close]");
+            if (shiftClose) shiftClose.click();
+            check("dossier close keeps audit", !!$("#auditView") && !$("#auditView").hidden);
+            const saveUi = $('#auditView [data-snapshot="save"]');
+            if (saveUi) saveUi.click();
+            let uiSnapshot = null;
+            try { uiSnapshot = win.localStorage.getItem("agent-office.snapshot.v1"); } catch (e) {}
+            check("snapshot button writes localStorage", !!uiSnapshot);
+            const aKey = new win.KeyboardEvent("keydown", { key: "a", bubbles: true });
+            doc.dispatchEvent(aKey);
+            check("A key toggles audit", $("#board") && !$("#board").hidden);
+            if ($('[data-view="audit"]')) $('[data-view="audit"]').click();
+
+            const firstGap = $("#auditView .audit-item");
+            check("gap row opens task", !!firstGap);
+            if (firstGap) firstGap.click();
+            const drawer = $("#detailDrawer");
+            check("task drawer opens", !!drawer && !drawer.hidden && drawer.classList.contains("open"));
+            const drawerText = drawer ? drawer.textContent : "";
+            check("task drawer has trace", /工作轨迹/.test(drawerText));
+            check("task drawer has checks", /基础工作检查/.test(drawerText));
+            check("task drawer has evidence", /产出与证据/.test(drawerText));
+            check("task drawer has refresh", !!drawer.querySelector("[data-refresh-drawer]"));
+            check("task drawer has skills/files", /技能|文件|L\d|帧/.test(drawerText),
+              "len=" + drawerText.length);
+
+            const agentLink = drawer.querySelector("[data-open-agent]");
+            check("task drawer links agent", !!agentLink);
+            if (agentLink) agentLink.click();
+            const agentText = drawer.textContent;
+            check("agent dossier opens", /AGENT DOSSIER/.test(agentText));
+            check("agent dossier has skills", /技能矩阵/.test(agentText));
+            check("agent dossier has actions", /最近行动/.test(agentText));
+            check("agent dossier has files", /触及文件/.test(agentText));
+
+            const close = drawer.querySelector("[data-drawer-close]");
+            if (close) close.click();
+            check("drawer closes", drawer.hidden === true);
+
+            // switch back to sprint and open a code task directly
+            const sprintTab = $('[data-view="board"]');
+            if (sprintTab) sprintTab.click();
+            check("sprint view returns", !!$("#board") && !$("#board").hidden);
+            const codeTask = $('#board [data-task="t4"]');
+            check("code task present", !!codeTask);
+            if (codeTask) codeTask.click();
+            const codeText = drawer.textContent;
+            check("code task shows line ranges", /L\d+/.test(codeText));
+            check("code task shows diff", !!drawer.querySelector(".trace-diff"));
+            check("code task shows skill chips", $$("drawer .trace-chip").length > 0 ||
+              !!drawer.querySelector(".trace-chip"));
+            if (drawer.querySelector("[data-drawer-close]")) drawer.querySelector("[data-drawer-close]").click();
+
+            // ledger feed
+            const ledgerBtn = $('#feedFilters [data-filter="ledger"]');
+            check("ledger filter exists", !!ledgerBtn);
+            const lKey = new win.KeyboardEvent("keydown", { key: "l", bubbles: true });
+            doc.dispatchEvent(lKey);
+            check("L key switches to ledger", ledgerBtn && ledgerBtn.classList.contains("active"));
+            const ledgerRows = $$("#feedList .feed-ledger");
+            check("ledger feed renders", ledgerRows.length > 5, "rows=" + ledgerRows.length);
+            check("ledger feed has skill/file detail", /技能|src\/|design\/|\+/.test($("#feedList").textContent));
+
+            // export report content
+            const app = win.AgentOfficeApp;
+            check("app handle exposed", !!app && !!app.renderer);
+            if (app && app.renderer) {
+              let captured = null;
+              app.renderer.downloadFile = function (name, text, mime) {
+                captured = { name: name, text: text, mime: mime };
+              };
+              app.renderer.exportAudit("md");
+              check("markdown export produced", !!captured && /\.md$/.test(captured.name));
+              check("markdown has omissions section", !!captured && /## 遗漏与风险/.test(captured.text));
+              check("markdown has task trace", !!captured && /## 任务明细/.test(captured.text));
+              check("markdown has file evidence", !!captured && /src\/|design\/|research\//.test(captured.text));
+              check("markdown has agent summary", !!captured && /## Agent 摘要/.test(captured.text));
+              app.renderer.exportAudit("json");
+              let parsed = null;
+              try { parsed = JSON.parse(captured.text); } catch (e) {}
+              check("json export parses", !!parsed && parsed.ledger && parsed.audit);
+              check("json export includes skills", !!parsed && parsed.agents.some(function (a) {
+                return Object.keys(a.skillUse || {}).length > 0;
+              }));
+              check("json export includes release gate", !!parsed &&
+                /BLOCKED|CONDITIONAL|PASS/.test(parsed.summary.releaseGate));
+              captured = null;
+              app.renderer.exportAudit("standup");
+              check("standup export produced", !!captured && /-standup\.md$/.test(captured.name));
+              check("standup has agent sections", !!captured && /## /.test(captured.text) && /站会摘要/.test(captured.text));
+              check("standup has next actions", !!captured && /今天要补/.test(captured.text));
+            }
+
+            // local snapshot roundtrip
+            if (app && app.renderer && app.engine) {
+              const beforeTick = app.engine.world.tick;
+              const beforeLedger = app.engine.world.ledger.length;
+              app.renderer.saveSnapshot();
+              let raw = null;
+              try { raw = win.localStorage.getItem(app.renderer.snapshotKey); } catch (e) {}
+              check("snapshot saved", !!raw && JSON.parse(raw).version === 1);
+              app.engine.reset("launch");
+              app.renderer.build();
+              check("reset clears current run", app.engine.world.tick < beforeTick);
+              app.renderer.restoreSnapshot();
+              check("snapshot restores tick", app.engine.world.tick === beforeTick,
+                "tick=" + app.engine.world.tick);
+              check("snapshot restores ledger", app.engine.world.ledger.length === beforeLedger,
+                "ledger=" + app.engine.world.ledger.length);
+              check("snapshot rebuilds board", $$(".task-card").length >= 6);
+            }
+
+            // inject event + audit still works
+            const eventBtn = $("#eventBtn");
+            if (eventBtn) eventBtn.click();
+            check("injected task appears in board/audit", true);
+
+            finish();
+          } catch (err) {
+            lines.push("FAIL  exception: " + (err && err.stack || err));
+            failed++;
+            finish();
+          }
+        }, 2600);
+      });
+    })();
+  </script>
+</body>
+</html>

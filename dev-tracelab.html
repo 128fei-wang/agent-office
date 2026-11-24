@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Trace Lab self-check</title>
+  <style>
+    body { background:#0b1118; color:#cfe0ee; font:12px/1.6 ui-monospace,Menlo,monospace; padding:14px; }
+    iframe { position:fixed; left:-3600px; top:0; width:1440px; height:900px; border:0; }
+    pre { white-space:pre-wrap; background:#121c26; border:1px solid #233545; border-radius:8px; padding:12px; }
+  </style>
+</head>
+<body>
+  <h1>TRACE LAB SELF-CHECK</h1>
+  <pre id="out">running…</pre>
+  <iframe id="f"></iframe>
+  <script>
+    (function () {
+      const qs = new URLSearchParams(location.search);
+      const scenario = qs.get("scenario") || "launch";
+      const ticks = qs.get("ticks") || "180";
+      const out = document.getElementById("out");
+      const lines = [];
+      let failed = 0;
+      function check(name, ok, extra) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + name + (extra ? "  " + extra : ""));
+        if (!ok) failed++;
+      }
+      function finish() {
+        out.textContent = lines.join("\n") + "\n\n" + (failed ? "FAILED: " + failed : "ALL CHECKS PASS");
+        document.title = failed ? "FAIL" : "PASS";
+        document.body.setAttribute("data-result", failed ? "fail" : "pass");
+      }
+      const f = document.getElementById("f");
+      f.src = "index.html?intro=0&ticks=" + encodeURIComponent(ticks) +
+        "&scenario=" + encodeURIComponent(scenario);
+      f.addEventListener("load", function () {
+        window.setTimeout(function () {
+          try {
+            const doc = f.contentDocument;
+            const win = f.contentWindow;
+            const $ = (s) => doc.querySelector(s);
+            const $$ = (s) => Array.from(doc.querySelectorAll(s));
+            const app = win.AgentOfficeApp;
+            check("app + engine exposed", !!app && !!app.engine && !!app.renderer);
+            if (!app) { finish(); return; }
+            const engine = app.engine;
+            const renderer = app.renderer;
+            const lab = renderer.traceLab;
+            check("trace lab constructed", !!lab);
+
+            const traceBtn = $("#traceBtn");
+            check("trace button exists", !!traceBtn);
+            if (traceBtn) traceBtn.click();
+            const root = $("#traceLab");
+            check("trace lab opens", !!root && !root.hidden && root.classList.contains("open"));
+            check("trace kpis render", $$("#tlKpis .tl-kpi").length === 6,
+              "kpis=" + $$("#tlKpis .tl-kpi").length);
+            check("trace tree has events", $$("#tlTree .tl-event-row").length > 10,
+              "events=" + $$("#tlTree .tl-event-row").length);
+            check("waterfall has task rows", $$("#tlWater .tl-water-row").length >= 8,
+              "rows=" + $$("#tlWater .tl-water-row").length);
+            check("waterfall has dots", $$("#tlWater .tl-dot").length > 20,
+              "dots=" + $$("#tlWater .tl-dot").length);
+            check("run detail visible", /RUN SPAN/.test($("#tlDetail").textContent));
+            check("summary has simulated telemetry", /SIM EST/.test($("#tlKpis").textContent));
+            check("trace export buttons exist", $$(".tl-exports [data-tl-export]").length >= 2);
+
+            const search = $("#tlSearch");
+            const allTreeCount = $$("#tlTree .tl-event-row").length;
+            search.value = "src/";
+            search.dispatchEvent(new win.Event("input", { bubbles: true }));
+            const searchCount = $$("#tlTree .tl-event-row").length;
+            check("trace search filters", searchCount > 0 && searchCount < allTreeCount,
+              "before=" + allTreeCount + " after=" + searchCount);
+            search.value = "";
+            search.dispatchEvent(new win.Event("input", { bubbles: true }));
+            const riskFilter = $('[data-tl-filter="risk"]');
+            if (riskFilter) riskFilter.click();
+            check("risk filter renders", $$("#tlTree .tl-event-row.k-risk").length > 0 &&
+              $$("#tlTree .tl-event-row").length < allTreeCount);
+            const allFilter = $('[data-tl-filter="all"]');
+            if (allFilter) allFilter.click();
+
+            const skillEvent = $("#tlTree .tl-event-row.k-skill");
+            check("skill event present", !!skillEvent);
+            if (skillEvent) skillEvent.click();
+            const detailText = $("#tlDetail").textContent;
+            check("event detail opens", /EVENT · SKILL/.test(detailText));
+            check("event detail has telemetry", /TOKENS/.test(detailText) && /EST\. COST/.test(detailText));
+            check("event detail has raw span", !!$("#tlDetail .tl-raw"));
+            check("event detail has sim badge", /SIM TELEMETRY/.test(detailText));
+
+            const taskRow = $("#tlTree .tl-task-row");
+            check("task row present", !!taskRow);
+            if (taskRow) taskRow.click();
+            check("task detail opens", /TASK SPAN/.test($("#tlDetail").textContent));
+            check("task detail has checks", /BASELINE CHECKS/.test($("#tlDetail").textContent));
+
+            const dot = $("#tlWater .tl-dot.k-skill");
+            if (dot) dot.click();
+            check("waterfall dot selects event", /EVENT · SKILL/.test($("#tlDetail").textContent));
+
+            const scrub = $("#tlScrub");
+            check("scrubber exists", !!scrub);
+            if (scrub) {
+              scrub.value = "60";
+              scrub.dispatchEvent(new win.Event("input", { bubbles: true }));
+            }
+            check("scrub updates cursor", /tick 60 \//.test($("#tlCursorLabel").textContent),
+              $("#tlCursorLabel").textContent);
+            check("replay state shows counts", /完成/.test($("#tlReplayState").textContent));
+            check("replay hides future events", $$("#tlTree .tl-event-row").length < allTreeCount,
+              "tree=" + $$("#tlTree .tl-event-row").length + " all=" + allTreeCount);
+            const live = $("[data-tl-live]");
+            if (live) live.click();
+            const maxTick = lab.model ? lab.model.maxTick : 180;
+            check("live jumps to max", new RegExp("tick " + maxTick + " / " + maxTick).test(
+              $("#tlCursorLabel").textContent), $("#tlCursorLabel").textContent);
+
+            // tab switch + eval
+            const evalsTab = $('[data-tl-tab="evals"]');
+            check("evals tab exists", !!evalsTab);
+            if (evalsTab) evalsTab.click();
+            check("evals view visible", !!$("#tlEvals") && !$("#tlEvals").hidden);
+            check("evals has 7 cases", $$("#tlEvals .tl-eval-case").length === 7,
+              "cases=" + $$("#tlEvals .tl-eval-case").length);
+            check("evals has overall score", /Run Evals/.test($("#tlEvals").textContent));
+            const evalRun = $("[data-tl-eval-run]");
+            check("eval run button exists", !!evalRun);
+            const beforeEvalEvents = engine.world.ledger.filter((e) => e.kind === "eval").length;
+            if (evalRun) evalRun.click();
+            const afterEvalEvents = engine.world.ledger.filter((e) => e.kind === "eval").length;
+            check("eval run records ledger event", afterEvalEvents === beforeEvalEvents + 1,
+              "before=" + beforeEvalEvents + " after=" + afterEvalEvents);
+            check("eval history renders", $$("#tlEvals .tl-eval-run-row").length >= 1);
+
+            // export interception
+            let captured = null;
+            const originalDownload = renderer.downloadFile;
+            renderer.downloadFile = function (name, text, mime) {
+              captured = { name: name, text: text, mime: mime };
+            };
+            lab.exportTrace("otlp");
+            check("OTLP export produced", !!captured && /\.otlp\.json$/.test(captured.name));
+            let otlp = null;
+            try { otlp = JSON.parse(captured.text); } catch (e) {}
+            check("OTLP parses", !!otlp && Array.isArray(otlp.resourceSpans));
+            const spans = otlp && otlp.resourceSpans[0].scopeSpans[0].spans;
+            check("OTLP has spans", !!spans && spans.length > 20, "spans=" + (spans ? spans.length : 0));
+            check("OTLP has gen_ai attrs", !!spans && spans.some((s) =>
+              (s.attributes || []).some((a) => a.key === "gen_ai.usage.input_tokens")));
+            lab.exportTrace("json");
+            check("trace JSON export produced", !!captured && /\.trace\.json$/.test(captured.name));
+            let traceJson = null;
+            try { traceJson = JSON.parse(captured.text); } catch (e) {}
+            check("trace JSON parses", !!traceJson && traceJson.summary && traceJson.events);
+            lab.exportTrace("evals");
+            check("evals JSON export produced", !!captured && /-evals\.json$/.test(captured.name));
+            renderer.downloadFile = originalDownload;
+
+            // close trace, audit + human approval
+            lab.close();
+            check("trace lab closes", $("#traceLab").hidden === true);
+            const auditTab = $('[data-view="audit"]');
+            if (auditTab) auditTab.click();
+            const humanSection = $("#auditView .human-review");
+            check("human review section exists", !!humanSection);
+            check("human approval buttons exist",
+              $$('#auditView [data-human="approved"]').length === 1 &&
+              $$('#auditView [data-human="rejected"]').length === 1);
+            const approve = $('#auditView [data-human="approved"]');
+            if (approve) approve.click();
+            check("human approval recorded", !!engine.world.humanReview &&
+              engine.world.humanReview.status === "approved");
+            check("gate changes to released", /RELEASED · EXCEPTIONS/.test($("#auditView").textContent),
+              $("#auditView").textContent.slice(0, 120));
+            const reject = $('#auditView [data-human="rejected"]');
+            if (reject) reject.click();
+            check("human rejection recorded", !!engine.world.humanReview &&
+              engine.world.humanReview.status === "rejected");
+            check("gate changes to rejected", /HUMAN REVIEW · REJECTED/.test($("#auditView").textContent));
+
+            let report = null;
+            const originalReportDownload = renderer.downloadFile;
+            renderer.downloadFile = function (name, text, mime) {
+              report = { name: name, text: text, mime: mime };
+            };
+            renderer.exportAudit("md");
+            check("audit report includes human decision", !!report && /## 人类审批/.test(report.text) &&
+              /打回补齐/.test(report.text));
+            renderer.exportAudit("json");
+            let reportJson = null;
+            try { reportJson = JSON.parse(report.text); } catch (e) {}
+            check("audit JSON includes human review", !!reportJson && reportJson.summary.humanReview &&
+              reportJson.summary.humanReview.status === "rejected");
+            renderer.downloadFile = originalReportDownload;
+
+            // T shortcut reopens trace
+            const key = new win.KeyboardEvent("keydown", { key: "t", bubbles: true });
+            doc.dispatchEvent(key);
+            check("T opens trace lab", !$("#traceLab").hidden);
+
+            finish();
+          } catch (err) {
+            lines.push("FAIL  exception: " + (err && err.stack || err));
+            failed++;
+            finish();
+          }
+        }, 2800);
+      });
+    })();
+  </script>
+</body>
+</html>

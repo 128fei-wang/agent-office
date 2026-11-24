@@ -1,0 +1,538 @@
+# Agent Office
+
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
+![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
+
+一个零依赖、本地优先的「多 agent 可视化办公室」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批和外部 Agent 配对。
+
+没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
+
+![Agent Office](docs/screenshots/office.jpg)
+
+> **Status:** early-stage open-source prototype. 不是生产级可观测平台，也不是真实代码执行沙箱。边界见 [Roadmap](docs/ROADMAP.md)。
+
+## 快速开始
+
+**方式一：直接打开**
+
+双击 `index.html`，用 Chrome / Safari 打开即可。
+
+**方式二：本地服务（推荐）**
+
+```bash
+cd agent-office
+./start.sh
+# 打开 http://127.0.0.1:5173
+# 同时启动 external agent bridge：http://127.0.0.1:8787
+```
+
+或者手动启动两个进程：
+
+```bash
+python3 -m http.server 5173
+python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
+```
+
+## 你会看到什么
+
+- **6 个初始 agent**：产品经理、研究员、设计师、两个工程师、测试。每人有自己的工位、精力、士气、记忆和说话方式；办公室另有 2 个热桌，可通过 UI 增聘到 8 人。
+- **自治行为**：认领任务 → 走到工位 → 工作 → 提交评审 → 被退回 / 通过 → 接下一个。
+- **协作**：评审、串门聊天、临时会议、阻塞清除会、发布前风险会。
+- **意外**：CEO 临时加需求、接口字段对不上、CDN 告警、支付事故……点「制造意外」可以随时再塞一个。
+- **完整叙事**：任务看板、白板目标、实时消息流、会议纪要、上线庆祝和彩蛋。
+- **可追溯**：每个 agent 认领了什么、调用了哪个 skill/tool、改了哪个文件哪几行、提交/评审/返工/阻塞的完整时间线，都能点开看。
+- **可审计**：每个任务带基础工作检查清单（测试、无障碍、性能、安全、回滚、监控…）；审计面板实时汇总「已覆盖 / 风险 / 遗漏 / 待验证」，并给出补齐建议。
+- **可导出**：一键导出 Markdown 审计报告或 JSON 原始证据，包含任务、agent、技能、文件行号、评审与遗漏项。
+- **两个场景**：「产品发布冲刺」和「支付事故响应」。
+- **四个空间**：老板办公室、玻璃会议室、开放工位区、休息区。
+
+### 截图
+
+| Office | Trace Lab |
+| --- | --- |
+| ![Office](docs/screenshots/office.jpg) | ![Trace Lab](docs/screenshots/trace-lab.jpg) |
+| **Audit** | **External Agent pairing** |
+| ![Audit](docs/screenshots/audit.jpg) | ![External Agent](docs/screenshots/external-agents.jpg) |
+
+## 工作可追溯 / 审计
+
+这是这一版最重要的产品能力。模拟不只是「看起来在忙」，而是留下可检查的证据链：
+
+- **任务轨迹**：点任意任务卡，打开 `TASK TRACE` 抽屉。按时间顺序列出认领、阻塞、恢复、技能调用、文件修改、提交评审、退回/返工、通过、完成。
+- **技能调用**：每个工作步骤绑定一个 skill 和 tool，例如 `React 实现` + `edit`、`竞品分析` + `web_search`、`E2E` + `playwright`。Agent 档案里会按角色列出技能矩阵和调用次数。
+- **代码行号**：工程/测试任务带文件路径、行号范围、增删行数和一段 diff 预览，例如 `src/pages/Home.tsx:24-118 (+86 / −12)`。设计与研究任务展示设计稿帧数或文档行号。
+- **基础工作检查**：每个任务按角色挂 4-5 项 Definition of Done，例如测试、无障碍、性能预算、错误态、安全检查、回滚方案。工作步骤覆盖到的项会打勾，没覆盖的项在评审通过后标为「风险」或「遗漏」。
+- **审计面板**：右侧 `AUDIT` tab 显示基础工作覆盖率、已评审质量分、风险/遗漏数量、返工次数、`AGENT SHIFT`（每个 agent 的完成/技能/缺口）以及逐条补齐建议。
+- **行动流**：底部 `LIVE FEED` 切到「行动」，可以看到全局结构化事件流，不再只是聊天。
+- **Agent 档案**：Inspector 里的「完整档案」打开 `AGENT DOSSIER`，看技能矩阵、最近行动、负责任务、触及文件和返工次数。
+- **导出**：审计面板底部可导出 `.md`、`.json` 和站会摘要。JSON 里保留完整 ledger、任务检查、agent 技能与文件统计，方便接入真实复盘流程。
+- **Trace Lab**：按 `T` 或点 `TRACE` 打开全屏可观测工作台：run / task / event 层级 span、执行时间线、单事件详情、token / cost / duration、回放 scrubber、Evals 和 OTLP 导出。
+- **Evals**：7 个确定性断言（完成率、Trace 完整性、代码证据、评审独立性、基础工作质量、发布安全、人类审批），可一键运行并保留评测历史。
+- **Human-in-the-loop**：任务完成但发布门禁被风险挡住时，审计面板出现「批准例外发布 / 打回补齐」，人工决策写入 ledger 并改变门禁状态。
+- **外部 Agent 接入**：本地 bridge 支持一次性连接码、注册、心跳、事件上报；外部 agent 的 action / skill / tool / file / token / cost 会进入 ledger、Live Feed、Trace Lab 和 OTLP，Team 面板显示 ONLINE / OFFLINE。
+- **常用模型 API**：外部 Agent 弹窗内置豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama；配置一次 bridge 密钥即可「接入」并「试跑」，真实 token/延迟进入 Trace。
+- **重命名**：本地 agent 在 Inspector / 完整档案里点 ✎；外部 agent 在外部档案里点「重命名」。本地名字写入 localStorage，外部名字同步到 bridge。
+- **进度快照**：`AUDIT` 底部可「保存进度 / 恢复进度」，把当前 world（任务、agent、ledger、会议、历史）存到浏览器 localStorage。刷新后手动恢复，适合演示中途保存现场。
+
+> 说明：文件路径、行号和 diff 是模拟出的工作证据，用于演示「agent 工作可追责」的产品形态；不是从真实仓库读取的 diff。接真实 agent 时，把 ledger 事件换成 Claude Code / Codex / CI 的真实 hooks 即可。
+
+### 深链接
+
+可以直接打开某个视图，方便分享和截图：
+
+```text
+?audit=1                打开审计面板
+?task=t4                打开任务抽屉
+?agent=a4               打开 agent 档案
+?audit=1&task=t4        组合
+```
+
+## 接入外部 Agent
+
+采用一次性连接码模式（参考 ClawChat 的连接码流程）：**你不需要在页面里填 Agent 的 endpoint；生成一段话发给 Agent，让 Agent 自己完成配对。**
+
+1. 启动 `./start.sh`，同时启动网页和 `bridge.py`（默认 `127.0.0.1:8787`）。
+2. 左侧 `TEAM` 底部点 **`⇢ 接入外部 Agent`**。
+3. 点 **`生成一次性连接码`**，得到 8 位连接码和 `setup.md` 地址。
+4. 点 **`复制给 Agent`**，把整段说明发给 Claude Code / Codex / 任意能执行命令的 Agent。
+5. Agent 打开 `setup.md`，调用 `POST /pair/<code>/claim` 领取身份。
+6. Team 面板的 `WAITING FOR AGENT` 卡片变成外部 Agent 卡片；它发来的问候和后续事件进入 Trace / Feed / 任务轨迹。
+
+连接码规则：
+
+- 一次性，30 分钟过期
+- 每次生成都是新码；旧码在过期前仍可用
+- 每个外部 Agent 使用独立连接码和配置
+- 没有硬性数量上限
+- 连接码只应私下发给对应 Agent，不要公开发布
+
+也可以点 **`启动演示 Agent`** 直接看事件流。手动登记离线档案放在「手动登记离线档案」折叠区。
+
+详细协议见 [docs/PAIRING.md](docs/PAIRING.md)。
+
+### 常用模型 API
+
+外部 Agent 弹窗顶部有 **MODEL APIS** 栏，内置：
+
+- **豆包 / Volcengine Ark**
+- **DeepSeek**
+- **WorkBuddy**（需要本地 OpenAI 兼容网关）
+- **Gemini**
+- **Claude / Anthropic**
+- **OpenAI**
+- **Kimi / Moonshot**
+- **通义千问 / DashScope**
+- **Ollama**（本地、免 key）
+
+key 只放在 bridge：环境变量，或 `~/.agent-office/providers.json`。这个文件在网页目录之外，不会被 `http.server` 提供；前端、Trace 和导出里都不会出现密钥。
+
+每个配置好的 Provider 可以：
+
+1. **接入**：创建一个 `ext-<provider>` 外部 Agent，并写入问候事件。
+2. **试跑**：由 bridge 调用一次模型接口，返回文本、模型名、token 和延迟，并写入 ledger / Trace / OTLP。
+3. **刷新**：重新读取 provider 配置，不需要重启 bridge。
+
+示例 `~/.agent-office/providers.json`：
+
+```json
+{
+  "deepseek": { "apiKey": "sk-...", "model": "deepseek-chat" },
+  "gemini": { "apiKey": "...", "model": "gemini-2.5-flash" },
+  "workbuddy": { "baseUrl": "http://127.0.0.1:10108/v1", "model": "hy3" }
+}
+```
+
+![Model APIs](docs/screenshots/model-apis.jpg)
+
+完整配置、各 Provider 的默认 base URL / 模型 / 环境变量、WorkBuddy 本地网关说明和故障排查见 [docs/PROVIDERS.md](docs/PROVIDERS.md)。
+
+> 这些接口是**一次模型调用**，不是完整 coding agent；它们不会自动认领或完成模拟任务。成本字段保留为 0，token 来自 provider 返回的 usage。
+
+### 演示 Agent
+
+在外部接入弹窗里点 **`启动演示 Agent`**，bridge 会创建一个 `Claude Code · Remote` 外部 agent，并持续发出：
+- 读取仓库、修改文件、跑测试、回传风险
+- 带 taskId、skill、tool、file、line、tokens、duration 的事件
+
+这些事件会出现在 `TRACE` 里，也可以用 `EXT` 过滤器只看外部 agent。
+
+### 真实外部 Agent API
+
+最推荐的接入方式是连接码：
+
+```bash
+# 生成连接码（通常由 UI 完成）
+curl -X POST http://127.0.0.1:8787/pair/code \
+  -H 'Content-Type: application/json' -d '{}'
+
+# Agent 打开 setup.md 后领取身份
+curl -X POST http://127.0.0.1:8787/pair/<code>/claim \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"My Agent","runtime":"claude-code","skills":["repo-map","edit"]}'
+```
+
+也可以手动注册：
+
+```bash
+curl -X POST http://127.0.0.1:8787/agents \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"ext-my-agent","name":"My Agent","runtime":"http","endpoint":"local://my-agent","skills":["edit"]}'
+
+# 心跳（建议 10-30 秒一次）
+curl -X POST http://127.0.0.1:8787/agents/ext-my-agent/heartbeat \
+  -H 'Content-Type: application/json' -d '{"note":"alive"}'
+
+# 上报事件
+curl -X POST http://127.0.0.1:8787/events \
+  -H 'Content-Type: application/json' \
+  -d '{"agentId":"ext-my-agent","kind":"skill","action":"修改首屏","taskId":"t4","skill":"react","tool":"edit","file":"src/pages/Home.tsx","line":[24,118],"add":8,"del":2,"tokensIn":800,"tokensOut":320}'
+```
+
+完整 API：
+
+- `GET /health`
+- `GET /agents`
+- `POST /agents`
+- `PATCH /agents/<id>`（重命名 / 更新）
+- `DELETE /agents/<id>`
+- `POST /agents/<id>/heartbeat`
+- `POST /events`
+- `GET /events?since=N`
+- `GET /providers`
+- `GET /providers/<id>`
+- `POST /providers/<id>/connect`
+- `POST /providers/<id>/test`
+- `POST /providers/<id>/run`
+- `POST /pair/code`
+- `GET /pairs`
+- `GET /pair/<code>`
+- `GET /pair/<code>/setup.md`
+- `POST /pair/<code>/claim`
+- `DELETE /pair/<code>`
+- `POST /demo/start` / `POST /demo/stop`
+
+bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前只是档案字段，真正的 agent 逻辑由你启动的外部进程负责。
+
+### 重命名
+
+- 本地 agent：点击角色 → Inspector 名字旁的 **✎**，或在完整档案里点「重命名」。
+- 外部 agent：打开 Team 面板里的外部卡片 → 「重命名」。
+- 本地名称写入 `agent-office.names.v1`；外部名称通过 `PATCH /agents/<id>` 写回 bridge。
+
+> 当前外部事件是**可观测事件**：会进入 Trace/Ledger，不会自动改变模拟任务状态。任务委派给外部 agent 执行、回写状态，是下一层能力。
+
+## 怎么添加 Agent
+
+### 用界面添加（推荐）
+
+1. 左侧 `TEAM` 面板底部点 **`＋ 添加 Agent`**。
+2. 填写名字、角色、性格/备注，选发型和配饰；右侧会实时预览像素形象。
+3. 系统自动分配空热桌（`d7` / `d8`），点 **`入职并创建任务`**。
+4. 新 agent 会出现在办公室、Team 列表和 Trace 里，并自动获得一条 **onboarding 任务**（熟悉工具链与看板），随后进入正常任务流。
+5. 入职信息写入 `localStorage`（`agent-office.hires.v1`）；刷新后会自动恢复，并在场景重置时自动生成 onboarding 任务。
+
+当前办公室支持 **最多 8 个 agent**（6 个固定工位 + 2 个热桌）。热桌满后按钮仍可打开，但提交会被禁用。
+
+### 改代码添加固定 agent
+
+1. 在 `src/data.js` 的 `AO.AGENTS` 里加角色定义（id、name、role、deskId、配色、发型、配饰、性格）。
+2. 在 `AO.DESKS` 里加一个工位；`hot: true` 表示热桌，`w` 可覆盖默认 90px 宽度。
+3. 在 `AO.START_POSITIONS` 里按相同索引加初始位置。
+4. 如果需要新职能，在 `AO.ROLES` 和 `AO.ROLE_SKILLS` 里补角色与技能。
+5. 跑 `dev-paths.html` / `dev-check.html`，确认新工位没有把角色卡进家具。
+
+> 热桌会同时进入 `AO.OBSTACLES`，所以加位置后一定要跑路径自检。
+
+## 参考的 GitHub 工具与取舍
+
+这一版的核心工具升级不是凭空加的，主要参考了这些项目的产品结构：
+
+| 项目 | 借鉴的能力 | 在我们的实现 |
+| --- | --- | --- |
+| [langfuse/langfuse](https://github.com/langfuse/langfuse) | Trace / session / cost / evals / OTel | Trace Lab 的 run、span、token、cost、Evals 和 OTLP JSON |
+| [AgentOps-AI/agentops](https://github.com/AgentOps-AI/agentops) | Session replay、step-by-step execution graph、cost | 回放 scrubber、任务/事件时间线、模拟 token/cost |
+| [Arize-ai/phoenix](https://github.com/Arize-ai/phoenix) | OpenTelemetry tracing、evaluation、experiment | OTLP 导出、确定性 eval 断言、评测历史 |
+| [raga-ai-hub/RagaAI-Catalyst](https://github.com/raga-ai-hub/RagaAI-Catalyst) | Timeline + execution graph、tool utilization、TRACE 管理 | 任务时间线、tool/skill 调用统计、span detail |
+| [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) | Durable execution、human-in-the-loop、state transitions | replay cursor、人工审批门禁、状态重建 |
+| [openai/openai-agents-python](https://github.com/openai/openai-agents-python) | Handoffs、guardrails、human-in-the-loop、tracing | handoff/评审事件、基础工作 guardrails、Trace |
+| [humanlayer/humanlayer](https://github.com/humanlayer/humanlayer) | 人类审批和 coding agent 控制面 | 批准例外 / 打回发布，决策进入 ledger |
+| [All-Hands-AI/OpenHands](https://github.com/All-Hands-AI/OpenHands) | 多 backend 控制中心、session、automation | Trace Lab 作为独立控制面，可接真实事件 |
+| [Aider-AI/aider](https://github.com/Aider-AI/aider) | repo map、lint/test、git diff | 文件/行号/diff 证据和 verification 检查 |
+| [SWE-agent/SWE-agent](https://github.com/SWE-agent/SWE-agent) | Agent-Computer Interface、trajectory | 结构化行动轨迹与 tool/file 证据链 |
+
+取舍：没有直接嵌这些平台（它们需要后端、数据库和 API key），而是把最有价值的产品原语做成本地零依赖版本；事件模型按 OTel/GenAI 语义设计，后续可以接真实 bridge。
+
+## 办公室空间
+
+- **老板办公室**：独立玻璃间，带城市窗景、双屏 exec 桌、真皮会客沙发 + 单人皮椅 + 茶几、私人酒柜、`FOUNDER'S CLUB` 奖杯墙、书架、地毯、落地灯和“老板在岗”指示灯。门是开的，老板会自己走出去评审、开会、喝咖啡，再回来。
+- **秘书位**：老板办公室门口的独立行政助理位，有专属地毯、秘书台、显示器、电话和名签。秘书“小满”是静态办公室 NPC，不参与任务模拟。
+- **会议室**：玻璃隔断、投影屏、六人会议桌、绿植。开会时玻璃会亮起 `LIVE`。
+- **开放工位区**：5 个工位、绿植隔断、服务器机柜、书架、打印机、暖光台灯。
+- **休息区**：沙发、猫、咖啡机、豆袋、落地灯、懒人毯。
+
+视觉上用了暖色木地板、分层地毯、顶灯光池、随模拟时间变化的墙钟、角色脚下阴影、昼夜色调和代码生成的像素家具。所有美术元素都是 CSS/SVG，没有外部图片依赖。
+
+## 特效层
+
+参考了“AI 集群指挥中心”式的数据可视化风格，在像素办公室上加了一层可开关的特效：
+
+- **房间网络**：CEO、EA、TASK、OPS、MEET、LNG 六个节点之间是低对比度**地面蚀刻实线 + 单颗流动光点**，不使用虚线、模糊双线或阴影光晕。
+- **实时连线**：只在真实协作发生时出现一条「细基线 + 短光弹」的 crisp beam；评审紫、会议琥珀、聊天粉、阻塞红。
+- **路线替代方案**：原来的常驻虚线网和大圆环投影会像“地上的阴影轨迹”，现在改为“蚀刻线 + 信号弹”；想完全隐藏时按 `X` 关掉 FX。
+- **节点光环**：每个 agent 脚下有角色色能量环；工作中、评审中、开会中会变亮并流动。
+- **会议雷达**：会议进行时，会议桌出现旋转雷达、双环、中心脉冲和从座位到桌心的连线。
+- **工位光柱**：有 agent 在工位工作时，桌面升起角色色光柱，屏幕增亮。
+- **氛围**：蓝/紫/暖分区光、体积光柱、全息网格、扫描带、电影颗粒、漂浮数据粒子、四角 HUD 框和 `SIM NET ONLINE` 状态条。
+- **事件脉冲**：任务完成、会议开始、项目上线时，会在对应位置扩散发光圆环。
+- **实时数据**：底部 LOAD 曲线是每 tick 的真实负载历史，不是装饰。
+- **开关**：顶部 `◈` 按钮或按 `X`。关闭后隐藏网络层，只保留原办公室，性能更好。
+
+整页走“夜班指挥中心”配色：老板办公室保留暖金，会议室冷青，工位区深青，休息区紫罗兰。开放工位下方有一圈缓慢旋转的全息指挥甲板，桌面有角色色光晕。
+
+打开页面会先播放一段 `AGENT OPS` 开机序列，再揭开办公室；调试时加 `?intro=0` 可跳过。
+
+所有特效都是 CSS/SVG，没有引入 Canvas 库或额外依赖。
+
+## 操作
+
+| 操作 | 说明 |
+| --- | --- |
+| 暂停 / 继续 | 顶部按钮，或空格键 |
+| 1× / 2× / 4× | 模拟速度，或按 `1` `2` `4` |
+| 拉个会 | 立刻召集一场临时对齐会，按 `M` |
+| 制造意外 | 随机插入一个新任务，按 `E` |
+| 重置 | 回到 Day 1 09:00 |
+| 点击角色 | 打开 Agent Inspector，查看状态、任务和最近记忆 |
+| 点击任务卡 | 打开 `TASK TRACE`：技能、文件行号、diff、评审与基础工作 |
+| 添加 Agent | TEAM 面板底部 `＋ 添加 Agent`，最多 8 人 |
+| 接入外部 Agent | TEAM 面板底部 `⇢ 接入外部 Agent`，走本地 bridge |
+| 重命名 | Inspector / 完整档案里的 ✎；外部 agent 在外部档案里重命名 |
+| 审计 tab / `A` | 打开/关闭 `AUDIT` 面板 |
+| AUDIT 保存/恢复 | 手动保存或恢复当前模拟进度（localStorage） |
+| 行动流 / `L` | 把底部 feed 切到结构化工作日志 |
+| Trace Lab / `T` | 打开 run → task → event 的 trace、时间线、回放和 Evals |
+| AUDIT 人工审批 | 任务全部完成后，批准例外发布或打回补齐 |
+| 全屏按钮 / `F` | 把办公室放大到全屏，方便看角色走动 |
+| 特效开关 `◈` / `X` | 开关指挥中心特效层 |
+| `Esc` | 关闭任务/agent 抽屉 |
+
+调试参数（可选）：
+
+```text
+?ticks=60&speed=2            直接快进 60 个 tick
+?scenario=incident           直接进入事故场景
+?ticks=150                   直接看上线庆祝
+?intro=0                     跳过开机动画
+?audit=1                     直接打开审计面板
+?task=t4                     直接打开某个任务轨迹
+?agent=a4                    直接打开某个 agent 档案
+?trace=1                     直接打开 Trace Lab
+?trace=evals                 直接打开 Trace Lab 的 Evals
+?hire=1                      直接打开 Add Agent 表单
+?external=1                  直接打开外部 Agent 接入面板
+```
+
+## 目录结构
+
+```text
+agent-office/
+├── index.html          页面骨架
+├── styles.css          全部视觉样式（像素办公室 / 面板 / 动画）
+├── src/
+│   ├── data.js         角色、工位、场景、任务、台词、事件
+│   ├── sprites.js      代码生成的像素角色 SVG
+│   ├── engine.js       模拟引擎：状态机、任务、评审、会议、寻路
+│   ├── fx.js           可开关的蚀刻路线 / 信号弹 / 会议雷达 / 粒子层
+│   ├── trace.js        Trace Lab：span、时间线、回放、Evals、OTLP
+│   ├── hiring.js       Add Agent 表单、热桌分配、localStorage 持久化
+│   ├── external.js     外部 Agent 连接、心跳轮询、重命名
+│   ├── render.js       DOM 渲染、办公室搭建、面板更新
+│   └── main.js         启动、循环、控件、快捷键
+├── dev-check.html      跑完两个场景并输出断言结果
+├── dev-trace.html      输出逐 tick 的状态变化，排查卡死
+├── dev-consistency.html 检查角色状态和任务状态是否一致
+├── dev-actions.html    自检「制造意外」和完成后再插任务
+├── dev-paths.html      检查角色是否会走进桌子/墙里
+├── dev-path-debug.html 输出寻路失败点和非法目标点
+├── dev-fx.html         自检特效开关
+├── dev-audit.html      自检任务轨迹、技能、diff、审计、导出
+├── dev-tracelab.html   自检 trace、回放、Evals、人工审批、OTLP
+├── dev-hiring.html     自检 Add Agent、热桌、onboarding、刷新恢复
+├── dev-external.html   自检 bridge、外部事件、重命名、OTLP
+├── trace.css           Trace Lab / Evals / 审批样式
+├── hiring.css          Add Agent / 热桌样式
+├── external.css        外部 Agent / 重命名样式
+├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 心跳 / 事件）
+├── providers.example.json  模型 API 配置模板（密钥不提交）
+├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
+├── docs/PROVIDERS.md   模型 API 配置与故障排查
+└── start.sh            本地静态服务器 + bridge
+```
+
+## 引擎怎么工作
+
+每个 tick（默认约 850ms，随倍速缩短）：
+
+1. 触发到点的事件（发言、会议、阻塞、新任务）。
+2. 推进会议：参与者走到会议桌，入座，每隔一 tick 有人说一句，结束后产出会议纪要并解除阻塞。
+3. 每个 agent 按状态机行动：
+   - `idle` 时按优先级决策：恢复自己的任务 → 评审 → 认领同角色任务 → 老板回办公室看板 → 找人聊天 / 闲逛。
+   - `working` 时推进进度、消耗精力；按进度触发 work plan 里的 skill 调用，记录文件/行号/diff，并勾选覆盖到的基础工作；进度满后提交评审。
+   - 精力低于阈值会去咖啡机，回来继续。
+   - 评审人走到作者工位，1 tick 后通过或退回。通过时把未覆盖的高优先级检查标为「风险」、其余标为「遗漏」；退回时会挑一项缺口返工补齐，并写入 ledger。
+4. 管理者做站会播报；所有任务完成后全员去休息区庆祝。
+5. 每个有意义的动作写入 `world.ledger`：认领、skill/tool、文件修改、交接、评审、返工、阻塞、会议、决策、完成、评测、人工审批。审计面板从这里和任务检查清单推导。
+6. Trace Lab 把 ledger 投影成 run → task → event 三层 span，并为每个 span 生成可复现的模拟 duration/token/cost；Evals 从同一份状态计算 7 个确定性断言。
+
+寻路用的是「直线可视 + 走廊 hub」的轻量方案：直线撞到桌子/玻璃墙就依次尝试 1~4 个中继点，最多经过四个中继点。目标点如果落在障碍里（比如社交点刚好在会议桌边），会先自动寻找最近的合法落点。没有引入任何图算法库。
+
+升级后的办公室有玻璃隔断，所以 `AO.HUBS` 里专门加了老板办公室门口、会议室门口、两排工位之间的通道节点。`dev-paths.html` 会逐 tick 检查角色是否进入任何障碍矩形，当前是 0 次穿墙。
+
+## 怎么改
+
+### 加固定 agent / 工位
+
+直接用上面的「怎么添加 Agent → 改代码添加固定 agent」。运行时加人不需要改代码；只有要突破 8 人上限或新增角色类型时，才需要扩 `AO.DESKS` / `AO.AGENTS` / `AO.ROLES`。
+
+### 加一个场景 / 任务
+
+在 `AO.SCENARIOS` 里复制一个场景，改 `goal`、`tasks` 和 `events`。
+
+任务字段：
+
+```js
+{
+  id: "t1",
+  title: "竞品与用户调研",
+  role: "research",       // 谁适合接
+  effort: 5,              // 进度条速度
+  priority: 3,            // 同角色任务排序
+  deps: ["t0"],           // 依赖，全部 done 才可认领
+  desc: "备注"
+}
+```
+
+事件支持：
+
+- `say`：某个 agent 发言
+- `meeting`：召集会议
+- `newTask`：插入任务
+- `blocker`：把某角色的进行中任务设为阻塞并开会
+- `when`：条件（`t1done` / `t3done` / `t6done` / `t7done` / `engineerActive`），避免固定 tick 导致会议开得太早
+
+### 加工作步骤 / 检查项
+
+- 在 `AO.WORK["场景:任务"]` 里给任务加工作步骤：`skill`、`tool`、`action`、`file`、`line`、`add`、`del`、`checks`、可选 `diff`。
+- 在 `AO.CHECK_TEMPLATES[角色]` 里定义该角色的基础工作检查项；`severity: "high"` 会在评审通过后进入「风险」列。
+- 在 `AO.SKILL_CATALOG` 里注册技能名，在 `AO.ROLE_SKILLS` 里配置每个角色拥有的技能。
+- 在 `AO.CHECK_ACTIONS` 里写每项缺口的补齐建议，审计面板和导出报告会直接引用。
+
+### 接真实 agent 事件
+
+把 `Engine.recordEvent()` 当成统一事件入口：
+
+```js
+engine.recordEvent({
+  agentId: "a4",
+  taskId: "t4",
+  kind: "skill",              // claim | skill | handoff | review | rework | risk | ...
+  action: "调用 Claude Code 修改首屏",
+  skill: "react",
+  tool: "edit",
+  file: "src/pages/Home.tsx",
+  line: [24, 118],
+  add: 86,
+  del: 12,
+  diff: ["- ...", "+ ..."],
+  checks: ["error-states"]
+});
+```
+
+真实接入时，由本地 bridge 把 Claude Code hooks、CI 结果、测试报告转成这种事件；前端只负责展示和审计，不接触 API key。同一个事件模型也会投影成 OTel/GenAI span，可导出给 Phoenix / Langfuse 等平台。
+
+## 接真实 LLM（下一步）
+
+当前是**规则驱动的自治模拟**，优点是零依赖、行为稳定、随时可演示。真正的 LLM 决策层不需要改可视化，只需要替换引擎里的两个地方：
+
+1. `decide(agent)`：把规则决策换成一个异步 `brain.decide(agent, world)`，返回 `{ action, target, taskId, speech }`。
+2. `say(agent, context)`：把模板台词换成 LLM 生成的一句话（限制长度，避免气泡爆炸）。
+
+建议架构：
+
+```text
+浏览器模拟引擎
+   ↓ 每 tick 把「当前 agent + 任务板 + 最近对话」发给本地 bridge
+本地 bridge（Python / Node）
+   ↓ 调 Claude API（claude-opus-5-5）或 Ollama
+   ↓ 返回结构化决策 JSON
+浏览器应用决策
+```
+
+注意：
+
+- **不要把 API key 放在前端**，走本地 bridge。
+- 给 LLM 返回**结构化 JSON**（动作 + 目标 + 台词），不要让模型直接改世界状态。
+- 保留规则引擎作为 fallback：LLM 超时/报错时继续用规则决策，演示不会卡住。
+- 一次只让 1-2 个 agent 调 LLM，其余用规则，控制成本和延迟；会议发言可以按轮次调用。
+
+## 自检
+
+```bash
+# 需要本地服务器
+open http://127.0.0.1:5173/dev-check.html
+```
+
+页面会跑完两个场景并输出：
+
+- 是否在 300 tick 内完成
+- 每个任务的最终状态
+- 会议数、评审数、咖啡次数
+- 是否有未完成任务
+
+`dev-trace.html` 会输出逐 tick 的任务/角色状态变化，方便定位「为什么某个 agent 一直不干活」。
+
+`dev-consistency.html` 会检查「角色在工作但任务不在进行中」这类状态不一致；`dev-actions.html` 验证「制造意外」按钮在运行中和完成后的行为；`dev-paths.html` 检查穿墙/穿桌子；`dev-path-debug.html` 输出寻路失败点。
+
+`dev-audit.html` 会跑完整场景并验证：任务轨迹、技能/文件行号、diff、基础工作检查、审计面板、Agent 档案、行动流、Markdown/JSON/站会导出、localStorage 快照保存与恢复。支持 `?scenario=incident` 切到事故场景。
+
+`dev-tracelab.html` 会验证 Trace Lab 的 span 树、执行时间线、事件详情、回放 cursor、7 个 Evals、评测历史、OTLP/Trace/Evals 导出，以及人工批准 / 打回对门禁的影响。
+
+`dev-hiring.html` 会验证 Add Agent 表单、热桌分配、onboarding 任务、路径不穿家具、localStorage 持久化和刷新恢复。
+
+`dev-external.html` 会验证 bridge 健康、一次性连接码生成 / 取消 / 领取、一次性约束、外部 Agent 改名 / 移除、演示事件、Trace `EXT` 过滤、OTLP 外部 span，以及本地重命名持久化。
+
+bridge 自身的集成测试不依赖浏览器：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## 开源与贡献
+
+- License: [MIT](LICENSE)
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 安全边界：[SECURITY.md](SECURITY.md)
+- 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- 架构：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
+- Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
+
+发布到 GitHub 前，仓库里还缺的是**仓库创建、描述/topics、社交预览、release tag**这些账号侧动作，清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。代码侧的 license、CI、issue/PR 模板、架构与协议文档已经补上。
+
+## 已知限制
+
+- 状态存在内存里；`AUDIT` 底部可以手动保存/恢复 localStorage 快照，但刷新不会自动恢复，清理浏览器数据会丢失。还没有做逐 tick 回放。
+- 当前热桌上限 2 个，因此 agent 上限 8 个；没有做「解雇 / 释放热桌」的 UI。
+- 文件路径、行号、diff、技能调用是**模拟的工作证据**，不是真实仓库变更；真实接入时代入 bridge 事件即可。
+- Trace Lab 的 token / cost / duration 是**可复现的模拟遥测**，不是实际 API 计费；OTLP JSON 的结构按 OpenTelemetry / GenAI 语义设计，方便接真实数据，但目前没有 trace ingest 端点。
+- 规则引擎的「自主性」是设计好的行为空间，不是开放式推理；但工作账本和审计模型可以直接复用到真实 agent。
+- 外部 Agent 目前是**只读可观测接入**：事件进 ledger / Trace / OTLP，但不会自动认领或完成模拟任务；外部任务委派和回写还未实现。
+- 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。
+- 模型 API 是单次调用适配器，不会自动完成模拟任务；`cost` 不按厂商价格计算，token 以返回的 usage 为准。
+- bridge 是 localhost 开发服务，没有鉴权、TLS 或多租户；不要直接暴露到公网。
+- 办公室布局是固定坐标，加太多工位需要调 `AO.HUBS` / 障碍物。
+- 所有美术资源由代码生成，可以自由改成你的品牌配色。

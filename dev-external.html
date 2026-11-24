@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>External agents self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body>
+<h1>EXTERNAL AGENTS SELF-CHECK</h1><pre id="out">running…</pre>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'), lines=[]; let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:'')); if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f'); f.src='index.html?intro=0&ticks=0';
+  f.addEventListener('load',function(){setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+ (err&&err.stack||err));failed++;finish();}),2400);});
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s), $$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app&&!!app.engine&&!!app.renderer); if(!app){finish();return;}
+    const engine=app.engine,renderer=app.renderer,ext=renderer.external;
+    engine.paused=true;
+    check('external connector constructed',!!ext);
+    check('bridge defaults local',ext.bridgeUrl.indexOf('127.0.0.1')>=0);
+    await wait(500);
+    check('bridge health online',ext.bridgeOnline===true);
+
+    // local rename
+    renderer.select('a2');
+    check('rename control on inspector',!!$('[data-rename-local="a2"]'));
+    $('[data-rename-local="a2"]').click();
+    check('rename dialog opens',!$('#renameModal').hidden);
+    const renameInput=$('#renameInput'); renameInput.value='苏晚晚';
+    $('#renameSubmit').click();
+    await wait(200);
+    const a2=engine.world.agents.find(a=>a.id==='a2');
+    check('local agent renamed',a2&&a2.name==='苏晚晚','name='+(a2&&a2.name));
+    check('local roster definition renamed',w.AgentOffice.AGENTS.find(a=>a.id==='a2').name==='苏晚晚');
+    check('rename persisted',JSON.parse(w.localStorage.getItem(w.AgentOffice.NAME_KEY)||'{}').a2==='苏晚晚');
+    check('desk label renamed',/苏晚晚/.test($('#officeLayer').textContent));
+    check('rename event logged',engine.world.ledger.some(e=>e.kind==='rename'&&e.agentId==='a2'));
+
+    // one-time pairing flow
+    $('#externalBtn').click();
+    await wait(700);
+    check('external modal opens',!$('#externalModal').hidden);
+    check('bridge status visible',/ONLINE/.test($('#extBridgeStatus').textContent));
+    check('provider catalog loaded',ext.providers.length>=6,'providers='+ext.providers.length);
+    check('provider catalog includes doubao',ext.providers.some(p=>p.id==='doubao'));
+    check('provider catalog includes deepseek',ext.providers.some(p=>p.id==='deepseek'));
+    check('provider catalog includes workbuddy',ext.providers.some(p=>p.id==='workbuddy'));
+    check('provider catalog includes gemini',ext.providers.some(p=>p.id==='gemini'));
+    check('provider cards rendered',$$('#extProviderList .ext-provider').length>=6,
+      'cards='+$$('#extProviderList .ext-provider').length);
+    check('provider key help control',!!$('[data-ext-provider-help]'));
+    const providerConnect=$('[data-ext-provider-connect="workbuddy"]');
+    check('provider connect control',!!providerConnect);
+    if(providerConnect){
+      providerConnect.click();
+      await wait(900);
+      check('provider agent connected',ext.agents.some(a=>a.id==='ext-workbuddy'),
+        'agents='+ext.agents.length);
+      await ext.remove('ext-workbuddy');
+      await wait(400);
+      check('provider agent removed',!ext.agents.some(a=>a.id==='ext-workbuddy'));
+    }
+    const pairBtn=$('[data-ext-pair-new]');
+    check('generate pair code control',!!pairBtn);
+    if(pairBtn) pairBtn.click();
+    await wait(700);
+    const pair=ext.pairs.find(p=>p.status==='pending');
+    check('pair code generated',!!pair,'pairs='+ext.pairs.length);
+    check('pair code is 8 chars',!!pair&&pair.code.length===8,pair&&pair.code);
+    check('pair message includes setup',!!pair&&ext.pairMessage(pair).indexOf('/pair/'+pair.code+'/setup.md')>=0);
+    check('waiting card in team',!!pair&&!!$('[data-ext-pair-open="'+pair.code+'"]'));
+    const setupRes=await fetch(ext.bridgeUrl+'/pair/'+pair.code+'/setup.md');
+    const setupText=await setupRes.text();
+    check('setup.md includes code',setupText.indexOf(pair.code)>=0&&/claim/.test(setupText));
+    const claimRes=await fetch(ext.bridgeUrl+'/pair/'+pair.code+'/claim',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Claude Code · QA',
+        runtime:'claude-code',endpoint:'local://claude-code',skills:['repo-map','test','review']})});
+    const claim=await claimRes.json();
+    check('pair claim succeeds',claimRes.status===200&&claim.ok&&!!claim.agent);
+    const claimAgain=await fetch(ext.bridgeUrl+'/pair/'+pair.code+'/claim',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Again'})});
+    check('pair code is one-time',claimAgain.status===409);
+
+    // cancelling an unused code removes it from the bridge
+    const pairBtn2=$('[data-ext-pair-new]'); if(pairBtn2) pairBtn2.click();
+    await wait(700);
+    const cancelPair=ext.pairs.find(p=>p.status==='pending');
+    check('second pair generated',!!cancelPair);
+    if(cancelPair){
+      const cancelBtn=$('[data-ext-cancel-pair="'+cancelPair.code+'"]');
+      check('cancel control visible',!!cancelBtn);
+      if(cancelBtn) cancelBtn.click();
+      await wait(500);
+      check('cancelled pair removed locally',!ext.pairs.some(p=>p.code===cancelPair.code));
+      const gone=await fetch(ext.bridgeUrl+'/pair/'+cancelPair.code);
+      check('cancelled pair removed from bridge',gone.status===404);
+    }
+    const added=claim.agent;
+    check('claimed agent has id',!!added&&added.id.indexOf('ext-')===0);
+    await wait(2800);
+    await ext.refresh();
+    check('claimed agent appears',ext.agents.some(a=>a.id===added.id));
+    check('pair no longer pending',ext.pendingPairs().length===0);
+    check('greeting event ingested',engine.world.ledger.some(e=>e.external&&e.kind==='hello'&&e.agentId===added.id));
+    check('external team card',!!$('[data-external="'+added.id+'"]'));
+    check('waiting card removed',!$('[data-ext-pair-open="'+pair.code+'"]'));
+    check('team sub counts ext',/1 外部/.test($('#teamSub').textContent),$('#teamSub').textContent);
+
+    // external drawer + rename
+    $('[data-external="'+added.id+'"]').click();
+    await wait(150);
+    check('external drawer opens',!$('#detailDrawer').hidden&&/EXTERNAL AGENT/.test($('#detailDrawer').textContent));
+    const renameExt=$('[data-rename-external="'+added.id+'"]');
+    check('external rename control',!!renameExt);
+    if(renameExt){renameExt.click(); await wait(100); $('#renameInput').value='外部 QA'; $('#renameSubmit').click(); await wait(700);}
+    check('external renamed',ext.agentById(added.id).name==='外部 QA',ext.agentById(added.id).name);
+    const bridgeAgents=await (await fetch(ext.bridgeUrl+'/agents')).json();
+    check('bridge sees renamed external',bridgeAgents.agents.some(a=>a.id===added.id&&a.name==='外部 QA'));
+
+    // demo events
+    if($('#externalModal').hidden===false){}
+    $('#externalBtn').click(); await wait(250);
+    $('[data-ext-demo]').click();
+    await wait(1200);
+    const demoAgent=ext.agents.find(a=>a.demo);
+    check('demo agent appears',!!demoAgent&&demoAgent.status==='online');
+    if(demoAgent){
+      for(let i=0;i<2;i++){
+        await fetch(ext.bridgeUrl+'/events',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({agentId:demoAgent.id,kind:'review',action:'外部回归检查 '+(i+1),
+            taskId:'t4',skill:'testing',tool:'bash',tokensIn:200+i*10,tokensOut:80,durationMs:900})});
+      }
+      await wait(3000);
+    }
+    const externalEvents=engine.world.ledger.filter(e=>e.external);
+    check('external events ingested',externalEvents.length>=2,'events='+externalEvents.length);
+    check('external event task linkage',externalEvents.some(e=>e.taskId==='t4'));
+    check('external event has tokens',externalEvents.some(e=>Number(e.tokensIn)>0));
+    const demo=ext.agents.find(a=>a.demo);
+    check('demo event count',demo&&demo.eventCount>0);
+    const otlp=engine.otlp();
+    const otlpSpans=otlp.resourceSpans[0].scopeSpans[0].spans;
+    const extSpan=otlpSpans.find(s=>s.name==='外部回归检查 1');
+    check('OTLP includes external span',!!extSpan);
+    check('OTLP marks external agent',!!extSpan&&extSpan.attributes.some(a=>a.key==='agentops.external'&&a.value.stringValue==='true'));
+    check('OTLP external agent name',!!extSpan&&extSpan.attributes.some(a=>a.key==='gen_ai.agent.name'&&a.value.stringValue==='Claude Code · Remote'));
+    const traceBtn=$('#traceBtn'); if(traceBtn) traceBtn.click();
+    await wait(300);
+    check('trace lab opens with external events',!$('#traceLab').hidden);
+    const extFilter=$('[data-tl-filter="external"]');
+    check('trace external filter',!!extFilter);
+    if(extFilter){extFilter.click(); await wait(150);}
+    check('trace external filter shows events',$$('#tlTree .tl-event-row').length>0,
+      'rows='+$$('#tlTree .tl-event-row').length);
+    const closeTrace=$('#traceLab [data-tl-close]'); if(closeTrace) closeTrace.click();
+    await wait(100);
+
+    // stop demo / cleanup
+    $('#externalBtn').click(); await wait(200);
+    $('[data-ext-demo]').click(); await wait(600);
+    check('demo stopped',!ext.demo);
+    await ext.remove('ext-demo-claude'); await wait(300);
+    await ext.remove(added.id); await wait(300);
+    check('external removed locally',!ext.agents.some(a=>a.id===added.id));
+    const bridgeAfter=await (await fetch(ext.bridgeUrl+'/agents')).json();
+    check('external removed from bridge',!bridgeAfter.agents.some(a=>a.id===added.id));
+    if($('#externalModal').hidden===false){$('#externalModal [data-ext-close]').click();}
+
+    // persistence across reload
+    const f2=document.createElement('iframe');
+    f2.style.cssText='position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0';
+    f2.src='index.html?intro=0&ticks=0&reload=1';
+    document.body.appendChild(f2);
+    f2.addEventListener('load',()=>setTimeout(()=>{
+      try{
+        const w2=f2.contentWindow, app2=w2.AgentOfficeApp;
+        check('reload app exposed',!!app2);
+        const a=app2.engine.world.agents.find(x=>x.id==='a2');
+        check('local rename survives reload',a&&a.name==='苏晚晚','name='+(a&&a.name));
+        check('external list survives reload',app2.renderer.external.agents.length===0,
+          'agents='+app2.renderer.external.agents.length);
+      }catch(e){lines.push('FAIL reload exception '+e);failed++;}
+      finish();
+    },2400));
+  }
+})();
+</script>
+</body></html>

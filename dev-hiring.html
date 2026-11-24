@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Hiring self-check</title>
+  <style>
+    body { background:#0b1118; color:#cfe0ee; font:12px/1.6 ui-monospace,Menlo,monospace; padding:14px; }
+    iframe { position:fixed; left:-3600px; top:0; width:1440px; height:900px; border:0; }
+    pre { white-space:pre-wrap; background:#121c26; border:1px solid #233545; border-radius:8px; padding:12px; }
+  </style>
+</head>
+<body>
+  <h1>HIRING SELF-CHECK</h1>
+  <pre id="out">running…</pre>
+  <iframe id="f"></iframe>
+  <script>
+    (function () {
+      const out = document.getElementById("out");
+      const lines = [];
+      let failed = 0;
+      function check(name, ok, extra) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + name + (extra ? "  " + extra : ""));
+        if (!ok) failed++;
+      }
+      function finish() {
+        out.textContent = lines.join("\n") + "\n\n" + (failed ? "FAILED: " + failed : "ALL CHECKS PASS");
+        document.title = failed ? "FAIL" : "PASS";
+        document.body.setAttribute("data-result", failed ? "fail" : "pass");
+      }
+      const f = document.getElementById("f");
+      f.src = "index.html?intro=0&ticks=0";
+      f.addEventListener("load", function () {
+        window.setTimeout(function () {
+          try {
+            const doc = f.contentDocument;
+            const win = f.contentWindow;
+            const app = win.AgentOfficeApp;
+            const $ = (s) => doc.querySelector(s);
+            const $$ = (s) => Array.from(doc.querySelectorAll(s));
+            check("app exposed", !!app && !!app.engine && !!app.renderer);
+            if (!app) { finish(); return; }
+            const engine = app.engine;
+            const renderer = app.renderer;
+            engine.paused = true;
+            check("starts with six agents", engine.world.agents.length === 6);
+            check("two empty hot desks", win.AgentOffice.availableHotDesks().length === 2);
+            check("team count shows hot desks", /6 本地 · 2 热桌/.test($("#teamSub").textContent));
+            const hireBtn = $("#hireBtn");
+            check("hire button exists", !!hireBtn);
+            if (hireBtn) hireBtn.click();
+            check("hire modal opens", !!$("#hireModal") && !$("#hireModal").hidden);
+            check("hire form has desk", /HOT DESK · d7/.test($("#hireDeskNote").textContent));
+            check("hire has preview", !!$("#hireAvatar svg"));
+            check("app inert while hiring", $("#app").inert === true);
+
+            $("#hireName").value = "何弦";
+            $("#hireName").dispatchEvent(new win.Event("input", { bubbles: true }));
+            $("#hireRole").value = "engineer";
+            $("#hireRole").dispatchEvent(new win.Event("change", { bubbles: true }));
+            $("#hireTrait").value = "新来的全栈工程师，喜欢先写测试。";
+            $("#hireTrait").dispatchEvent(new win.Event("input", { bubbles: true }));
+            $("#hireAccessory").value = "glasses";
+            $("#hireAccessory").dispatchEvent(new win.Event("change", { bubbles: true }));
+            check("preview updates name", /何弦/.test($("#hirePreviewName").textContent));
+            check("preview updates role", /工程师/.test($("#hirePreviewRole").textContent));
+            $("#hireForm").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+
+            check("agent added", engine.world.agents.length === 7,
+              "agents=" + engine.world.agents.length);
+            const newAgent = engine.world.agents[6];
+            check("new agent name", newAgent && newAgent.name === "何弦");
+            check("new agent desk", newAgent && newAgent.deskId === "d7");
+            check("new agent hired flag", newAgent && newAgent.hired === true);
+            check("roster persisted in memory", win.AgentOffice.AGENTS.length === 7);
+            check("onboarding task exists", !!engine.taskById("onb-" + newAgent.id));
+            check("onboarding assigned", engine.taskById("onb-" + newAgent.id).assignee === newAgent.id);
+            check("one hot desk remains", win.AgentOffice.availableHotDesks().length === 1);
+            check("team count updates", /7 本地 · 1 热桌/.test($("#teamSub").textContent),
+              $("#teamSub").textContent);
+            check("desk label updates", /何弦/.test($("#officeLayer").textContent));
+            check("hire logged", engine.world.ledger.some((e) => e.kind === "hire" && e.agentId === newAgent.id));
+            check("modal closes", $("#hireModal").hidden === true);
+            check("app not inert after hire", $("#app").inert === false);
+            let stored = null;
+            try { stored = JSON.parse(win.localStorage.getItem(win.AgentOffice.HIRE_KEY)); } catch (e) {}
+            check("hire saved to localStorage", Array.isArray(stored) && stored.length === 1);
+            check("hire saved desk", stored && stored[0].deskId === "d7");
+
+            // let the new agent work the onboarding task
+            let obstacleHits = 0;
+            const obstacleSamples = [];
+            for (let i = 0; i < 100; i++) {
+              engine.step();
+              engine.world.agents.forEach(function (agent) {
+                win.AgentOffice.OBSTACLES.forEach(function (rect, ri) {
+                  if (agent.x > rect.x + 2 && agent.x < rect.x + rect.w - 2 &&
+                      agent.y > rect.y + 2 && agent.y < rect.y + rect.h - 2) {
+                    obstacleHits += 1;
+                    if (obstacleSamples.length < 5) {
+                      obstacleSamples.push({ tick: engine.world.tick, agent: agent.name,
+                        x: Math.round(agent.x), y: Math.round(agent.y), rect: ri, r: rect });
+                    }
+                  }
+                });
+              });
+            }
+            const onboard = engine.taskById("onb-" + newAgent.id);
+            check("onboarding starts", onboard && onboard.status !== "backlog",
+              "status=" + (onboard ? onboard.status : "missing"));
+            check("new agent got work", engine.world.ledger.some((e) =>
+              e.taskId === "onb-" + newAgent.id && e.kind === "skill"));
+            check("no obstacle hits while onboarding", obstacleHits === 0,
+              "hits=" + obstacleHits + " " + JSON.stringify(obstacleSamples));
+
+            // hire second
+            const hireBtn2 = $("#hireBtn");
+            if (hireBtn2) hireBtn2.click();
+            check("second hire uses other desk", /HOT DESK · d8/.test($("#hireDeskNote").textContent));
+            $("#hireName").value = "季白";
+            $("#hireName").dispatchEvent(new win.Event("input", { bubbles: true }));
+            $("#hireRole").value = "research";
+            $("#hireRole").dispatchEvent(new win.Event("change", { bubbles: true }));
+            $("#hireForm").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+            check("second agent added", engine.world.agents.length === 8);
+            check("second agent desk", engine.world.agents[7].deskId === "d8");
+            check("no hot desks remain", win.AgentOffice.availableHotDesks().length === 0);
+            check("team full text", /8 本地 · 热桌满/.test($("#teamSub").textContent));
+            const hireBtn3 = $("#hireBtn");
+            if (hireBtn3) hireBtn3.click();
+            check("full modal disables submit", $("#hireSubmit").disabled === true);
+            check("full modal explains", /热桌已满/.test($("#hireDesk").textContent));
+            $("#hireModal [data-hire-close]").click();
+
+            // persistence: a second page should load the two hires and their hot desks
+            const f2 = document.createElement("iframe");
+            f2.style.cssText = "position:fixed;left:-3600px;top:0;width:1440px;height:900px;border:0";
+            f2.src = "index.html?intro=0&ticks=0&persist=1";
+            document.body.appendChild(f2);
+            f2.addEventListener("load", function () {
+              window.setTimeout(function () {
+                try {
+                  const w2 = f2.contentWindow;
+                  const app2 = w2.AgentOfficeApp;
+                  check("reload app exposed", !!app2);
+                  if (app2) {
+                    check("reload restores hires", app2.engine.world.agents.length === 8,
+                      "agents=" + app2.engine.world.agents.length);
+                    check("reload restores roster", w2.AgentOffice.AGENTS.length === 8);
+                    check("reload restores hot desks", w2.AgentOffice.availableHotDesks().length === 0);
+                    check("reload restores onboarding tasks",
+                      app2.engine.world.tasks.filter((t) => t.id.indexOf("onb-") === 0).length === 2);
+                    check("reload shows names", /何弦/.test(f2.contentDocument.getElementById("officeLayer").textContent) &&
+                      /季白/.test(f2.contentDocument.getElementById("officeLayer").textContent));
+                  }
+                } catch (err) {
+                  lines.push("FAIL  reload exception: " + (err && err.stack || err));
+                  failed++;
+                }
+                finish();
+              }, 2400);
+            });
+          } catch (err) {
+            lines.push("FAIL  exception: " + (err && err.stack || err));
+            failed++;
+            finish();
+          }
+        }, 2400);
+      });
+    })();
+  </script>
+</body>
+</html>

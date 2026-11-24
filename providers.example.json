@@ -1,0 +1,46 @@
+{
+  "doubao": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "doubao-seed-1-6-250615"
+  },
+  "deepseek": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "deepseek-chat"
+  },
+  "workbuddy": {
+    "apiKey": "",
+    "baseUrl": "http://127.0.0.1:10108/v1",
+    "model": "hy3"
+  },
+  "gemini": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "gemini-2.5-flash"
+  },
+  "openai": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "gpt-4.1-mini"
+  },
+  "anthropic": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "claude-sonnet-5-5"
+  },
+  "kimi": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "kimi-latest"
+  },
+  "qwen": {
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "qwen-plus"
+  },
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "model": "llama3.2"
+  }
+}

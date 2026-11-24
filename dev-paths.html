@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>paths</title></head>
+<body>
+<pre id="out">…</pre>
+<script src="src/data.js"></script>
+<script src="src/engine.js"></script>
+<script>
+(function () {
+  const AO = window.AgentOffice;
+
+  function run(id) {
+    const engine = new AO.Engine(id);
+    const hits = [];
+    const seen = {};
+    for (let tick = 1; tick <= 180 && !engine.world.done; tick++) {
+      engine.step();
+      engine.world.agents.forEach(function (a) {
+        AO.OBSTACLES.forEach(function (r, index) {
+          if (
+            a.x > r.x + 2 &&
+            a.x < r.x + r.w - 2 &&
+            a.y > r.y + 2 &&
+            a.y < r.y + r.h - 2
+          ) {
+            const key = a.id + ":" + index;
+            if (!seen[key]) {
+              seen[key] = true;
+              hits.push({
+                tick: tick,
+                agent: a.name,
+                state: a.state,
+                x: Math.round(a.x),
+                y: Math.round(a.y),
+                rect: r
+              });
+            }
+          }
+        });
+      });
+    }
+    return {
+      scenario: id,
+      ticks: engine.world.tick,
+      done: engine.world.done,
+      hitCount: hits.length,
+      hits: hits.slice(0, 20)
+    };
+  }
+
+  const results = [run("launch"), run("incident")];
+  document.getElementById("out").textContent = JSON.stringify(results, null, 2);
+  document.title = results.every(function (r) {
+    return r.done && r.hitCount === 0;
+  }) ? "CLEAN" : "HITS";
+})();
+</script>
+</body>
+</html>

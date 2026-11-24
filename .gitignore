@@ -1,0 +1,7 @@
+bridge-state.json
+__pycache__/
+.DS_Store
+*.pyc
+bridge-state.tmp
+providers.local.json
+providers.json

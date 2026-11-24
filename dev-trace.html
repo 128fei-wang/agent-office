@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>trace</title></head>
+<body>
+<pre id="out">…</pre>
+<script src="src/data.js"></script>
+<script src="src/engine.js"></script>
+<script>
+(function () {
+  const AO = window.AgentOffice;
+  const engine = new AO.Engine("launch");
+  const log = [];
+  const prev = {};
+  for (let i = 0; i < 170 && !engine.world.done; i++) {
+    engine.step();
+    const w = engine.world;
+    w.tasks.forEach(function (t) {
+      const key = "T" + t.id;
+      const val = t.status + "/" + (t.assignee || "-") + "/" + (t.reviewerId || "-") + "/" + Math.round(t.progress);
+      if (prev[key] !== val) {
+        log.push(i + "  T " + t.id + " " + val);
+        prev[key] = val;
+      }
+    });
+    w.agents.forEach(function (a) {
+      const key = "A" + a.id;
+      const val = a.state + "/" + (a.taskId || "-") + "/" + a.activity;
+      if (prev[key] !== val) {
+        log.push(i + "  A " + a.name + " " + val);
+        prev[key] = val;
+      }
+    });
+    if (w.meeting && prev["M"] !== w.meeting.title) {
+      log.push(i + "  MEETING " + w.meeting.title + " [" + w.meeting.participants.join(",") + "]");
+      prev["M"] = w.meeting.title;
+    }
+    if (!w.meeting) prev["M"] = "";
+  }
+  document.getElementById("out").textContent = log.join("\n");
+  document.title = "TRACE " + engine.world.tick + (engine.world.done ? " DONE" : " NOTDONE");
+})();
+</script>
+</body>
+</html>
