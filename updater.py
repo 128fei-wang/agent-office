@@ -218,8 +218,13 @@ def list_backups(backup_dir=None):
             continue
         meta["id"] = item.name
         meta["path"] = str(item)
+        try:
+            meta["_sortTs"] = float(meta.get("createdAtTs") or item.stat().st_mtime)
+        except (TypeError, ValueError, OSError):
+            meta["_sortTs"] = 0
         rows.append(meta)
-    rows.sort(key=lambda row: row.get("createdAt", ""), reverse=True)
+    rows.sort(key=lambda row: (row.get("_sortTs", 0), row.get("createdAt", "")),
+              reverse=True)
     return rows
 
 
@@ -343,6 +348,7 @@ def create_backup(root, backup_dir=None, version="", mode="auto",
         "id": backup_id,
         "version": version or read_version(root),
         "createdAt": now_iso(),
+        "createdAtTs": time.time(),
         "mode": mode,
         "gitCommit": git_commit,
         "targetVersion": target_version,
