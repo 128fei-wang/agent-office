@@ -64,6 +64,7 @@
       this.shell = null;
       this.isOpen = false;
       this.data = { missions: [], conversations: [], approvals: [], agents: [], artifacts: [] };
+      this.ai = { available: false, provider: "" };
       this.activeType = "";
       this.activeId = "";
       this.mission = null;
@@ -375,6 +376,7 @@
           agents: data.agents || [],
           artifacts: data.artifacts || []
         };
+        this.ai = data.ai || { available: false, provider: "" };
         if (this.activeId && this.activeType === "mission") {
           const detail = await this.api("/missions/" + encodeURIComponent(this.activeId), null, 8000);
           this.mission = detail.mission || null;
@@ -400,6 +402,7 @@
           agents: data.agents || [],
           artifacts: data.artifacts || []
         };
+        this.ai = data.ai || { available: false, provider: "" };
         if (!this.activeId) {
           if (this.data.missions.length) {
             this.activeType = "mission";
@@ -1049,8 +1052,11 @@
             return '<span class="mission-file-chip">' + esc(file.name) +
               ' <button type="button" data-form-file-remove="' + index + '">×</button></span>';
           }).join("") + '</div></label>' +
-          '<label class="mission-check"><input name="autoDiscuss" type="checkbox" checked /> ' +
+          '<label class="mission-check"><input name="autoDiscuss" type="checkbox"' +
+          (this.ai.available ? ' checked' : '') + ' /> ' +
           esc(this.t("missionAutoDiscuss")) + '</label>' +
+          (this.ai.available ? '' : '<p class="mission-note mission-ai-note">' +
+            esc(this.t("missionAiUnavailableHint")) + '</p>') +
           '<p class="mission-note">' + esc(this.t("missionAutoTeamHint")) + '</p>' +
           '<p class="mission-note">' + esc(this.t("missionBudgetHint")) + '</p>';
       } else if (isGroup) {

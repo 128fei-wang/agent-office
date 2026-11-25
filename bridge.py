@@ -2628,6 +2628,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/missions/overview":
                 payload = MISSION_STORE.snapshot()
                 payload["agents"] = mission_agent_directory()
+                ai_candidates = mission_provider_candidates("")
+                payload["ai"] = {
+                    "available": bool(ai_candidates),
+                    "provider": ai_candidates[0] if ai_candidates else "",
+                }
                 self.send_json(payload)
                 return
             if path == "/conversations":
