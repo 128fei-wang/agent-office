@@ -38,6 +38,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Self-update: GitHub release check, local archive install, backup, git/archive apply, verification, bridge restart, rollback and CLI.
 - [x] Mission Control: task charter, auto team/plan/assignment, no-idle standby work, groups/DMs, file/image upload, OCR, boss gates, reports with solutions and AI discussion/run.
 - [x] Agent recommendations, free team selection, per-task executor overrides, auto brand logos, task time/token estimates and actual-usage evaluation.
+- [x] Real-external-agent-first recommendations, editable external job appointments, and built-in/custom avatar selection.
 - [ ] Provider-backed evaluation of task deliverables and independent QA verification.
 - [ ] Estimate calibration from historical actual/estimate variance per role and agent.
 - [ ] Retention, search and export for mission history and uploaded artifacts.

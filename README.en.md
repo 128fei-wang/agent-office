@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, smart team recommendations and per-task executors, automatic brand logos, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -55,8 +55,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | Office | Trace Lab |
 | --- | --- |
 | ![Office](docs/screenshots/office.jpg) | ![Trace Lab](docs/screenshots/trace-lab.jpg) |
-| **Audit** | **External agent pairing** |
-| ![Audit](docs/screenshots/audit.jpg) | ![External agent](docs/screenshots/external-agents.jpg) |
+| **Audit** | **External appointment & avatar** |
+| ![Audit](docs/screenshots/audit.jpg) | ![External profile](docs/screenshots/external-agent-profile.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
 | **Mission Control** | **One-person company** |
@@ -122,6 +122,7 @@ The pairing flow is inspired by ClawChat: **you do not type the agent's endpoint
 4. Click **Copy for agent** and send the whole message to Claude Code, Codex, or any agent that can run shell commands.
 5. The agent opens `setup.md`, then calls `POST /pair/<code>/claim` to claim its identity.
 6. Its `WAITING FOR AGENT` card in the team panel becomes a connected external agent card. Its greeting and later events flow into Trace, the feed, and task traces.
+7. Open the external agent card and use **Role & avatar** to appoint a real role (or keep system auto-assignment) and choose an auto brand avatar, a built-in avatar, or custom initials/color. Recommendations and assignment use the saved role immediately.
 
 Pairing rules:
 
@@ -330,8 +331,10 @@ API and boundaries.
 Open **TASKS** in the top bar or use `?missions=1`.
 
 - **New task** — description, acceptance, priority, deadline, budget and document/image attachments.
-- **Free team selection + recommendations** — candidate cards show skills, match score and estimated time/tokens. Pick any members, or override the executing agent per task. Recommendations rank by skills, role, online state and current load, return a top-3 per task, and default every task to a concrete executor.
-- **Automatic brand logos** — Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI are detected from the agent name/runtime; unknown agents get stable initials. Logos appear in team cards, the external list/drawer, mission members, reports and the picker.
+- **Real external-agent recommendations first** — if any external agents are connected, the recommendation pool contains only those real agents; built-in AI roles are used only when no external agent exists. The normal system division remains available and manually selectable, and each task can have its own executor.
+- **Editable appointment** — in an external agent's drawer, choose system auto-assignment or chief/product/design/engineer/QA/growth/content/video/operator. The choice is persisted and used by recommendation and assignment; leaving it on auto keeps the skill-based inference.
+- **Brand, built-in and custom avatars** — Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI are detected from the agent name/runtime; unknown agents get generated initials. Pick a built-in avatar (bot, fox, owl, cat, rocket, star, ghost, alien, spark, builder, lead) or set custom initials and a color.
+- **Recommendation + per-task executors** — cards show role, skills, match score and estimated time/tokens. Recommendations rank by skills, appointed role, online state and current load, return a top-3 per task, and default every task to a concrete external executor when available.
 - **Auto plan** — dependency-aware tasks and a recorded reason for every assignment; each member gets a primary or useful standby task, so nobody idles.
 - **Task group / group chat / DM** — each mission opens its own group; ad-hoc groups and one-to-one DMs are available too.
 - **Files and images** — text, Markdown, CSV, JSON, HTML, DOCX, XLSX, PDF and images; optional vision/tesseract OCR.
@@ -444,7 +447,7 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-audit.html` — traces, skills, files, diff, checks, exports, snapshots. Add `?scenario=incident`.
 - `dev-tracelab.html` — spans, timeline, replay, evals, OTLP, human approval.
 - `dev-hiring.html` — add agent, hot desks, onboarding, persistence.
-- `dev-external.html` — pairing, claim, one-time enforcement, events, rename, OTLP, persistence.
+- `dev-external.html` — pairing, claim, one-time enforcement, events, rename, role appointment, built-in/custom avatars, OTLP, persistence.
 - `dev-delegation.html` — delegation, progress/completion writeback, self-report markers, audit gaps.
 - `dev-theme.html` — day/night toggle, persistence, `D` shortcut, 390 px mobile layout, drawers, Trace Lab, external modal.
 - `dev-company.html` — template generation, 8 roles / 11 tasks / 15 rooms, auto-dispatch, role pairing, chat, task-room isolation, completion writeback and i18n.
@@ -453,7 +456,7 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
 - `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
 
-Run the 20 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
+Run the 21 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -488,7 +491,7 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
 - Mission AI discussion/AI run needs a reachable model service. When local WorkBuddy/Ollama is not running, the rule plan remains and the UI says so. PDF extraction needs `pdftotext`; image OCR uses a vision model, macOS Vision as a local fallback, or `tesseract` on other platforms.
 - Time/token values are estimates and consumption telemetry, not vendor billing. Estimates use local heuristics (role baseline, complexity, skill match, load) and do not yet learn from historical variance. Actual tokens depend on what a provider or external agent reports.
-- Brand logos are local name/runtime matches, not downloaded trademark assets; unknown agents get initials.
+- Brand logos are local name/runtime matches, not downloaded trademark assets; unknown agents get initials. Built-in avatars are local emoji/glyph presets; custom avatars store only initials and a color, not uploaded images.
 - QR login is a boss approval gate for an agent-supplied QR/link; Agent Office does not implement each provider's OAuth flow. Approvals are a local trust model, not multi-tenant authentication.
 - Mission data lives in `~/.agent-office/missions.json`; large deployments should move to SQLite/Postgres.
 - Self-update never installs in the background. Automatic update needs the official GitHub Release; manual update needs a local archive newer than the running version. Both need the bridge and restart it. Versions 1.2.0 and older need one manual upgrade to 1.3.0+ before the in-app tools panel exists.

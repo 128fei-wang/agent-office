@@ -106,9 +106,9 @@ flowchart LR
 5. External events arrive from `bridge.py`; `external.js` polls and calls `engine.ingestExternalEvent()`, so they join the same ledger and Trace Lab.
 6. Assignments are polled separately; `engine.applyExternalAssignment()` mirrors progress/completion into the task board and finalizes unverified checks as risk/missed.
 7. `engine.otlp()` projects the same events into OTLP/GenAI-style span JSON.
-8. Mission Control creates a charter, recommends and selects a team, plans dependency-aware tasks and assigns every task to a concrete member. `POST /missions/recommend` scores skills, role, online state and current load; `preferredExecutors` from the form override the default for individual tasks.
+8. Mission Control creates a charter, recommends and selects a team, plans dependency-aware tasks and assigns every task to a concrete member. `POST /missions/recommend` uses connected external agents as the default pool (system roles only when none exist) and scores skills, appointed role, online state and current load; `preferredExecutors` from the form override the default for individual tasks.
 9. Every task carries estimates and actual usage (minutes, model duration, tokens); AI discussion and AI run usage is stored on the mission and report messages, and `mission_evaluation()` aggregates it for the Eval tab.
-10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Mission members and external API responses expose the same fields.
+10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Users can appoint an external agent to a mission role and choose a built-in/custom avatar through `PATCH /agents/<id>`; mission members and external API responses expose the same fields.
 11. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
 12. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 

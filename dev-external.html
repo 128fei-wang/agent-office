@@ -128,6 +128,44 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     const bridgeAgents=await (await fetch(ext.bridgeUrl+'/agents')).json();
     check('bridge sees renamed external',bridgeAgents.agents.some(a=>a.id===added.id&&a.name==='外部 QA'));
 
+    // editable appointment + generated/built-in/custom avatars
+    const roleSelect=$('[data-ext-role="'+added.id+'"]');
+    check('role appointment control',!!roleSelect&&!!(ext.meta&&ext.meta.roles.length));
+    if(roleSelect){
+      roleSelect.value='design';
+      roleSelect.dispatchEvent(new w.Event('change',{bubbles:true}));
+      await wait(900);
+      check('role appointment saved',ext.agentById(added.id).role==='design',ext.agentById(added.id).role);
+      const afterRole=await (await fetch(ext.bridgeUrl+'/agents')).json();
+      check('bridge sees appointed role',afterRole.agents.some(a=>a.id===added.id&&a.role==='design'));
+    }
+    const avatarSelect=$('[data-ext-avatar="'+added.id+'"]');
+    check('avatar picker control',!!avatarSelect&&!!(ext.meta&&ext.meta.avatars.length>=8));
+    if(avatarSelect){
+      avatarSelect.value='fox';
+      avatarSelect.dispatchEvent(new w.Event('change',{bubbles:true}));
+      await wait(900);
+      check('built-in avatar saved',ext.agentById(added.id).logoText==='🦊',ext.agentById(added.id).logoText);
+      const customSelect=$('[data-ext-avatar="'+added.id+'"]');
+      if(customSelect){
+        customSelect.value='custom';
+        customSelect.dispatchEvent(new w.Event('change',{bubbles:true}));
+        await wait(900);
+      }
+      const text=$('[data-ext-avatar-text]'), color=$('[data-ext-avatar-color]');
+      const save=$('[data-ext-avatar-save]');
+      check('custom avatar controls',!!text&&!!color&&!!save);
+      if(text&&color&&save){
+        text.value='Z9'; color.value='#123456'; save.click();
+        await wait(900);
+        const customAgent=ext.agentById(added.id);
+        check('custom avatar saved',customAgent&&customAgent.logoText==='Z9'&&customAgent.logoColor==='#123456',
+          customAgent&&(customAgent.logoText+'/'+customAgent.logoColor));
+        const afterAvatar=await (await fetch(ext.bridgeUrl+'/agents')).json();
+        check('bridge sees custom avatar',afterAvatar.agents.some(a=>a.id===added.id&&a.logoText==='Z9'));
+      }
+    }
+
     // demo events
     if($('#externalModal').hidden===false){}
     $('#externalBtn').click(); await wait(250);

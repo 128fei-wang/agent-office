@@ -56,6 +56,64 @@ BRAND_PATTERNS = [
     (r"openai|gpt", "OpenAI", "AI", "#74d6a3"),
 ]
 
+ROLE_META = [
+    ("chief", "总协调", "Chief of Staff", "#d0a27a"),
+    ("product", "产品策略", "Product", "#55d6c2"),
+    ("copy", "内容文案", "Content", "#ff9ec0"),
+    ("design", "设计", "Design", "#b58cff"),
+    ("engineer", "工程师", "Engineer", "#7cb7ff"),
+    ("qa", "质量", "QA", "#f2b544"),
+    ("growth", "增长", "Growth", "#74d6a3"),
+    ("video", "视频", "Video", "#e3a06c"),
+    ("operator", "执行", "Operator", "#8fa5b7"),
+]
+
+AVATAR_PRESETS = [
+    {"id": "auto", "glyph": "A", "labelZh": "自动识别品牌", "labelEn": "Auto brand", "color": "#b58cff"},
+    {"id": "bot", "glyph": "🤖", "labelZh": "机器人", "labelEn": "Bot", "color": "#7cb7ff"},
+    {"id": "fox", "glyph": "🦊", "labelZh": "狐狸", "labelEn": "Fox", "color": "#ffb45e"},
+    {"id": "owl", "glyph": "🦉", "labelZh": "猫头鹰", "labelEn": "Owl", "color": "#c9a0dc"},
+    {"id": "cat", "glyph": "🐱", "labelZh": "猫", "labelEn": "Cat", "color": "#ff9ec0"},
+    {"id": "rocket", "glyph": "🚀", "labelZh": "火箭", "labelEn": "Rocket", "color": "#55d6c2"},
+    {"id": "star", "glyph": "⭐", "labelZh": "星星", "labelEn": "Star", "color": "#f2b544"},
+    {"id": "ghost", "glyph": "👻", "labelZh": "幽灵", "labelEn": "Ghost", "color": "#b9a6ff"},
+    {"id": "alien", "glyph": "👾", "labelZh": "像素怪", "labelEn": "Alien", "color": "#74d6a3"},
+    {"id": "spark", "glyph": "✨", "labelZh": "闪光", "labelEn": "Spark", "color": "#e8a07e"},
+    {"id": "wrench", "glyph": "🛠️", "labelZh": "工匠", "labelEn": "Builder", "color": "#8fa5b7"},
+    {"id": "crown", "glyph": "👑", "labelZh": "负责人", "labelEn": "Lead", "color": "#f2b544"},
+    {"id": "custom", "glyph": "✎", "labelZh": "自定义缩写", "labelEn": "Custom initials", "color": "#b58cff"},
+]
+
+_role_labels = {item[0]: (item[1], item[2]) for item in ROLE_META}
+_avatar_by_id = {item["id"]: item for item in AVATAR_PRESETS}
+
+
+def role_catalog():
+    return [
+        {"id": role, "titleZh": zh, "titleEn": en, "color": color}
+        for role, zh, en, color in ROLE_META
+    ]
+
+
+def avatar_catalog():
+    return [dict(item) for item in AVATAR_PRESETS]
+
+
+def agent_meta():
+    return {"roles": role_catalog(), "avatars": avatar_catalog()}
+
+
+def role_label(role):
+    zh, en = _role_labels.get(str(role or ""), (str(role or "Agent"), str(role or "Agent")))
+    return {"roleLabelZh": zh, "roleLabelEn": en}
+
+
+def _safe_color(value, fallback="#b58cff"):
+    text = str(value or "").strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{3,8}", text):
+        return text
+    return fallback
+
 
 def logo_info(row, source="role"):
     name = str(row.get("name") or row.get("titleEn") or row.get("titleZh") or "")
@@ -63,12 +121,27 @@ def logo_info(row, source="role"):
     role = str(row.get("role") or "").replace("msn-", "").replace("opc-", "")
     haystack = (name + " " + runtime).lower()
     if source == "external":
+        avatar = str(row.get("avatar") or "auto")
+        preset = _avatar_by_id.get(avatar)
+        if preset and avatar not in ("auto", "custom"):
+            return {
+                "brand": preset["labelEn"], "logoText": preset["glyph"],
+                "logoColor": preset["color"], "avatar": avatar,
+            }
+        if avatar == "custom":
+            letters = "".join(part[0] for part in re.split(r"[\s·._-]+", name) if part)[:2]
+            text = str(row.get("avatarText") or "").strip()[:2] or letters.upper() or "EX"
+            return {
+                "brand": "Custom avatar", "logoText": text.upper(),
+                "logoColor": _safe_color(row.get("avatarColor") or row.get("color")),
+                "avatar": "custom",
+            }
         for pattern, brand, mark, color in BRAND_PATTERNS:
             if re.search(pattern, haystack):
-                return {"brand": brand, "logoText": mark, "logoColor": color}
+                return {"brand": brand, "logoText": mark, "logoColor": color, "avatar": "auto"}
         letters = "".join(part[0] for part in re.split(r"[\s·._-]+", name) if part)[:2]
         return {"brand": "External agent", "logoText": letters.upper() or "EX",
-                "logoColor": row.get("color") or "#7cb7ff"}
+                "logoColor": row.get("color") or "#7cb7ff", "avatar": "auto"}
     labels = {
         "chief": "CH", "product": "PR", "copy": "CO", "design": "DE",
         "engineer": "EN", "qa": "QA", "growth": "GR", "video": "VI",
@@ -150,6 +223,10 @@ def normalize_agent(row, source="role"):
         "virtual": bool(row.get("virtual", source in ("role", "company"))),
         "runtime": str(row.get("runtime") or row.get("provider") or ""),
         "online": bool(row.get("online", False)),
+        "avatar": str(row.get("avatar") or "auto"),
+        "avatarText": str(row.get("avatarText") or ""),
+        "avatarColor": str(row.get("avatarColor") or ""),
+        **role_label(role),
         **logo,
     }
 
@@ -667,6 +744,9 @@ class MissionStore:
             "id": "recommendation",
         }
         tasks = self._plan_tasks(temp)
+        external = [a for a in directory if a.get("source") == "external"]
+        candidates = external or list(directory)
+        scope = "external" if external else "system"
         load = {}
         for mission in self.data["missions"]:
             if mission.get("status") == "done":
@@ -679,7 +759,7 @@ class MissionStore:
         preferred = {}
         for task in tasks:
             ranked = []
-            for agent in directory:
+            for agent in candidates:
                 score = score_agent(agent, task, load.get(agent.get("id"), 0))
                 if agent.get("source") == "external" and agent.get("online"):
                     score += 18 if task.get("role") in ("engineer", "qa") else 5
@@ -712,16 +792,39 @@ class MissionStore:
                 preferred[task["key"]] = top[0]["id"]
                 if top[0]["id"] not in suggested:
                     suggested.append(top[0]["id"])
-        chief = next((a for a in directory if a.get("role") == "chief"), None)
-        if chief and chief["id"] not in suggested and len(suggested) < 8:
-            suggested.append(chief["id"])
+        if scope == "external":
+            # A connected external agent is a real worker, not a virtual role:
+            # include every external agent (up to the team cap) so none is
+            # silently left out. The per-task preferredExecutors still picks
+            # the best match.
+            for agent in candidates:
+                if agent["id"] not in suggested and len(suggested) < 8:
+                    suggested.append(agent["id"])
+        else:
+            chief = next((a for a in candidates if a.get("role") == "chief"), None)
+            if chief and chief["id"] not in suggested and len(suggested) < 8:
+                suggested.append(chief["id"])
         suggested = suggested[:8]
         preferred = {key: value for key, value in preferred.items() if value in suggested}
+        english = str(body.get("language") or "").lower().startswith("en")
+        if scope == "external":
+            note = ("Recommendations use connected external agents only, ranked by their editable role, "
+                    "skills, online state and current load. Adjust an appointment in the external agent "
+                    "drawer, or select a system role manually."
+                    if english else
+                    "优先从真实外部 Agent 中推荐：已结合各自可编辑的职务、技能、在线状态和当前负载。"
+                    "可继续在外部 Agent 详情里调整职务，或手动勾选系统角色。")
+        else:
+            note = ("No connected external agent is available, so system roles are used until one connects."
+                    if english else
+                    "当前没有已接入的真实外部 Agent，暂用系统角色推荐；接入外部 Agent 后会自动切换。")
         return {
             "tasks": output,
             "suggestedMemberIds": suggested,
             "preferredExecutors": preferred,
-            "notes": "推荐基于技能匹配、角色、在线状态和当前负载；可自由调整，系统仍会保证每个人有任务或待命巡检。",
+            "scope": scope,
+            "candidateCount": len(candidates),
+            "notes": note,
         }
 
     def _plan_tasks(self, mission):

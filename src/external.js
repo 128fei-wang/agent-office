@@ -6,6 +6,34 @@
   const EXT_KEY = "agent-office.external.v1";
   const BRIDGE_KEY = "agent-office.bridge-url";
   const DEFAULT_BRIDGE = "http://127.0.0.1:8787";
+  const FALLBACK_META = {
+    roles: [
+      { id: "chief", titleZh: "总协调", titleEn: "Chief of Staff" },
+      { id: "product", titleZh: "产品策略", titleEn: "Product" },
+      { id: "copy", titleZh: "内容文案", titleEn: "Content" },
+      { id: "design", titleZh: "设计", titleEn: "Design" },
+      { id: "engineer", titleZh: "工程师", titleEn: "Engineer" },
+      { id: "qa", titleZh: "质量", titleEn: "QA" },
+      { id: "growth", titleZh: "增长", titleEn: "Growth" },
+      { id: "video", titleZh: "视频", titleEn: "Video" },
+      { id: "operator", titleZh: "执行", titleEn: "Operator" }
+    ],
+    avatars: [
+      { id: "auto", glyph: "A", labelZh: "自动识别品牌", labelEn: "Auto brand" },
+      { id: "bot", glyph: "🤖", labelZh: "机器人", labelEn: "Bot" },
+      { id: "fox", glyph: "🦊", labelZh: "狐狸", labelEn: "Fox" },
+      { id: "owl", glyph: "🦉", labelZh: "猫头鹰", labelEn: "Owl" },
+      { id: "cat", glyph: "🐱", labelZh: "猫", labelEn: "Cat" },
+      { id: "rocket", glyph: "🚀", labelZh: "火箭", labelEn: "Rocket" },
+      { id: "star", glyph: "⭐", labelZh: "星星", labelEn: "Star" },
+      { id: "ghost", glyph: "👻", labelZh: "幽灵", labelEn: "Ghost" },
+      { id: "alien", glyph: "👾", labelZh: "像素怪", labelEn: "Alien" },
+      { id: "spark", glyph: "✨", labelZh: "闪光", labelEn: "Spark" },
+      { id: "wrench", glyph: "🛠️", labelZh: "工匠", labelEn: "Builder" },
+      { id: "crown", glyph: "👑", labelZh: "负责人", labelEn: "Lead" },
+      { id: "custom", glyph: "✎", labelZh: "自定义缩写", labelEn: "Custom initials" }
+    ]
+  };
 
   AO.NAME_KEY = NAME_KEY;
   AO.EXTERNAL_KEY = EXT_KEY;
@@ -73,6 +101,7 @@
       this.pairs = [];
       this.pairMessages = {};
       this.agents = [];
+      this.meta = FALLBACK_META;
       this.assignments = [];
       this.providers = [];
       this.providerBusy = {};
@@ -227,6 +256,13 @@
           self.runProvider(providerRun.getAttribute("data-ext-provider-run"));
           return;
         }
+        const openProfile = e.target.closest("[data-ext-open]");
+        if (openProfile) {
+          const id = openProfile.getAttribute("data-ext-open");
+          self.close();
+          self.renderer.openExternalDrawer(id);
+          return;
+        }
         const rename = e.target.closest("[data-ext-rename]");
         if (rename) {
           const agent = self.agentById(rename.getAttribute("data-ext-rename"));
@@ -360,7 +396,9 @@
             this.renderer.toast((claimed ? claimed.name : "外部 Agent") + " 已接入");
           }
         });
-        let bridgeAgents = (await this.request("/agents")).agents || [];
+        const agentRes = await this.request("/agents");
+        let bridgeAgents = agentRes.agents || [];
+        if (agentRes.meta) this.meta = agentRes.meta;
 
         // offline-created local profiles are authoritative until synced
         let synced = false;
@@ -371,7 +409,9 @@
               method: "POST",
               body: JSON.stringify({
                 id: p.id, name: p.name, runtime: p.runtime,
-                endpoint: p.endpoint, skills: p.skills, note: p.note, color: p.color
+                endpoint: p.endpoint, skills: p.skills, note: p.note, color: p.color,
+                role: p.role || "", avatar: p.avatar || "auto",
+                avatarText: p.avatarText || "", avatarColor: p.avatarColor || ""
               })
             });
             p.dirty = false;
@@ -380,7 +420,9 @@
         }
         if (synced) {
           writeJson(EXT_KEY, this.profiles);
-          bridgeAgents = (await this.request("/agents")).agents || [];
+          const refreshed = await this.request("/agents");
+          bridgeAgents = refreshed.agents || [];
+          if (refreshed.meta) this.meta = refreshed.meta;
         }
 
         const map = {};
@@ -459,7 +501,9 @@
 
     notifyRoster() {
       const sig = this.agents.map(function (a) {
-        return a.id + ":" + a.name + ":" + a.status + ":" + (a.eventCount || 0);
+        return a.id + ":" + a.name + ":" + (a.roleOverride || a.role || "") + ":" +
+          (a.avatar || "auto") + ":" + (a.logoText || "") + ":" +
+          a.status + ":" + (a.eventCount || 0);
       }).join("|") + "|" + this.bridgeOnline + "|" + this.demo + "|" +
         this.pendingPairs().map(function (p) { return p.code + ":" + p.status; }).join(",");
       if (sig === this.lastSig) return;
@@ -550,6 +594,10 @@
         skills: String(this.skillsEl.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
         note: String(this.noteEl.value || "").trim(),
         color: "#b58cff",
+        role: "",
+        avatar: "auto",
+        avatarText: "",
+        avatarColor: "",
         createdAt: new Date().toISOString(),
         status: "offline",
         eventCount: 0,
@@ -585,6 +633,44 @@
           });
           if (p) { p.dirty = false; writeJson(EXT_KEY, this.profiles); }
         } catch (err) {}
+      }
+      await this.refresh();
+      return true;
+    }
+
+    async updateProfile(id, patch) {
+      const clean = patch && typeof patch === "object" ? patch : {};
+      let p = this.profiles.find(function (x) { return x.id === id; });
+      if (p) {
+        Object.assign(p, clean);
+        p.dirty = true;
+        writeJson(EXT_KEY, this.profiles);
+      }
+      let updated = null;
+      if (this.bridgeOnline) {
+        try {
+          const res = await this.request("/agents/" + encodeURIComponent(id), {
+            method: "PATCH", body: JSON.stringify(clean)
+          });
+          updated = res.agent || null;
+          if (p) { p.dirty = false; writeJson(EXT_KEY, this.profiles); }
+        } catch (err) {
+          this.renderer.toast("保存失败 · " + String(err.message || "检查 bridge").slice(0, 100));
+        }
+      }
+      if (updated) {
+        this.agents = (this.agents || []).map(function (agent) {
+          return agent.id === id ? Object.assign({}, agent, updated) : agent;
+        });
+      } else if (p) {
+        this.agents = (this.agents || []).map(function (agent) {
+          return agent.id === id ? Object.assign({}, agent, clean) : agent;
+        });
+      }
+      this.renderList();
+      if (this.renderer) {
+        this.renderer.renderRoster();
+        if (this.renderer.drawerMode === "external") this.renderer.renderDrawer();
       }
       await this.refresh();
       return true;
@@ -894,14 +980,18 @@
       }
       this.listEl.innerHTML = agents.map((a) => {
         const online = a.status === "online";
-        const detail = [a.brand, a.runtime || "external", a.model, (a.eventCount || 0) + " events",
-          a.demo ? "DEMO" : "", a.managed ? "API" : ""].filter(Boolean).join(" · ");
+        const role = AO.lang === "en" ? a.roleLabelEn : a.roleLabelZh;
+        const detail = [role || a.role, a.brand, a.runtime || "external", a.model,
+          (a.eventCount || 0) + " events", a.demo ? "DEMO" : "",
+          a.managed ? "API" : ""].filter(Boolean).join(" · ");
         const mark = a.logoText || "⇢";
-        return '<div class="ext-item"><span class="ext-logo" style="--c:' +
+        return '<div class="ext-item"><span class="ext-logo' +
+          (a.logoSource === "preset" ? " emoji" : "") + '" style="--c:' +
           esc(a.logoColor || "#b58cff") + '" title="' + esc(a.brand || "External agent") + '">' +
           esc(mark) + '</span><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
           '<div class="ext-item-copy"><b>' + esc(a.name) + '</b><em>' + esc(detail) + "</em></div>" +
-          '<div class="ext-item-actions"><button type="button" data-ext-rename="' + esc(a.id) +
+          '<div class="ext-item-actions"><button type="button" data-ext-open="' + esc(a.id) +
+          '" title="职务与头像">⚙</button><button type="button" data-ext-rename="' + esc(a.id) +
           '" title="重命名">✎</button><button type="button" data-ext-remove="' + esc(a.id) +
           '" title="移除">×</button></div></div>';
       }).join("");

@@ -84,10 +84,34 @@ class MissionTest(unittest.TestCase):
             "acceptance": "Tests pass.",
         })
         self.assertGreaterEqual(len(result["tasks"]), 4)
+        self.assertEqual(result["scope"], "external")
+        self.assertEqual(result["candidateCount"], 2)
         self.assertTrue(result["suggestedMemberIds"])
+        self.assertTrue(all(not item.startswith("msn-") for item in result["suggestedMemberIds"]))
         self.assertTrue(result["preferredExecutors"])
+        self.assertTrue(all(a["source"] == "external"
+                            for task in result["tasks"]
+                            for a in task["recommended"]))
         self.assertTrue(any(a.get("logoText") for a in result["tasks"][0]["recommended"]))
         self.assertTrue(all("estimate" in task for task in result["tasks"]))
+        avatar = missions.normalize_agent({
+            "id": "ext-avatar", "name": "Avatar Test", "avatar": "fox",
+            "avatarColor": "#ffb45e",
+        }, "external")
+        self.assertEqual(avatar["logoText"], "🦊")
+        custom = missions.normalize_agent({
+            "id": "ext-custom", "name": "Custom Test", "avatar": "custom",
+            "avatarText": "Z9", "avatarColor": "#123456",
+        }, "external")
+        self.assertEqual(custom["logoText"], "Z9")
+        self.assertEqual(custom["logoColor"], "#123456")
+
+        fallback = self.store.recommend(missions.builtin_directory(), {
+            "description": "Build and test a landing page with code and QA.",
+            "acceptance": "Tests pass.",
+        })
+        self.assertEqual(fallback["scope"], "system")
+        self.assertIn("msn-engineer", fallback["suggestedMemberIds"])
 
     def test_estimates_actuals_and_preferred_executor(self):
         mission = self.make(preferredExecutors={"requirements": "ext-test"})

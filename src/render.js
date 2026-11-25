@@ -263,6 +263,18 @@
           if (a) self.external.diagnose(a);
           return;
         }
+        const avatarSave = e.target.closest("[data-ext-avatar-save]");
+        if (avatarSave) {
+          const id = avatarSave.getAttribute("data-ext-avatar-save");
+          const text = self.drawer.querySelector("[data-ext-avatar-text]");
+          const color = self.drawer.querySelector("[data-ext-avatar-color]");
+          self.external.updateProfile(id, {
+            avatar: "custom",
+            avatarText: text ? text.value.trim().slice(0, 2) : "",
+            avatarColor: color ? color.value : ""
+          });
+          return;
+        }
         if (e.target.closest("[data-open-external]")) {
           if (self.external) self.external.open();
           return;
@@ -298,6 +310,17 @@
         }
         const agentBtn = e.target.closest("[data-open-agent]");
         if (agentBtn) self.openAgentDrawer(agentBtn.getAttribute("data-open-agent"));
+      });
+      this.drawer.addEventListener("change", function (e) {
+        const role = e.target.closest("[data-ext-role]");
+        if (role) {
+          self.external.updateProfile(role.getAttribute("data-ext-role"), { role: role.value });
+          return;
+        }
+        const avatar = e.target.closest("[data-ext-avatar]");
+        if (avatar) {
+          self.external.updateProfile(avatar.getAttribute("data-ext-avatar"), { avatar: avatar.value });
+        }
       });
       this.drawerBackdrop.addEventListener("click", function () {
         self.closeDrawer();
@@ -919,14 +942,17 @@
         ext.forEach((a) => {
           const online = a.status === "online";
           const mark = a.logoText || "⇢";
+          const roleName = AO.lang === "en" ? a.roleLabelEn : a.roleLabelZh;
           html += '<button class="team-card external-card" data-external="' + a.id +
             '" title="' + esc((a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent")) + '">' +
             '<span class="ext-glyph' + (a.logoText ? " brand-mark" : "") +
+            (a.logoSource === "preset" ? " emoji" : "") +
             '" style="--c:' + esc(a.logoColor || "#b58cff") + '">' + esc(mark) + '</span>' +
             '<span class="team-main"><span class="team-line"><b>' + esc(a.name) +
             '</b><em class="role-pill ext">EXT</em></span>' +
             '<span class="team-state"><i class="state-dot ' + (online ? "online" : "offline") +
-            '"></i>' + esc(a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
+            '"></i>' + esc(roleName || a.role || "operator") + " · " +
+            esc(a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
             " · " + (a.eventCount || 0) + " ev</span>" +
             '<span class="energy ext-bar"><i style="width:' +
             (online ? "100" : "18") + '%"></i></span></span>' +
@@ -1853,6 +1879,31 @@
       const events = this.external.eventsFor(agent.id);
       const assignments = this.external.assignmentsFor(agent.id);
       const online = agent.status === "online";
+      const meta = this.external.meta || { roles: [], avatars: [] };
+      const roleValue = String(agent.roleOverride || "");
+      const avatarValue = String(agent.avatar || "auto");
+      const roleName = AO.lang === "en" ? agent.roleLabelEn : agent.roleLabelZh;
+      const roleOptions = '<option value="">系统自动分工（当前：' +
+        esc(roleName || agent.role || "自动推断") + '）</option>' +
+        (meta.roles || []).map(function (role) {
+          return '<option value="' + esc(role.id) + '"' +
+            (role.id === roleValue ? " selected" : "") + ">" +
+            esc(AO.lang === "en" ? role.titleEn : role.titleZh) + "</option>";
+        }).join("");
+      const avatarOptions = (meta.avatars || []).map(function (item) {
+        return '<option value="' + esc(item.id) + '"' +
+          (item.id === avatarValue ? " selected" : "") + ">" +
+          esc((item.glyph ? item.glyph + " " : "") +
+            (AO.lang === "en" ? item.labelEn : item.labelZh)) + "</option>";
+      }).join("");
+      const customAvatar = avatarValue === "custom" ?
+        '<div class="ext-custom-avatar">' +
+        '<label>缩写<input data-ext-avatar-text="' + esc(agent.id) + '" maxlength="2" value="' +
+        esc(agent.avatarText || "") + '" placeholder="AI" /></label>' +
+        '<label>颜色<input type="color" data-ext-avatar-color="' + esc(agent.id) + '" value="' +
+        esc(agent.avatarColor || "#b58cff") + '" /></label>' +
+        '<button type="button" class="dep-chip" data-ext-avatar-save="' + esc(agent.id) +
+        '">保存头像</button></div>' : "";
       const skills = (agent.skills || []).map(function (s) {
         return '<span class="tl-chip">' + esc(s) + "</span>";
       }).join("");
@@ -1889,20 +1940,31 @@
       return '<div class="drawer-head">' +
         '<button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>' +
         '<div class="drawer-kicker">EXTERNAL AGENT · ' +
-        esc((agent.brand ? agent.brand + " · " : "") + (agent.runtime || "external")) + "</div>" +
-        '<h2>' + (agent.logoText ? '<span class="ext-drawer-logo" style="--c:' +
+        esc(agent.brand || agent.runtime || "external") + "</div>" +
+        '<h2>' + (agent.logoText ? '<span class="ext-drawer-logo' +
+          (agent.logoSource === "preset" ? " emoji" : "") + '" style="--c:' +
           esc(agent.logoColor || "#b58cff") + '">' + esc(agent.logoText) + "</span>" : "") +
         esc(agent.name) + "</h2>" +
         '<p class="drawer-desc">' + esc(agent.note || "外部 agent 通过本地 bridge 接入。") + "</p>" +
         '<div class="drawer-chips"><span class="status-chip ' + (online ? "done" : "blocked") + '">' +
         (online ? "ONLINE" : "OFFLINE") + "</span>" +
         '<span class="role-chip" style="--role:#b58cff">EXTERNAL</span>' +
+        (roleName ? '<span class="prio-chip">' + esc(roleName) + "</span>" : "") +
         (agent.brand ? '<span class="prio-chip">' + esc(agent.brand) + "</span>" : "") +
         '<span class="prio-chip">' + esc(agent.runtime || "external") + "</span>" +
         (agent.provider ? '<span class="prio-chip">' + esc(agent.provider) + " · " + esc(agent.model || "api") + "</span>" : "") +
         '<button type="button" class="drawer-rename" data-rename-external="' + agent.id +
         '">✎ 重命名</button></div></div>' +
         '<div class="drawer-body">' +
+        '<div class="drawer-section ext-appointment">' +
+        '<div class="drawer-section-head"><h3>职务与头像</h3><span>用户可编辑</span></div>' +
+        '<div class="ext-profile-grid">' +
+        '<label>团队职务<select data-ext-role="' + esc(agent.id) + '">' +
+        roleOptions + "</select></label>" +
+        '<label>头像<select data-ext-avatar="' + esc(agent.id) + '">' +
+        avatarOptions + "</select></label></div>" +
+        '<p class="drawer-muted">默认职务由技能自动推断；手动选择后，任务推荐会按这个职务匹配。自动头像会识别 Codex / Claude / WorkBuddy / Gemini 等品牌。</p>' +
+        customAvatar + "</div>" +
         '<div class="drawer-meta">' +
         "<div><span>ENDPOINT</span><b>" + esc(agent.endpoint || "未填写") + "</b></div>" +
         "<div><span>EVENTS</span><b>" + (agent.eventCount || events.length) + "</b></div>" +

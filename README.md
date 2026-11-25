@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、智能组队/推荐/逐任务分配、品牌 Logo 识别、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -55,8 +55,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | Office | Trace Lab |
 | --- | --- |
 | ![Office](docs/screenshots/office.jpg) | ![Trace Lab](docs/screenshots/trace-lab.jpg) |
-| **Audit** | **External Agent pairing** |
-| ![Audit](docs/screenshots/audit.jpg) | ![External Agent](docs/screenshots/external-agents.jpg) |
+| **Audit** | **External appointment & avatar** |
+| ![Audit](docs/screenshots/audit.jpg) | ![External profile](docs/screenshots/external-agent-profile.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
 | **Mission Control** | **One-person company** |
@@ -119,6 +119,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 4. 点 **`复制给 Agent`**，把整段说明发给 Claude Code / Codex / 任意能执行命令的 Agent。
 5. Agent 打开 `setup.md`，调用 `POST /pair/<code>/claim` 领取身份。
 6. Team 面板的 `WAITING FOR AGENT` 卡片变成外部 Agent 卡片；它发来的问候和后续事件进入 Trace / Feed / 任务轨迹。
+7. 点外部 Agent 卡片打开详情，在 **职务与头像** 中选择真实职务（或保持系统自动分工），并选择自动品牌头像、内置头像或自定义缩写/颜色；保存后推荐和任务分配立即使用新职务。
 
 连接码规则：
 
@@ -331,8 +332,10 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 打开顶部 **`任务`**，或访问 `?missions=1`。
 
 - **新建任务**：填写描述、验收标准、优先级、截止日期、预算，上传文档/图片。
-- **自由选人 + 智能推荐**：候选人卡片显示技能、匹配度和预计耗时/token；可自由勾选成员，也可按任务逐个指定执行 Agent。系统会按技能、角色、在线状态和当前负载给出 Top 3 推荐，并自动把任务落到具体执行者。
-- **品牌 Logo 识别**：Codex、Claude、WorkBuddy、Gemini、DeepSeek、豆包、Kimi、Qwen、Ollama、OpenAI 等外部 Agent 会根据名称/运行时自动识别品牌标记；未知 Agent 使用稳定缩写，团队卡、外部面板、任务群和推荐卡同步显示。
+- **真实外部 Agent 优先推荐**：只要已接入真实外部 Agent，推荐池就只使用这些 Agent，不再用默认系统角色占位；没有外部 Agent 时才回退到系统角色。系统默认分工仍然保留，内置角色仍可手动勾选，也可以按任务逐个指定执行 Agent。
+- **可编辑职务任命**：外部 Agent 详情里可选择“系统自动分工”或总协调、产品、设计、工程、QA、增长、内容、视频、执行等职务；选择后推荐和任务分配按这个职务匹配，未设置时保持原来的技能推断逻辑。
+- **品牌 / 自定义头像**：Codex、Claude、WorkBuddy、Gemini、DeepSeek、豆包、Kimi、Qwen、Ollama、OpenAI 等自动识别品牌；未知 Agent 自动生成缩写。也可以从系统内置头像（机器人、狐狸、猫头鹰、猫、火箭、星星、幽灵、像素怪、闪光、工匠、负责人）中选择，或自定义 1–2 个字符和颜色。
+- **推荐与逐任务执行者**：候选卡显示职务、技能、匹配度和预计耗时/token；系统按技能、职务、在线状态和当前负载给出每个任务的 Top 3，并默认落到具体外部执行者。
 - **自动组队与拆解**：按技能选人、生成依赖任务、记录分配理由；每个成员都有主任务或真实待命巡检，避免空岗。
 - **任务群 / 群聊 / 私聊**：任务自动建群；也可以单独建群或和任一 Agent 私聊。
 - **文件与图片**：支持文本、Markdown、CSV、JSON、HTML、DOCX、XLSX、PDF 和图片；图片可按需调用视觉模型或 `tesseract` 识别。
@@ -527,7 +530,7 @@ agent-office/
 ├── dev-audit.html      自检任务轨迹、技能、diff、审计、导出
 ├── dev-tracelab.html   自检 trace、回放、Evals、人工审批、OTLP
 ├── dev-hiring.html     自检 Add Agent、热桌、onboarding、刷新恢复
-├── dev-external.html   自检 bridge、外部事件、重命名、OTLP
+├── dev-external.html   自检 bridge、外部事件、重命名、职务、头像、OTLP
 ├── dev-delegation.html 自检外部任务委派、进度、回写、审计
 ├── dev-theme.html      自检白天/夜间、主题持久化、移动端布局
 ├── dev-company.html    自检一人公司、任务派发、群聊、隔离、自动解锁
@@ -689,7 +692,7 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-hiring.html` 会验证 Add Agent 表单、热桌分配、onboarding 任务、路径不穿家具、localStorage 持久化和刷新恢复。
 
-`dev-external.html` 会验证 bridge 健康、一次性连接码生成 / 取消 / 领取、一次性约束、外部 Agent 改名 / 移除、演示事件、Trace `EXT` 过滤、OTLP 外部 span，以及本地重命名持久化。
+`dev-external.html` 会验证 bridge 健康、一次性连接码生成 / 取消 / 领取、一次性约束、外部 Agent 改名 / 移除、职务任命、内置/自定义头像、演示事件、Trace `EXT` 过滤、OTLP 外部 span，以及本地重命名持久化。
 
 `dev-delegation.html` 会验证外部任务委派、进度回写、完成回写、自报完成标记、风险/遗漏、审计保留、Trace claim/complete 事件和清理。
 
@@ -705,7 +708,7 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-missions.html` 会验证任务创建、自由选人、推荐卡片、逐任务执行 Agent、品牌 Logo、预计/实际消耗、Eval 面板、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
 
-bridge 自身的 20 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
+bridge 自身的 21 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -721,7 +724,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.6.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.7.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -737,7 +740,7 @@ python3 -m unittest discover -s tests -v
 - 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
 - 任务工作台的 AI 讨论/AI 执行需要可用的模型服务；本地 WorkBuddy/Ollama 未启动时会保留规则计划并明确提示。PDF 文本提取需要 `pdftotext`；图片识别优先使用视觉模型，macOS 可用系统 Vision 兜底，其他平台可安装 `tesseract`。
 - 时间/token 是估算与消耗统计，不是厂商账单；估算基于角色基线、复杂度、技能匹配和负载，暂未按历史偏差自动校准。实际 token 取决于模型返回或外部 Agent 汇报。
-- 品牌 Logo 是本地名称/运行时匹配，不下载商标图片；未知 Agent 使用名称缩写。
+- 品牌 Logo 是本地名称/运行时匹配，不下载商标图片；未知 Agent 使用名称缩写。内置头像是本地 emoji/字符预设，自定义头像只保存缩写和颜色，不上传图片。
 - 扫码登录只提供老板审批门禁和二维码/链接附件，不实现各第三方服务自己的 OAuth 流程；审批端点是本机本地信任模型，不是多租户鉴权系统。
 - 任务工作台把数据存在 `~/.agent-office/missions.json`；大型部署应迁移到 SQLite/Postgres。
 - 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。

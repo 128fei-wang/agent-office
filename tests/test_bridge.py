@@ -312,6 +312,47 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 
+    def test_external_agent_role_and_avatar(self):
+        status, meta = self.request("/agents")
+        self.assertEqual(status, 200)
+        self.assertTrue(meta["meta"]["roles"])
+        self.assertTrue(meta["meta"]["avatars"])
+
+        status, data = self.request("/agents", "POST", {
+            "id": "ext-role-test", "name": "Role Test", "runtime": "test",
+            "skills": ["research"], "role": "qa", "avatar": "fox",
+        })
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["agent"]["role"], "qa")
+        self.assertEqual(data["agent"]["logoText"], "🦊")
+
+        status, data = self.request("/agents/ext-role-test", "PATCH", {
+            "role": "design", "avatar": "custom", "avatarText": "Z9",
+            "avatarColor": "#123456",
+        })
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["agent"]["role"], "design")
+        self.assertEqual(data["agent"]["logoText"], "Z9")
+        status, directory = self.request("/missions/agents")
+        row = next(a for a in directory["agents"] if a["id"] == "ext-role-test")
+        self.assertEqual(row["role"], "design")
+        self.assertEqual(row["logoText"], "Z9")
+        self.assertEqual(row["logoColor"], "#123456")
+
+        status, invalid = self.request("/agents/ext-role-test", "PATCH", {"role": "wizard"})
+        self.assertEqual(status, 400)
+        status, recommendation = self.request("/missions/recommend", "POST", {
+            "description": "Design a landing page and run QA.",
+            "acceptance": "Design and QA are covered.",
+        })
+        self.assertEqual(status, 200, recommendation)
+        self.assertEqual(recommendation["scope"], "external")
+        self.assertIn("ext-role-test", recommendation["suggestedMemberIds"])
+        self.assertTrue(any(agent["id"] == "ext-role-test"
+                            for task in recommendation["tasks"]
+                            for agent in task["recommended"]))
+        self.request("/agents/ext-role-test", "DELETE")
+
     def test_mission_ai_task_run(self):
         status, data = self.request("/missions", "POST", {
             "title": "AI run mission",

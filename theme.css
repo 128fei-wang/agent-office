@@ -648,6 +648,14 @@ html[data-theme="day"] .ext-drawer-logo {
   background: #fffaf2;
   border-color: #d8c8b4;
 }
+html[data-theme="day"] .ext-profile-grid select,
+html[data-theme="day"] .ext-custom-avatar input[data-ext-avatar-text],
+html[data-theme="day"] .ext-custom-avatar input[type="color"] {
+  background: #fffaf2;
+  border-color: #d8c8b4;
+  color: #2f4049;
+}
+html[data-theme="day"] .ext-custom-avatar { border-color: #d8c8b4; }
 html[data-theme="day"] .ext-item-copy b { color: #2f4049; }
 html[data-theme="day"] .ext-item-copy em { color: #7d8b92; }
 html[data-theme="day"] .ext-item-actions button { background: #f4ecdf; border-color: #d8c8b4; color: #53666f; }

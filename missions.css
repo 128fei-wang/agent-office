@@ -242,6 +242,7 @@ html[data-theme="day"] .mission-head-btn.primary { color: #5d3ca3; background: r
 }
 .mission-avatar.boss { color: #0b1714; background: var(--cyan); }
 .mission-avatar.message-logo { width: 25px; height: 25px; }
+.mission-avatar.avatar-emoji { font-family: inherit; font-size: 13px; }
 .mission-team-section {
   margin: 2px 0 10px;
   padding: 9px;
@@ -251,6 +252,15 @@ html[data-theme="day"] .mission-head-btn.primary { color: #5d3ca3; background: r
 }
 .mission-team-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 7px; }
 .mission-team-head b { flex: 1; font-size: 8px; }
+.mission-recommend-scope {
+  padding: 2px 5px;
+  border: 1px solid rgba(85, 214, 194, 0.3);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 6px;
+  white-space: nowrap;
+}
 .mission-team-head .mission-check { margin: 0; font-size: 6.5px; }
 .mission-team-head .mission-mini { height: 22px; font-size: 6.5px; }
 .mission-team-loading { padding: 14px 8px; color: var(--muted); font-size: 7px; text-align: center; }

@@ -47,7 +47,12 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       if(picks.length>=6)break;
     }
     check('agent picker rendered',picks.length>=6,'agents='+picks.length);
-    check('auto team preselected',Array.from(d.querySelectorAll('[data-team-agent]:checked')).length>=4);
+    const checkedPicks=Array.from(d.querySelectorAll('[data-team-agent]:checked'));
+    check('auto team preselected',checkedPicks.length>=2);
+    const pickInfo=(id)=>(view.data.agents||[]).find(a=>a.id===id)||{};
+    check('external agents recommended',checkedPicks.every(el=>pickInfo(el.getAttribute('data-team-agent')).source==='external'),
+      checkedPicks.map(el=>el.getAttribute('data-team-agent')+':'+pickInfo(el.getAttribute('data-team-agent')).source).join(','));
+    check('external recommendation scope',/外部/.test((d.querySelector('.mission-recommend-scope')||{}).textContent||''));
     check('recommended agent badge',!!d.querySelector('.mission-agent-pick.recommended'));
     check('agent logo marks',Array.from(d.querySelectorAll('.mission-agent-pick .mission-avatar')).filter(el=>el.textContent.trim()).length>=6);
     check('recommendation plan rendered',(d.querySelectorAll('.mission-plan-row').length||0)>=4);

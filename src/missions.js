@@ -583,7 +583,9 @@
       const text = (agent && agent.logoText) || initials(name);
       const color = (agent && (agent.logoColor || agent.color)) || "#7cb7ff";
       const title = (agent && agent.brand) ? agent.brand : name;
+      const emoji = agent && agent.avatar && agent.avatar !== "auto" && agent.avatar !== "custom";
       return '<span class="mission-avatar ' + (extraClass || '') +
+        (emoji ? ' avatar-emoji' : '') +
         '" style="--c:' + esc(color) + '" title="' + esc(title) + '">' +
         esc(text) + '</span>';
     }
@@ -1337,7 +1339,9 @@
           this.agentAvatar(agent) +
           '<span class="mission-agent-pick-copy"><b>' + esc(this.agentName(agent)) +
           (recommendedIds.has(agent.id) ? '<em>' + esc(this.t("missionRecommended")) + '</em>' : '') +
-          '</b><span>' + esc((agent.skills || []).slice(0, 3).join(" · ")) + '</span>' +
+          '</b><span>' + esc((AO.lang === "en" ? agent.roleLabelEn : agent.roleLabelZh) ||
+            agent.role || "") + ' · ' +
+          esc((agent.skills || []).slice(0, 3).join(" · ")) + '</span>' +
           (info ? '<small>' + esc(info.reason || "") + '</small>' : '') + '</span>' +
           '<span class="mission-agent-pick-score">' + (info ? (info.match || 0) + '%' : "") +
           (info && info.estimate ? '<em>~' + info.estimate.minutes + 'm · ~' +
@@ -1373,6 +1377,9 @@
             Math.round(estimate.tokens / 100) / 10 + 'k tokens' : '') + '</em></div>';
       }).join("");
       return '<div class="mission-team-head"><b>' + esc(this.t("missionTeam")) + '</b>' +
+        (this.recommendation.scope === "external" ?
+          '<span class="mission-recommend-scope">' + esc(this.t("missionExternalScope")) +
+          ' · ' + (this.recommendation.candidateCount || 0) + '</span>' : '') +
         '<label class="mission-check"><input id="missionAutoTeam" type="checkbox"' +
         (this.autoTeam ? ' checked' : '') + ' /> ' + esc(this.t("missionAutoTeam")) + '</label>' +
         '<button class="mission-mini" type="button" data-mission-recommend>' +
@@ -1406,7 +1413,8 @@
             title: String(data.get("title") || ""),
             description: String(data.get("description") || ""),
             acceptance: String(data.get("acceptance") || ""),
-            priority: String(data.get("priority") || "P1")
+            priority: String(data.get("priority") || "P1"),
+            language: AO.lang
           })
         }, 12000);
         this.recommendation = result;
@@ -1447,7 +1455,8 @@
                     title: String(data.get("title") || ""),
                     description: String(data.get("description") || ""),
                     acceptance: String(data.get("acceptance") || ""),
-                    priority: String(data.get("priority") || "P1")
+                    priority: String(data.get("priority") || "P1"),
+                    language: AO.lang
                   })
                 }, 12000);
               } catch (err) {

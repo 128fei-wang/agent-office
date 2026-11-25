@@ -581,6 +581,11 @@ def app_version() -> str:
 
 
 def _external_agent_role(agent):
+    explicit = str(agent.get("role") or "").strip().lower()
+    if missions:
+        valid = {row["id"] for row in missions.role_catalog()}
+        if explicit in valid:
+            return explicit
     skills = [str(s).lower() for s in (agent.get("skills") or [])]
     joined = " ".join(skills)
     if any(word in joined for word in ("code", "edit", "repo", "frontend", "backend", "test")):
@@ -590,6 +595,38 @@ def _external_agent_role(agent):
     if any(word in joined for word in ("review", "audit")):
         return "qa"
     return "operator"
+
+
+def clean_agent_updates(body):
+    if not isinstance(body, dict):
+        return {}
+    out = {}
+    for key in ("name", "runtime", "endpoint", "note", "color"):
+        if key in body:
+            out[key] = str(body.get(key) or "")[:300 if key == "endpoint" else 40]
+    if "skills" in body:
+        out["skills"] = [str(item)[:60] for item in (body.get("skills") or [])
+                         if str(item).strip()][:20]
+    if "role" in body:
+        role = str(body.get("role") or "").strip().lower()
+        valid_roles = ({row["id"] for row in missions.role_catalog()} if missions else set())
+        if role and role not in valid_roles:
+            raise ValueError("unknown agent role")
+        out["role"] = role
+    if "avatar" in body:
+        avatar = str(body.get("avatar") or "auto").strip().lower()
+        valid_avatars = ({row["id"] for row in missions.avatar_catalog()} if missions else {"auto"})
+        if avatar not in valid_avatars:
+            raise ValueError("unknown avatar")
+        out["avatar"] = avatar
+    if "avatarText" in body:
+        out["avatarText"] = str(body.get("avatarText") or "").strip()[:2]
+    if "avatarColor" in body:
+        color = str(body.get("avatarColor") or "").strip()
+        if color and not re.fullmatch(r"#[0-9a-fA-F]{3,8}", color):
+            raise ValueError("avatarColor must be a hex color")
+        out["avatarColor"] = color
+    return out
 
 
 def mission_agent_directory():
@@ -627,6 +664,9 @@ def mission_agent_directory():
             "virtual": False,
             "online": online(agent),
             "runtime": agent.get("runtime") or "",
+            "avatar": agent.get("avatar") or "auto",
+            "avatarText": agent.get("avatarText") or "",
+            "avatarColor": agent.get("avatarColor") or "",
         })
     seen = set()
     unique = []
@@ -1245,9 +1285,17 @@ def public_agent(agent: dict) -> dict:
     out["eventCount"] = sum(1 for e in STATE["events"] if e.get("agentId") == agent.get("id"))
     out.pop("lastSeenTs", None)
     if missions:
+        role = _external_agent_role(out)
+        out["role"] = role
+        out["roleOverride"] = str(agent.get("role") or "")
+        out.update(missions.role_label(role))
+        out["avatar"] = str(agent.get("avatar") or "auto")
+        out["avatarText"] = str(agent.get("avatarText") or "")
+        out["avatarColor"] = str(agent.get("avatarColor") or "")
         logo = missions.logo_info(out, "external")
         out.update(logo)
-        out["logoSource"] = "auto"
+        out["logoSource"] = ("preset" if out["avatar"] not in ("auto", "custom")
+                             else out["avatar"])
     return out
 
 
@@ -1346,11 +1394,10 @@ def pair_setup_markdown(base: str, pair: dict) -> str:
 
 def create_agent_from_payload(body: dict, agent_id=None) -> dict:
     agent_id = agent_id or str(body.get("id") or ("ext-" + uuid.uuid4().hex[:8]))
+    updates = clean_agent_updates(body)
     existing = find_agent(agent_id)
     if existing:
-        for key in ("name", "runtime", "endpoint", "skills", "note", "color"):
-            if key in body:
-                existing[key] = body[key]
+        existing.update(updates)
         return existing
     agent = {
         "id": agent_id,
@@ -1360,10 +1407,15 @@ def create_agent_from_payload(body: dict, agent_id=None) -> dict:
         "skills": body.get("skills") if isinstance(body.get("skills"), list) else [],
         "note": str(body.get("note") or "")[:300],
         "color": str(body.get("color") or "#b58cff"),
+        "role": "",
+        "avatar": "auto",
+        "avatarText": "",
+        "avatarColor": "",
         "createdAt": now_iso(),
         "lastSeen": None,
         "lastSeenTs": 0,
     }
+    agent.update(updates)
     STATE["agents"].append(agent)
     return agent
 
@@ -2809,7 +2861,10 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, 400)
                 return
             if path == "/agents":
-                self.send_json({"agents": [public_agent(a) for a in STATE["agents"]]})
+                self.send_json({
+                    "agents": [public_agent(a) for a in STATE["agents"]],
+                    "meta": missions.agent_meta() if missions else {"roles": [], "avatars": []},
+                })
                 return
             if path == "/pairs":
                 live = [p for p in STATE.get("pairs", []) if pair_status(p) == "pending"]
@@ -2983,7 +3038,11 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     # A pairing code always mints a fresh identity; it must not be
                     # able to take over an existing id supplied in the body.
-                    agent = create_agent_from_payload(body, "ext-" + uuid.uuid4().hex[:8])
+                    try:
+                        agent = create_agent_from_payload(body, "ext-" + uuid.uuid4().hex[:8])
+                    except ValueError as exc:
+                        self.send_json({"error": str(exc)}, 400)
+                        return
                 agent["lastSeen"] = now_iso()
                 agent["lastSeenTs"] = time.time()
                 pair["status"] = "claimed"
@@ -3006,26 +3065,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/agents":
                 agent_id = str(body.get("id") or ("ext-" + uuid.uuid4().hex[:8]))
-                existing = find_agent(agent_id)
-                if existing:
-                    for key in ("name", "runtime", "endpoint", "skills", "note", "color"):
-                        if key in body:
-                            existing[key] = body[key]
-                    agent = existing
-                else:
-                    agent = {
-                        "id": agent_id,
-                        "name": str(body.get("name") or "External Agent")[:40],
-                        "runtime": str(body.get("runtime") or "http")[:40],
-                        "endpoint": str(body.get("endpoint") or "")[:300],
-                        "skills": body.get("skills") if isinstance(body.get("skills"), list) else [],
-                        "note": str(body.get("note") or "")[:300],
-                        "color": str(body.get("color") or "#b58cff"),
-                        "createdAt": now_iso(),
-                        "lastSeen": None,
-                        "lastSeenTs": 0,
-                    }
-                    STATE["agents"].append(agent)
+                try:
+                    agent = create_agent_from_payload(body, agent_id)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
                 save_state()
                 self.send_json({"agent": public_agent(agent)})
                 return
@@ -3201,9 +3245,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not agent:
                     self.send_json({"error": "unknown agent"}, 404)
                     return
-                for key in ("name", "runtime", "endpoint", "skills", "note", "color"):
-                    if key in body:
-                        agent[key] = body[key]
+                try:
+                    updates = clean_agent_updates(body)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
+                agent.update(updates)
                 save_state()
                 self.send_json({"agent": public_agent(agent)})
                 return

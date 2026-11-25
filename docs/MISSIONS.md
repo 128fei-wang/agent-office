@@ -6,8 +6,8 @@ Mission Control is the task workspace on top of Agent Office:
 - open a task group, ad-hoc group or one-to-one DM;
 - upload documents, spreadsheets, PDFs and images;
 - optionally recognize image text with a vision model or `tesseract`;
-- freely select a team, see recommended agents, override the executor per task
-  and assign every task to a concrete agent;
+- freely select a team, see recommendations from connected external agents,
+  override the executor per task and assign every task to a concrete agent;
 - keep every agent covered with a primary or standby task;
 - show auto-detected brand logos for known external agents;
 - estimate time and tokens and compare them with actual usage;
@@ -20,6 +20,8 @@ Open **任务 / TASKS** in the top bar or use `?missions=1`.
 ![Mission Control](screenshots/missions.jpg)
 
 ![Agent recommendation and per-task executors](screenshots/missions-team.jpg)
+
+![External appointment and avatar](screenshots/external-agent-profile.jpg)
 
 ![Usage evaluation](screenshots/missions-eval.jpg)
 
@@ -88,7 +90,12 @@ the suggested agent or choose another selected member. The resulting
 
 ### Recommendation score
 
-`POST /missions/recommend` ranks candidates for every generated task:
+**Real external agents are the default recommendation pool.** If at least one
+connected external agent exists, `/missions/recommend` ranks only that external
+pool; built-in AI roles are used only when no external agent is connected. The
+built-in team remains visible and selectable, and creating a mission without
+explicit members still uses the normal system division — this is a
+recommendation-source change, not a removal of the default team.
 
 ```text
 skill overlap × 10
@@ -99,9 +106,18 @@ skill overlap × 10
 ```
 
 The response contains the plan tasks, top-3 agents per task with match
-percentages, reasons and estimates, a suggested team (max 8), and the preferred
-executor for each task. Recommendations are advisory: the team and every task
-executor remain editable.
+percentages, reasons and estimates, a suggested team (max 8), the preferred
+executor for each task, and `scope: "external" | "system"`. Recommendations are
+advisory: the team and every task executor remain editable, and system roles can
+be selected manually at any time.
+
+### External agent appointment
+
+Every connected external agent can be appointed to a mission role from its
+drawer: **系统自动分工** (the skill-based default) or chief/product/design/
+engineer/QA/growth/content/video/operator. The choice is stored on the bridge
+and immediately affects recommendation scoring and mission assignment. The
+default system division is unchanged for users who do not override a role.
 
 ### Concrete assignment
 
@@ -122,6 +138,17 @@ external agents get deterministic initials from their display name; built-in
 roles use `CH / PR / CO / DE / EN / QA / GR / VI`. The same fields
 (`brand`, `logoText`, `logoColor`) appear in the mission picker, member list,
 chat reports, team roster, external agent list and drawer.
+
+External agents also support an explicit avatar choice in their drawer:
+
+- **Auto brand / 自动识别品牌** — brand mark or generated initials;
+- built-in avatars — bot, fox, owl, cat, rocket, star, ghost, alien, spark,
+  builder, lead;
+- **custom initials** — 1–2 characters plus a color picker.
+
+The avatar and role are persisted through `PATCH /agents/<id>` and included in
+`GET /agents` (`meta.roles`, `meta.avatars`). They are local metadata; no remote
+logo or avatar service is called.
 
 Each task stores:
 
@@ -268,6 +295,13 @@ GET    /missions
 GET    /missions/overview
 GET    /missions/agents
 POST   /missions/recommend
+
+GET    /agents                 # includes meta.roles + meta.avatars
+POST   /agents
+PATCH  /agents/<id>            # name, role, avatar, avatarText, avatarColor
+POST   /agents/<id>/heartbeat
+DELETE /agents/<id>
+
 POST   /missions
 GET    /missions/<id>
 DELETE /missions/<id>
@@ -386,7 +420,9 @@ projects supplied workflow and UX patterns.
   not a trained forecast; they are not vendor pricing. Historical calibration
   is on the roadmap.
 - Brand logos are local name/runtime matches. They are not vendor trademark
-  assets and no remote logo service is called.
+  assets and no remote logo service is called. Built-in avatars are local
+  emoji/glyph presets; custom avatars store only initials and a color, not
+  uploaded images.
 - Standby tasks are real, bounded checks, not simulated busywork.
 - Mission data lives in a JSON document; large deployments should move to
   SQLite/Postgres.

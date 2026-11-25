@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0] - 2026-11-25
+
+### Added
+- **Real-external-agent-first recommendations**: `/missions/recommend` now ranks only connected external agents whenever at least one exists. Built-in AI roles are used only as the fallback when no external agent is available; the normal system division and manual selection of built-in roles are unchanged.
+- **Editable external appointments**: every external agent can be appointed to chief, product, content, design, engineer, QA, growth, video or operator in its drawer, or left on skill-based auto-assignment. The role is persisted through the bridge and used immediately by recommendation scoring and mission assignment.
+- **Built-in and custom avatars**: auto brand detection plus a preset avatar catalog (bot, fox, owl, cat, rocket, star, ghost, alien, spark, builder, lead) and custom initials with a validated color. Avatars render in the external list, external drawer, team roster and Mission Control.
+- `GET /agents` now returns `meta.roles` and `meta.avatars`; `PATCH /agents/<id>` accepts `role`, `avatar`, `avatarText` and `avatarColor` with validation.
+- The external list gets a profile button that opens the role/avatar drawer.
+
+### Changed
+- Version bumped to 1.7.0.
+- Mission recommendation responses expose `scope` (`external` or `system`) and the candidate count; the form labels external-first recommendations clearly.
+- External agent role labels are preserved separately from the display name, so the picker shows both the agent name and its appointed role.
+- README, English README, Mission docs, architecture, security, roadmap and browser self-checks document and cover the new flow.
+- Tests cover external-first recommendation, system fallback, appointment validation, preset/custom avatars and bridge persistence.
+
 ## [1.6.0] - 2026-11-25
 
 ### Added
