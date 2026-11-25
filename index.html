@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="hiring.css" />
   <link rel="stylesheet" href="external.css" />
   <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="company.css" />
 </head>
 <body>
   <div class="boot" id="boot">
@@ -33,15 +34,15 @@
         </div>
         <div class="brand-copy">
           <h1>AGENT OFFICE</h1>
-          <p>一群会自己干活的 agent</p>
+          <p data-i18n="tagline">一群会自己干活的 agent</p>
         </div>
       </div>
 
       <div class="top-stats" aria-label="办公室统计">
-        <div class="stat-chip"><span>任务</span><b id="statTasks">0/0</b></div>
-        <div class="stat-chip"><span>会议</span><b id="statMeetings">0</b></div>
-        <div class="stat-chip"><span>消息</span><b id="statMessages">0</b></div>
-        <div class="stat-chip"><span>行动</span><b id="statActions">0</b></div>
+        <div class="stat-chip"><span data-i18n="tasks">任务</span><b id="statTasks">0/0</b></div>
+        <div class="stat-chip"><span data-i18n="meetings">会议</span><b id="statMeetings">0</b></div>
+        <div class="stat-chip"><span data-i18n="messages">消息</span><b id="statMessages">0</b></div>
+        <div class="stat-chip"><span data-i18n="actions">行动</span><b id="statActions">0</b></div>
       </div>
 
       <div class="clock-pill" title="模拟时间">
@@ -51,19 +52,21 @@
 
       <div class="controls">
         <select id="scenarioSelect" class="select" aria-label="选择场景">
-          <option value="launch">产品发布冲刺</option>
-          <option value="incident">支付事故响应</option>
+          <option value="launch" data-i18n="scenarioLaunch">产品发布冲刺</option>
+          <option value="incident" data-i18n="scenarioIncident">支付事故响应</option>
         </select>
-        <button id="playBtn" class="btn primary" type="button">暂停</button>
+        <button id="playBtn" class="btn primary" type="button" data-i18n="pause">暂停</button>
         <div class="seg" id="speedSeg" role="group" aria-label="模拟速度">
           <button type="button" data-speed="1" class="active">1×</button>
           <button type="button" data-speed="2">2×</button>
           <button type="button" data-speed="4">4×</button>
         </div>
-        <button id="themeBtn" class="btn ghost theme-toggle" type="button" title="切换到白天模式（D）" aria-label="切换白天/夜间模式" aria-pressed="false"><span class="theme-icon" id="themeIcon">☾</span><span class="theme-label" id="themeLabel">夜间</span></button>
-        <button id="meetingBtn" class="btn" type="button">拉个会</button>
-        <button id="eventBtn" class="btn" type="button">制造意外</button>
-        <button id="resetBtn" class="btn ghost" type="button">重置</button>
+        <button id="companyBtn" class="btn company-trigger" type="button" data-i18n="companyShort">一人公司</button>
+        <button id="themeBtn" class="btn ghost theme-toggle" type="button" title="切换到白天模式（D）" aria-label="切换白天/夜间模式" aria-pressed="false"><span class="theme-icon" id="themeIcon">☾</span><span class="theme-label" id="themeLabel" data-i18n="themeNight">夜间</span></button>
+        <button id="langBtn" class="btn ghost lang-toggle" type="button" title="Switch language" aria-label="Switch language">EN</button>
+        <button id="meetingBtn" class="btn" type="button" data-i18n="meeting">拉个会</button>
+        <button id="eventBtn" class="btn" type="button" data-i18n="incident">制造意外</button>
+        <button id="resetBtn" class="btn ghost" type="button" data-i18n="reset">重置</button>
       </div>
     </header>
 
@@ -78,11 +81,11 @@
         </div>
         <div class="team-list" id="teamList"></div>
         <div class="team-foot">
-          <div class="foot-row"><span>团队士气</span><b id="teamMorale">—</b></div>
+          <div class="foot-row"><span data-i18n="teamMorale">团队士气</span><b id="teamMorale">—</b></div>
           <div class="morale-bar"><i id="moraleBar"></i></div>
-          <button type="button" class="hire-btn" id="hireBtn">＋ 添加 Agent</button>
-          <button type="button" class="hire-btn secondary" id="externalBtn">⇢ 接入外部 Agent</button>
-          <p class="hint">点击办公室里的角色，查看 TA 的记忆与状态。</p>
+          <button type="button" class="hire-btn" id="hireBtn" data-i18n="addAgent">＋ 添加 Agent</button>
+          <button type="button" class="hire-btn secondary" id="externalBtn" data-i18n="externalAgent">⇢ 接入外部 Agent</button>
+          <p class="hint" data-i18n="teamHint">点击办公室里的角色，查看 TA 的记忆与状态。</p>
         </div>
       </aside>
 
@@ -101,10 +104,10 @@
                 <span class="hud-bars"><u></u><u></u><u></u><u></u><u></u></span>
               </span>
               <div class="legend">
-                <span><i class="legend-dot working"></i>工作</span>
-                <span><i class="legend-dot meeting"></i>会议</span>
-                <span><i class="legend-dot coffee"></i>休息</span>
-                <span><i class="legend-dot blocked"></i>阻塞</span>
+                <span><i class="legend-dot working"></i><span data-i18n="legendWork">工作</span></span>
+                <span><i class="legend-dot meeting"></i><span data-i18n="legendMeeting">会议</span></span>
+                <span><i class="legend-dot coffee"></i><span data-i18n="legendCoffee">休息</span></span>
+                <span><i class="legend-dot blocked"></i><span data-i18n="legendBlocked">阻塞</span></span>
               </div>
               <button id="traceBtn" class="trace-trigger" type="button" title="打开 Trace Lab（T）" aria-label="打开 Trace Lab">TRACE</button>
               <button id="fxBtn" class="icon-btn active" type="button" title="特效开关" aria-label="特效开关">◈</button>
@@ -126,7 +129,7 @@
               <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
             </div>
             <div class="inspector" id="inspector"></div>
-            <div class="stage-hint" id="stageHint">点击 agent / 任务查看轨迹 · A 审计 · L 行动 · T Trace</div>
+            <div class="stage-hint" id="stageHint" data-i18n="stageHint">点击 agent / 任务查看轨迹 · A 审计 · L 行动 · T Trace</div>
           </div>
         </section>
 
@@ -134,7 +137,7 @@
           <div class="panel-head feed-head">
             <div>
               <h2>LIVE FEED</h2>
-              <p>对话、任务与会议纪要</p>
+              <p data-i18n="feedSub">对话、任务与会议纪要</p>
             </div>
             <div class="feed-telemetry" aria-hidden="true">
               <span>LOAD</span>
@@ -145,10 +148,10 @@
               <b id="feedLoad">0/6</b>
             </div>
             <div class="feed-filters" id="feedFilters">
-              <button type="button" data-filter="all" class="active">全部</button>
-              <button type="button" data-filter="chat">对话</button>
-              <button type="button" data-filter="meeting">会议</button>
-              <button type="button" data-filter="ledger">行动</button>
+              <button type="button" data-filter="all" class="active" data-i18n="feedAll">全部</button>
+              <button type="button" data-filter="chat" data-i18n="feedChat">对话</button>
+              <button type="button" data-filter="meeting" data-i18n="feedMeeting">会议</button>
+              <button type="button" data-filter="ledger" data-i18n="feedLedger">行动</button>
             </div>
           </div>
           <div class="feed-list" id="feedList"></div>
@@ -173,6 +176,7 @@
     </main>
   </div>
 
+  <div class="company-lab" id="companyLab" hidden aria-hidden="true"></div>
   <div class="hire-modal" id="hireModal" hidden aria-hidden="true"></div>
   <div class="external-modal" id="externalModal" hidden aria-hidden="true"></div>
   <div class="rename-modal" id="renameModal" hidden aria-hidden="true"></div>
@@ -182,12 +186,14 @@
   <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-modal="false" aria-label="详情面板" role="dialog"></aside>
 
   <script src="src/data.js"></script>
+  <script src="src/i18n.js"></script>
   <script src="src/sprites.js"></script>
   <script src="src/engine.js"></script>
   <script src="src/fx.js"></script>
   <script src="src/trace.js"></script>
   <script src="src/hiring.js"></script>
   <script src="src/external.js"></script>
+  <script src="src/company.js"></script>
   <script src="src/render.js"></script>
   <script src="src/main.js"></script>
 </body>

@@ -70,6 +70,12 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       const extW=md.querySelector('.ext-shell').getBoundingClientRect().width;
       check('mobile external shell fits',extW<=vw+1,Math.round(extW)+' / '+vw);
       md.querySelector('#externalModal [data-ext-close]').click();
+      await wait(100);
+      md.getElementById('companyBtn').click(); await wait(300);
+      check('mobile company opens',!md.getElementById('companyLab').hidden);
+      const companyW=md.querySelector('.company-shell').getBoundingClientRect().width;
+      check('mobile company shell fits',companyW<=vw+1,Math.round(companyW)+' / '+vw);
+      md.querySelector('[data-company-close]').click();
       finish();
     }catch(err){lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}
   })();

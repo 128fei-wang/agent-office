@@ -21,16 +21,16 @@ else
 fi
 
 required=(
-  index.html styles.css trace.css hiring.css external.css theme.css favicon.svg
+  index.html styles.css trace.css hiring.css external.css theme.css company.css favicon.svg
   start.sh bridge.py README.md README.en.md LICENSE CONTRIBUTING.md
   CODE_OF_CONDUCT.md SECURITY.md CHANGELOG.md VERSION
-  src/data.js src/sprites.js src/engine.js src/fx.js src/trace.js
-  src/hiring.js src/external.js src/render.js src/main.js
+  src/data.js src/i18n.js src/sprites.js src/engine.js src/fx.js src/trace.js
+  src/hiring.js src/external.js src/company.js src/render.js src/main.js
   dev-check.html dev-paths.html dev-consistency.html dev-actions.html
   dev-fx.html dev-audit.html dev-tracelab.html dev-hiring.html dev-external.html
-  dev-delegation.html dev-theme.html
+  dev-delegation.html dev-theme.html dev-company.html dev-i18n.html
   tests/test_bridge.py providers.example.json
-  docs/ARCHITECTURE.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md
+  docs/ARCHITECTURE.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md
 )
 for f in "${required[@]}"; do
   if [ ! -e "$f" ]; then

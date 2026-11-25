@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>One-person company self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body>
+<h1>ONE-PERSON COMPANY / GROUP CHAT SELF-CHECK</h1>
+<pre id="out">running…</pre>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&theme=day&lang=zh&noStream=1';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2400));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s),$$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const ext=app.renderer.external,companyView=app.renderer.company,bridge=ext.bridgeUrl;
+    await fetch(bridge+'/company',{method:'DELETE'}).catch(()=>{});
+    check('company view constructed',!!companyView);
+    $('#companyBtn').click();
+    await wait(700);
+    check('company overlay opens',!$('#companyLab').hidden);
+    check('builder form visible',!!$('#companyForm'));
+    const form=$('#companyForm');
+    form.elements.name.value='Nova Studio';
+    form.elements.product.value='AI landing page for solo founders';
+    form.elements.goal.value='Ship in two weeks and get 10 leads';
+    form.elements.language.value='zh';
+    form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+    await wait(2200);
+    check('company created',!!companyView.company,companyView.company&&companyView.company.name);
+    const company=companyView.company;
+    check('8 roles generated',company&&company.roles.length===8,'roles='+(company&&company.roles.length));
+    check('11 tasks generated',company&&company.tasks.length===11,'tasks='+(company&&company.tasks.length));
+    check('15 rooms generated',company&&company.rooms.length===15,'rooms='+(company&&company.rooms.length));
+    check('ready tasks auto-assigned',company&&company.tasks.filter(t=>t.status==='assigned').length>=2);
+    check('role cards rendered',$$('.company-role-card').length===8);
+    check('task cards rendered',$$('.company-task-card').length===11);
+    check('rooms rendered',$$('#companyRoomList .company-room').length===15);
+
+    const roomInput=$('#companyMessage');
+    roomInput.value='创始人：先锁定 ICP，今晚发第一版。';
+    $('#companyChatForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+    await wait(900);
+    check('human chat appears',/今晚发第一版/.test($('#companyMessages').textContent));
+
+    const productRole=company.roles.find(r=>r.id==='product');
+    const connect=$('[data-company-connect-role="product"]');
+    check('role connect control',!!connect);
+    if(connect){connect.click();await wait(600);}
+    const pairCode=companyView.pair&&companyView.pair.pair&&companyView.pair.pair.code;
+    check('role pair code generated',!!pairCode,pairCode);
+    if(pairCode){
+      const res=await fetch(bridge+'/pair/'+pairCode+'/claim',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Product Worker',runtime:'claude-code'})});
+      const claimed=await res.json();
+      check('role claim succeeds',res.status===200&&claimed.agent&&claimed.agent.id==='opc-product');
+      await wait(1200);
+      await companyView.refresh();
+      const role=companyView.company.roles.find(r=>r.id==='product');
+      check('role agent bound',role&&role.agentName==='Product Worker',role&&role.agentName);
+      check('role online',role&&role.agentStatus==='online',role&&role.agentStatus);
+    }
+
+    const t1=companyView.company.tasks.find(t=>t.id==='opc-t1');
+    const asg=companyView.company.assignments.find(a=>a.companyTaskId==='opc-t1');
+    const t2=companyView.company.tasks.find(t=>t.id==='opc-t2');
+    check('assignment has execution context',!!asg&&asg.executionId.startsWith('exec-'));
+    await companyView.switchRoom(asg.roomId); await wait(300);
+    let r=await fetch(bridge+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agentId:'opc-product',roomId:t2.roomId,assignmentId:asg.id,executionId:asg.executionId,content:'wrong room'})});
+    check('cross-room report rejected',r.status===400,'status='+r.status);
+    r=await fetch(bridge+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agentId:'opc-product',roomId:asg.roomId,assignmentId:asg.id,executionId:asg.executionId,content:'ICP draft is ready.'})});
+    check('task-room report accepted',r.status===200,'status='+r.status);
+    await wait(500);
+    await companyView.refresh();
+    await wait(200);
+    check('agent message rendered',/ICP draft is ready/.test($('#companyMessages').textContent));
+
+    r=await fetch(bridge+'/assignments/'+asg.id,{method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status:'completed',progress:100,result:'ICP and offer validated',evidence:['docs/offer.md']})});
+    check('completion writeback accepted',r.status===200);
+    await wait(1300); await companyView.refresh();
+    const t1b=companyView.company.tasks.find(t=>t.id==='opc-t1');
+    const t3b=companyView.company.tasks.find(t=>t.id==='opc-t3');
+    check('task completed',t1b.status==='completed',t1b.status);
+    check('dependent task auto-dispatched',t3b.status==='assigned'&&!!t3b.assignmentId,t3b.status);
+    check('task room has system update',companyView.messages.some(m=>m.kind==='system'&&/completed|完成/.test(m.content)));
+
+    const lang=$('[data-company-lang]');
+    check('company language control',!!lang);
+    if(lang){lang.click();await wait(500);}
+    check('company UI switches to English',/Org chart/.test($('#companyShell').textContent)&&/Task board/.test($('#companyShell').textContent));
+    if(lang){$('[data-company-lang]').click();await wait(300);}
+    check('company UI switches back to Chinese',/组织架构/.test($('#companyShell').textContent));
+
+    await fetch(bridge+'/company',{method:'DELETE'});
+    companyView.close();
+    check('company overlay closes',$('#companyLab').hidden);
+    check('company cleanup',(await (await fetch(bridge+'/company')).json()).company===null);
+    finish();
+  }
+})();
+</script>
+</body></html>

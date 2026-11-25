@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0] - 2026-11-25
+
+### Added
+- One-person company workspace: 8 role slots, 11 dependency-aware tasks, 4 department channels and isolated task rooms.
+- Automatic task dispatch and dependency unlock; role-bound pairing codes bind real workers to role slots.
+- Real-time group chat over Server-Sent Events (`/stream`) with message history.
+- Execution isolation: task-room messages require matching agent, room, assignment and executionId; wrong-room reports are rejected.
+- Company task board, role org chart, chat, deliverables and task isolation UI.
+- Chinese/English UI switch in the top bar and company header, `?lang=en|zh`, persisted in localStorage.
+- English translations for shell controls, task statuses, company template, chat and generated company content.
+- Company OS docs, `dev-company.html`, `dev-i18n.html`, and company screenshot.
+
+### Changed
+- Version bumped to 1.2.0.
+- README and English README document company, chat, isolation and bilingual behavior.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added

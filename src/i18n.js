@@ -1,0 +1,339 @@
+(function () {
+  "use strict";
+
+  const AO = window.AgentOffice;
+  const LANG_KEY = "agent-office.lang.v1";
+
+  const DICT = {
+    zh: {
+      docTitle: "Agent Office · 自主协作模拟",
+      tagline: "一群会自己干活的 agent",
+      tasks: "任务",
+      meetings: "会议",
+      messages: "消息",
+      actions: "行动",
+      teamMorale: "团队士气",
+      feedSub: "对话、任务与会议纪要",
+      legendWork: "工作",
+      legendMeeting: "会议",
+      legendCoffee: "休息",
+      legendBlocked: "阻塞",
+      scenarioLaunch: "产品发布冲刺",
+      scenarioIncident: "支付事故响应",
+      pause: "暂停",
+      resume: "继续",
+      meeting: "拉个会",
+      incident: "制造意外",
+      reset: "重置",
+      addAgent: "＋ 添加 Agent",
+      externalAgent: "⇢ 接入外部 Agent",
+      company: "一人公司",
+      companyShort: "一人公司",
+      themeNight: "夜间",
+      themeDay: "白天",
+      themeToNight: "切换到夜间模式（D）",
+      themeToDay: "切换到白天模式（D）",
+      language: "语言",
+      feedAll: "全部",
+      feedChat: "对话",
+      feedMeeting: "会议",
+      feedLedger: "行动",
+      stageHint: "点击 agent / 任务查看轨迹 · A 审计 · L 行动 · T Trace",
+      teamHint: "点击办公室里的角色，查看 TA 的记忆与状态。",
+      audit: "审计",
+      local: "本地",
+      external: "外部",
+      hotDesk: "热桌",
+      waiting: "等待",
+      goal: "目标",
+      addAgentTitle: "＋ 添加 Agent",
+      connectExternalTitle: "⇢ 接入外部 Agent",
+      companyTitle: "一人公司",
+      close: "关闭",
+      buildCompany: "创建一人公司",
+      companyName: "公司名称",
+      product: "产品 / Offer",
+      companyGoal: "本周目标",
+      languageLabel: "生成语言",
+      generateCompany: "生成公司并自动拆解任务",
+      rebuildCompany: "重新生成",
+      companyTemplate: "模板：一人公司",
+      companyTemplateDesc: "8 个角色、11 个任务、4 个频道和任务隔离的房间。",
+      orgChart: "组织架构",
+      taskBoard: "任务看板",
+      chat: "群聊",
+      rooms: "频道",
+      send: "发送",
+      sendPlaceholder: "以创始人身份发消息…",
+      noMessages: "还没有消息。",
+      connectAgent: "连接 Agent",
+      roleUnbound: "未绑定",
+      roleOnline: "在线",
+      roleOffline: "离线",
+      taskWaiting: "等待依赖",
+      taskAssigned: "已派发",
+      taskInProgress: "进行中",
+      taskCompleted: "已完成",
+      taskFailed: "失败",
+      deliverable: "交付物",
+      deps: "依赖",
+      executionIsolation: "任务房间绑定 assignment + executionId；不同任务的 Agent 不能跨房间汇报。",
+      copySetup: "复制连接说明",
+      setupLink: "setup.md",
+      rolePairTitle: "为角色接入 Agent",
+      waitingForAgent: "等待 Agent 领取…",
+      companyEmptyTitle: "把一个人的公司跑起来",
+      companyEmptyDesc: "生成 8 个 AI 员工、任务依赖和独立频道。真实 Agent 通过连接码领取角色并回写结果。",
+      companyNamePlaceholder: "例如：Nova Studio",
+      productPlaceholder: "一句话说明你卖什么",
+      goalPlaceholder: "例如：两周内上线并拿到 10 个线索",
+      founderRoom: "创始人会议室",
+      taskRoom: "任务房间",
+      departmentRoom: "部门频道",
+      companyCreated: "公司已创建",
+      noCompany: "还没有公司",
+      live: "实时",
+      chatIsolation: "任务隔离已开启",
+      agentOnline: "Agent 在线",
+      workMode: "真实业务",
+      companyLanguageHint: "生成语言只影响模板内容，可随时切换界面语言。",
+      system: "系统",
+      human: "创始人",
+      assignedTo: "指派给",
+      allRoles: "全部角色",
+      copy: "复制",
+      copied: "已复制",
+      waitingDependency: "等待依赖完成",
+      autoDispatched: "依赖完成后自动派发",
+      roomMembers: "成员",
+      companyHeaderGoal: "目标",
+      companyHeaderProduct: "产品",
+      taskCount: "任务",
+      roleCount: "角色",
+      roomCount: "频道",
+      messageCount: "消息",
+      execution: "执行上下文",
+      taskContext: "任务",
+      noCompanyHint: "还没有公司。先在左侧创建一人公司模板。",
+      bridgeOffline: "bridge 离线，启动 python3 bridge.py",
+      seedError: "创建公司失败",
+      chatError: "发送失败",
+      rolePairError: "生成角色连接码失败",
+      refresh: "刷新",
+      companyTemplateOnePerson: "一人公司 · 8 个 AI 员工",
+      companyNotice: "真实 Agent 需要先绑定角色；任务会自动派发，完成结果会实时回到任务房间。",
+      autoAssign: "自动派发已就绪",
+      roleTasks: "负责任务",
+      status: "状态",
+      progress: "进度",
+      room: "频道",
+      statusBacklog: "待办",
+      statusInProgress: "进行中",
+      statusReview: "评审中",
+      statusDone: "已完成",
+      statusBlocked: "阻塞",
+      boardActive: "进行中",
+      boardReview: "评审中",
+      boardBacklog: "待办",
+      boardDone: "已完成",
+      hotDeskFull: "热桌满",
+      oneTime: "一次性",
+      task: "任务"
+    },
+    en: {
+      docTitle: "Agent Office · Autonomous team workspace",
+      tagline: "A team of agents that gets work done",
+      tasks: "Tasks",
+      meetings: "Meetings",
+      messages: "Messages",
+      actions: "Actions",
+      teamMorale: "Team morale",
+      feedSub: "Conversations, tasks and meeting notes",
+      legendWork: "Work",
+      legendMeeting: "Meeting",
+      legendCoffee: "Break",
+      legendBlocked: "Blocked",
+      scenarioLaunch: "Product launch sprint",
+      scenarioIncident: "Payment incident response",
+      pause: "Pause",
+      resume: "Resume",
+      meeting: "Meeting",
+      incident: "Inject incident",
+      reset: "Reset",
+      addAgent: "+ Add agent",
+      externalAgent: "⇢ Connect external agent",
+      company: "One-person company",
+      companyShort: "COMPANY",
+      themeNight: "Night",
+      themeDay: "Day",
+      themeToNight: "Switch to night mode (D)",
+      themeToDay: "Switch to day mode (D)",
+      language: "Language",
+      feedAll: "All",
+      feedChat: "Chat",
+      feedMeeting: "Meeting",
+      feedLedger: "Actions",
+      stageHint: "Click an agent / task to inspect · A audit · L actions · T Trace",
+      teamHint: "Click a character to inspect memory and state.",
+      audit: "Audit",
+      local: "local",
+      external: "external",
+      hotDesk: "hot desks",
+      waiting: "waiting",
+      goal: "Goal",
+      addAgentTitle: "+ Add agent",
+      connectExternalTitle: "⇢ Connect external agent",
+      companyTitle: "One-person company",
+      close: "Close",
+      buildCompany: "Build a one-person company",
+      companyName: "Company name",
+      product: "Product / offer",
+      companyGoal: "Weekly goal",
+      languageLabel: "Generated language",
+      generateCompany: "Generate company and decompose tasks",
+      rebuildCompany: "Rebuild",
+      companyTemplate: "Template: one-person company",
+      companyTemplateDesc: "8 roles, 11 tasks, 4 channels and isolated task rooms.",
+      orgChart: "Org chart",
+      taskBoard: "Task board",
+      chat: "Group chat",
+      rooms: "Channels",
+      send: "Send",
+      sendPlaceholder: "Message as the founder…",
+      noMessages: "No messages yet.",
+      connectAgent: "Connect agent",
+      roleUnbound: "Unbound",
+      roleOnline: "Online",
+      roleOffline: "Offline",
+      taskWaiting: "Waiting",
+      taskAssigned: "Assigned",
+      taskInProgress: "In progress",
+      taskCompleted: "Completed",
+      taskFailed: "Failed",
+      deliverable: "Deliverable",
+      deps: "Dependencies",
+      executionIsolation: "Task rooms bind assignment + executionId; agents cannot report into another task's room.",
+      copySetup: "Copy setup",
+      setupLink: "setup.md",
+      rolePairTitle: "Connect an agent to this role",
+      waitingForAgent: "Waiting for an agent to claim…",
+      companyEmptyTitle: "Run your one-person company",
+      companyEmptyDesc: "Generate 8 AI employees, dependency-aware tasks and isolated channels. Real agents claim roles through pairing codes and write results back.",
+      companyNamePlaceholder: "e.g. Nova Studio",
+      productPlaceholder: "One sentence about what you sell",
+      goalPlaceholder: "e.g. Launch in two weeks and get 10 leads",
+      founderRoom: "Founder room",
+      taskRoom: "Task room",
+      departmentRoom: "Department",
+      companyCreated: "Company created",
+      noCompany: "No company yet",
+      live: "Live",
+      chatIsolation: "Task isolation on",
+      agentOnline: "Agent online",
+      workMode: "Real business",
+      companyLanguageHint: "Generated language affects the template; the UI language can be changed anytime.",
+      system: "System",
+      human: "Founder",
+      assignedTo: "Assigned to",
+      allRoles: "All roles",
+      copy: "Copy",
+      copied: "Copied",
+      waitingDependency: "Waiting for dependencies",
+      autoDispatched: "Auto-dispatches when dependencies complete",
+      roomMembers: "Members",
+      companyHeaderGoal: "Goal",
+      companyHeaderProduct: "Product",
+      taskCount: "Tasks",
+      roleCount: "Roles",
+      roomCount: "Channels",
+      messageCount: "Messages",
+      execution: "Execution context",
+      taskContext: "Task",
+      noCompanyHint: "No company yet. Build a one-person company template on the left.",
+      bridgeOffline: "Bridge offline — start python3 bridge.py",
+      seedError: "Could not create company",
+      chatError: "Could not send message",
+      rolePairError: "Could not create role code",
+      refresh: "Refresh",
+      companyTemplateOnePerson: "One-person company · 8 AI employees",
+      companyNotice: "Real agents must bind to a role first; tasks auto-dispatch and results return to the task room in real time.",
+      autoAssign: "Auto-dispatch ready",
+      roleTasks: "Tasks",
+      status: "Status",
+      progress: "Progress",
+      room: "Room",
+      statusBacklog: "Backlog",
+      statusInProgress: "In progress",
+      statusReview: "Review",
+      statusDone: "Done",
+      statusBlocked: "Blocked",
+      boardActive: "In progress",
+      boardReview: "In review",
+      boardBacklog: "Backlog",
+      boardDone: "Done",
+      hotDeskFull: "desks full",
+      oneTime: "one-time",
+      task: "Task"
+    }
+  };
+
+  function readLang() {
+    try {
+      const stored = localStorage.getItem(LANG_KEY);
+      if (stored === "en" || stored === "zh") return stored;
+    } catch (err) {}
+    return "zh";
+  }
+
+  AO.lang = readLang();
+  AO.i18n = DICT;
+
+  AO.t = function (key, vars) {
+    const lang = AO.lang === "en" ? "en" : "zh";
+    let text = (DICT[lang] && DICT[lang][key]) || (DICT.zh && DICT.zh[key]) || key;
+    if (vars) {
+      Object.keys(vars).forEach(function (name) {
+        text = text.replace(new RegExp("\\{" + name + "\\}", "g"), String(vars[name]));
+      });
+    }
+    return text;
+  };
+
+  AO.taskStatusLabel = function (status) {
+    const cap = String(status || "").split("_").map(function (part) {
+      return part ? part.charAt(0).toUpperCase() + part.slice(1) : "";
+    }).join("");
+    return AO.t("status" + cap);
+  };
+
+  AO.applyI18n = function (root) {
+    const scope = root || document;
+    scope.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = AO.t(el.getAttribute("data-i18n"));
+    });
+    scope.querySelectorAll("[data-i18n-title]").forEach(function (el) {
+      el.setAttribute("title", AO.t(el.getAttribute("data-i18n-title")));
+    });
+    scope.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+      el.setAttribute("placeholder", AO.t(el.getAttribute("data-i18n-placeholder")));
+    });
+  };
+
+  AO.setLang = function (lang, persist) {
+    AO.lang = lang === "en" ? "en" : "zh";
+    document.documentElement.lang = AO.lang === "en" ? "en" : "zh-CN";
+    document.title = AO.t("docTitle");
+    if (persist !== false) {
+      try { localStorage.setItem(LANG_KEY, AO.lang); } catch (err) {}
+    }
+    AO.applyI18n(document);
+    document.dispatchEvent(new CustomEvent("agent-office:lang", { detail: { lang: AO.lang } }));
+  };
+
+  AO.initI18n = function (lang) {
+    if (lang === "en" || lang === "zh") {
+      AO.lang = lang;
+    }
+    AO.setLang(AO.lang, false);
+  };
+})();

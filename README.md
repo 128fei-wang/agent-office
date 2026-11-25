@@ -1,13 +1,13 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批、外部 Agent 配对与任务委派，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批、外部 Agent 配对、任务委派、实时群聊、一人公司模板、中英文切换，以及白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -59,6 +59,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Audit](docs/screenshots/audit.jpg) | ![External Agent](docs/screenshots/external-agents.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
+| **One-person company** | **Group chat + isolation** |
+| ![Company OS](docs/screenshots/company-os.jpg) | ![Delegation](docs/screenshots/delegation.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -78,6 +80,9 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **外部 Agent 接入**：本地 bridge 支持一次性连接码、注册、心跳、事件上报；外部 agent 的 action / skill / tool / file / token / cost 会进入 ledger、Live Feed、Trace Lab 和 OTLP，Team 面板显示 ONLINE / OFFLINE。
 - **任务委派与回写**：在任务抽屉里把待办任务派给外部 Agent；外部 Agent 通过 `GET /assignments` 领取、`PATCH /assignments/<id>` 回写进度/完成/失败，任务板、审计和 Trace 同步更新。
 - **白天 / 夜间**：顶部太阳/月亮按钮或按 `D` 切换主题；白天模式使用暖色纸张面板和日光洗墙，夜间保持指挥中心配色。主题写入 localStorage。
+- **一人公司工作台**：一键生成 8 个 AI 员工、11 个依赖任务、4 个部门频道和每个任务的隔离房间；任务自动派发，依赖完成后自动解锁下一个任务。
+- **实时群聊**：bridge 提供 SSE 消息流；创始人、角色 Agent 和系统事件进入各自频道。任务房间要求 `assignmentId + executionId`，防止同一个 Agent 把不同任务的汇报发错群。
+- **中英文切换**：顶部 `EN / 中` 或 `?lang=en`；主界面、任务状态、群聊、公司模板和生成内容都支持两种语言。
 - **常用模型 API**：外部 Agent 弹窗内置豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama；配置一次 bridge 密钥即可「接入」并「试跑」，真实 token/延迟进入 Trace。
 - **重命名**：本地 agent 在 Inspector / 完整档案里点 ✎；外部 agent 在外部档案里点「重命名」。本地名字写入 localStorage，外部名字同步到 bridge。
 - **进度快照**：`AUDIT` 底部可「保存进度 / 恢复进度」，把当前 world（任务、agent、ledger、会议、历史）存到浏览器 localStorage。刷新后手动恢复，适合演示中途保存现场。
@@ -93,6 +98,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 ?task=t4                打开任务抽屉
 ?agent=a4               打开 agent 档案
 ?theme=day              直接打开白天主题
+?company=1              打开一人公司工作台
+?lang=en                英文界面
 ?audit=1&task=t4        组合
 ```
 
@@ -232,6 +239,8 @@ curl -X POST http://127.0.0.1:8787/events \
 完整 API：
 
 - `GET /health`
+- `GET /company` / `POST /company/bootstrap` / `POST /company/dispatch` / `DELETE /company`
+- `GET /rooms` / `GET /messages` / `POST /messages` / `GET /stream?since=N`
 - `GET /agents`
 - `POST /agents`
 - `PATCH /agents/<id>`（重命名 / 更新）
@@ -265,6 +274,39 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - 本地名称写入 `agent-office.names.v1`；外部名称通过 `PATCH /agents/<id>` 写回 bridge。
 
 > 外部事件会进入 Trace/Ledger；任务状态只在显式 Assignment 回写时改变。外部完成是自报完成，不经过本地评审，审计会保留未验证缺口。
+
+## 一人公司 / 实时群聊 / 任务隔离
+
+打开顶部 **`一人公司`**，或在 URL 加 `?company=1`。
+
+### 一键生成
+
+输入公司名、产品/Offer、本周目标、生成语言，点击「生成公司并自动拆解任务」。bridge 会创建：
+
+- 8 个角色：运营操盘手、产品策略、文案、设计、工程师、测试、增长、视频制作
+- 11 个带依赖的任务：Offer/ICP、研究、文案、视觉、搭建、埋点、QA、发布、内容、视频、复盘
+- 4 个部门频道：创始人会议室、产品与内容、构建与质量、发布与增长
+- 每个任务一个独立任务房间
+- 无依赖的任务立即创建 Assignment；依赖完成后自动派发下一个任务
+
+角色是 `opc-<role>` 工位。点击角色卡片上的「连接 Agent」，生成绑定角色的连接码，把 setup 消息发给 Claude Code / Codex / 其他 worker；它领取后会以该角色身份工作，并轮询自己的 assignments。
+
+### 群聊和隔离
+
+- 创始人可以在任意频道发消息。
+- 角色 Agent 通过 `POST /messages` 发消息；任务房间必须同时带对 `roomId`、`assignmentId`、`executionId`、`agentId`。
+- 同一个 Agent 同时做两个任务时，两个 Assignment 有不同 `executionId` 和任务房间；发错房间、用错 executionId 或冒充其他 Agent 都会被 bridge 拒绝。
+- 实时消息走 `GET /stream?since=N`（SSE），浏览器通过 EventSource 自动重连。
+- 任务完成/进度会写入系统消息，并同步到任务看板。
+
+详细协议、角色表、依赖图和限制见 [docs/COMPANY_OS.md](docs/COMPANY_OS.md)。
+
+### 中英文
+
+- 顶部 `EN / 中` 切换界面语言，公司工作台内部也有语言按钮。
+- `?lang=en` / `?lang=zh` 可直接打开对应语言。
+- 公司模板的角色、任务、任务说明会按生成语言写入；界面标签可随时切换。
+- 仿真叙事和任务正文属于内容层，保留原始语言。
 
 ## 怎么添加 Agent
 
@@ -366,6 +408,8 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 | 接入外部 Agent | TEAM 面板底部 `⇢ 接入外部 Agent`，走本地 bridge |
 | 委托任务 | 打开待办任务 → 选择外部 Agent → 派发任务 |
 | 白天 / 夜间 | 顶部主题按钮，或按 `D` |
+| 一人公司 / 群聊 | 顶部 `一人公司`，或按 `C` |
+| 中英文 | 顶部 `EN / 中`，或 `?lang=en` |
 | 重命名 | Inspector / 完整档案里的 ✎；外部 agent 在外部档案里重命名 |
 | 审计 tab / `A` | 打开/关闭 `AUDIT` 面板 |
 | AUDIT 保存/恢复 | 手动保存或恢复当前模拟进度（localStorage） |
@@ -391,6 +435,8 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 ?hire=1                      直接打开 Add Agent 表单
 ?external=1                  直接打开外部 Agent 接入面板
 ?theme=day                   直接打开白天主题
+?company=1                   直接打开一人公司工作台
+?lang=en                     英文界面
 ```
 
 ## 目录结构
@@ -406,7 +452,9 @@ agent-office/
 │   ├── fx.js           可开关的蚀刻路线 / 信号弹 / 会议雷达 / 粒子层
 │   ├── trace.js        Trace Lab：span、时间线、回放、Evals、OTLP
 │   ├── hiring.js       Add Agent 表单、热桌分配、localStorage 持久化
+│   ├── i18n.js         中英文词典、语言切换
 │   ├── external.js     外部 Agent 连接、配对、任务委派、心跳轮询、重命名
+│   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -422,15 +470,19 @@ agent-office/
 ├── dev-external.html   自检 bridge、外部事件、重命名、OTLP
 ├── dev-delegation.html 自检外部任务委派、进度、回写、审计
 ├── dev-theme.html      自检白天/夜间、主题持久化、移动端布局
+├── dev-company.html    自检一人公司、任务派发、群聊、隔离、自动解锁
+├── dev-i18n.html       自检中英文切换和持久化
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
 ├── theme.css           白天主题、Trace Lab 明色皮肤、移动端样式
+├── company.css         一人公司工作台 / 群聊 / 语言样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 心跳 / 事件）
 ├── providers.example.json  模型 API 配置模板（密钥不提交）
 ├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
 ├── docs/PROVIDERS.md   模型 API 配置与故障排查
 ├── docs/TASK_DELEGATION.md 外部任务委派协议与状态机
+├── docs/COMPANY_OS.md  一人公司模板、群聊、任务隔离
 └── start.sh            本地静态服务器 + bridge
 ```
 
@@ -570,7 +622,11 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-theme.html` 会验证白天/夜间切换、主题持久化、`D` 快捷键，以及 390px 宽度的移动端布局、任务抽屉、Trace Lab 和外部 Agent 弹窗。
 
-bridge 自身的 15 个集成测试不依赖浏览器：
+`dev-company.html` 会验证一人公司模板生成、8 角色 / 11 任务 / 15 房间、自动派发、角色连接码、群聊、任务房间隔离、完成回写、依赖解锁和中英文切换。
+
+`dev-i18n.html` 会验证主界面/公司界面的英文切换、`?lang`、持久化和刷新恢复。
+
+bridge 自身的 17 个集成测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -586,7 +642,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.1.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.2.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -597,6 +653,9 @@ python3 -m unittest discover -s tests -v
 - 规则引擎的「自主性」是设计好的行为空间，不是开放式推理；但工作账本和审计模型可以直接复用到真实 agent。
 - 外部 Agent 的任务委派是**拉取式 + 自报完成**：bridge 不会主动推送 webhook，完成证据由外部 Agent 自报，未经过本地评审；未验证的基础工作会保留为风险/遗漏。
 - Assignment 绑定当前场景和 `runId`；新运行不会自动套用旧运行的委派结果。
+- 一人公司的任务自动派发，但真实完成仍需要绑定角色并连接执行 Agent；模型 API Agent 只做单次调用，不参与任务房间。
+- SSE 是 localhost 实时流，没有鉴权；公司数据保存在 `~/.agent-office/bridge-state.json`。
+- 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
 - 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。
 - 模型 API 是单次调用适配器，不会自动完成模拟任务；`cost` 不按厂商价格计算，token 以返回的 usage 为准。
 - bridge 是 localhost 开发服务，没有鉴权、TLS 或多租户；不要直接暴露到公网。

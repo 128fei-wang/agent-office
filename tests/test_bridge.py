@@ -383,6 +383,125 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/assignments/unknown-id", "PATCH", {"progress": 10})
         self.assertEqual(status, 400)
 
+    def test_company_template_chat_isolation_and_dispatch(self):
+        status, data = self.request("/company/bootstrap", "POST", {
+            "name": "Solo Studio", "product": "AI landing page",
+            "goal": "Ship a validated landing page", "language": "zh",
+            "template": "one-person-company"
+        })
+        self.assertEqual(status, 200, data)
+        company = data["company"]
+        self.assertEqual(company["id"][:4], "opc-")
+        self.assertEqual(len(company["roles"]), 8)
+        self.assertEqual(len(company["tasks"]), 11)
+        self.assertTrue(any(t["status"] == "assigned" for t in company["tasks"]))
+        self.assertTrue(any(t["status"] == "waiting" for t in company["tasks"]))
+
+        product_role = next(r for r in company["roles"] if r["id"] == "product")
+        t1 = next(t for t in company["tasks"] if t["id"] == "opc-t1")
+        t2 = next(t for t in company["tasks"] if t["id"] == "opc-t2")
+        assignment = next(a for a in company["assignments"] if a["companyTaskId"] == "opc-t1")
+        t2_room = next(r for r in company["rooms"] if r.get("taskId") == "opc-t2")
+        self.assertTrue(assignment["executionId"].startswith("exec-"))
+        self.assertEqual(assignment["roomId"], t1["roomId"])
+
+        status, msg = self.request("/messages", "POST", {
+            "agentId": product_role["agentId"],
+            "roomId": assignment["roomId"],
+            "assignmentId": assignment["id"],
+            "executionId": assignment["executionId"],
+            "content": "Offer draft is ready."
+        })
+        self.assertEqual(status, 200, msg)
+
+        status, _ = self.request("/messages", "POST", {
+            "agentId": product_role["agentId"],
+            "roomId": t2_room["id"],
+            "assignmentId": assignment["id"],
+            "executionId": assignment["executionId"],
+            "content": "wrong room"
+        })
+        self.assertEqual(status, 400)
+
+        status, _ = self.request("/messages", "POST", {
+            "agentId": product_role["agentId"],
+            "roomId": assignment["roomId"],
+            "assignmentId": assignment["id"],
+            "executionId": "exec-wrong",
+            "content": "wrong execution"
+        })
+        self.assertEqual(status, 400)
+
+        status, human = self.request("/messages", "POST", {
+            "roomId": "opc-room-founder", "content": "Founder note"
+        })
+        self.assertEqual(status, 200, human)
+
+        status, pair_data = self.request("/pair/code", "POST", {"roleId": "copy"})
+        self.assertEqual(status, 200)
+        self.assertEqual(pair_data["pair"]["roleId"], "copy")
+        status, claimed = self.request("/pair/%s/claim" % pair_data["pair"]["code"], "POST", {
+            "name": "Copy Worker", "runtime": "claude-code"
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(claimed["agent"]["id"], "opc-copy")
+        status, company_after = self.request("/company")
+        copy_role = next(r for r in company_after["company"]["roles"] if r["id"] == "copy")
+        self.assertEqual(copy_role["agentName"], "Copy Worker")
+
+        status, done = self.request("/assignments/" + assignment["id"], "PATCH", {
+            "status": "completed", "progress": 100,
+            "result": "Offer validated", "evidence": ["docs/offer.md"]
+        })
+        self.assertEqual(status, 200)
+        status, company_after = self.request("/company")
+        t1_after = next(t for t in company_after["company"]["tasks"] if t["id"] == "opc-t1")
+        t3_after = next(t for t in company_after["company"]["tasks"] if t["id"] == "opc-t3")
+        self.assertEqual(t1_after["status"], "completed")
+        self.assertEqual(t3_after["status"], "assigned")
+        self.assertTrue(t3_after["assignmentId"])
+
+        status, cleanup = self.request("/company", "DELETE")
+        self.assertEqual(status, 200)
+
+    def test_sse_stream_delivers_chat(self):
+        status, data = self.request("/company/bootstrap", "POST", {
+            "name": "SSE Test", "product": "stream", "goal": "verify SSE",
+            "language": "en", "replace": True
+        })
+        self.assertEqual(status, 200)
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=8)
+        try:
+            conn.request("GET", "/stream?since=0")
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            # Consume the initial ready frame.
+            deadline = time.time() + 3
+            ready = False
+            while time.time() < deadline:
+                line = res.readline().decode("utf-8", "replace").strip()
+                if line == "event: ready":
+                    ready = True
+                    break
+                if not line:
+                    continue
+            self.assertTrue(ready)
+            status, _ = self.request("/messages", "POST", {
+                "roomId": "opc-room-founder", "content": "sse-stream-test"
+            })
+            self.assertEqual(status, 200)
+            found = False
+            deadline = time.time() + 6
+            while time.time() < deadline:
+                line = res.readline().decode("utf-8", "replace").strip()
+                if line.startswith("data:") and "sse-stream-test" in line:
+                    found = True
+                    break
+            self.assertTrue(found)
+        finally:
+            conn.close()
+            self.request("/company", "DELETE")
+
     def test_missing_agent_event_is_rejected(self):
         status, data = self.request("/events", "POST", {"agentId": "ext-missing", "kind": "skill"})
         self.assertEqual(status, 400)

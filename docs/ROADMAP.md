@@ -32,6 +32,9 @@ This is an early open-source prototype, not a production observability or agent-
 - [ ] Extract CSS into feature modules / design tokens.
 - [ ] TypeScript or JSDoc type checking for the engine/event schema.
 - [x] Day/night theme, mobile layout checks and 390 px browser self-check.
+- [x] One-person company template, role slots, dependency tasks, auto-dispatch.
+- [x] Real-time group chat over SSE with room + assignment + execution isolation.
+- [x] Chinese/English UI and generated company content.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.
 - [ ] i18n (zh-CN / en) beyond the README.
 - [ ] Packaging: Docker or a `start.sh` that waits for/reuses a healthy bridge.
@@ -40,6 +43,8 @@ This is an early open-source prototype, not a production observability or agent-
 ## Known limitations
 
 - External agents only receive tasks through the pull-based assignment protocol; completion is self-reported and not locally reviewed.
+- The one-person company needs a real worker bound to each role for real completion; provider API agents are one-shot and excluded from task rooms.
+- SSE is localhost-only and unauthenticated.
 - Model API calls are one-shot; no streaming, retries or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.

@@ -107,6 +107,26 @@ The browser mirrors the bridge assignment into `task.status`, `task.progress`,
 unverified checks are finalized as risk/missed. See
 [TASK_DELEGATION.md](TASK_DELEGATION.md).
 
+## Company rooms and execution isolation
+
+A one-person company creates department rooms and one room per task. A worker
+message is accepted only with the assignment's execution context:
+
+```json
+{
+  "agentId": "opc-product",
+  "roomId": "opc-task-t1",
+  "assignmentId": "asg-...",
+  "executionId": "exec-...",
+  "content": "Offer draft is ready."
+}
+```
+
+The bridge returns 400 if the agent, room, assignment or executionId do not
+match. The same worker may hold multiple assignments, but each has a distinct
+`executionId` and room. `GET /stream?since=N` streams chat messages over SSE.
+See [COMPANY_OS.md](COMPANY_OS.md).
+
 ## Model API adapter
 
 `POST /providers/<id>/run` makes one model call and then emits a normal external

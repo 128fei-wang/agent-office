@@ -3,6 +3,7 @@
 
   const AO = window.AgentOffice;
   const params = new URLSearchParams(window.location.search);
+  if (typeof AO.initI18n === "function") AO.initI18n(params.get("lang"));
 
   (function runBoot() {
     const boot = document.getElementById("boot");
@@ -120,6 +121,8 @@
   const themeBtn = document.getElementById("themeBtn");
   const themeIcon = document.getElementById("themeIcon");
   const themeLabel = document.getElementById("themeLabel");
+  const langBtn = document.getElementById("langBtn");
+  const companyBtn = document.getElementById("companyBtn");
   const THEME_KEY = "agent-office.theme.v1";
 
   function applyTheme(theme, persist) {
@@ -128,10 +131,10 @@
     document.documentElement.classList.toggle("theme-day", next === "day");
     document.documentElement.style.colorScheme = next === "day" ? "light" : "dark";
     if (themeIcon) themeIcon.textContent = next === "day" ? "☀" : "☾";
-    if (themeLabel) themeLabel.textContent = next === "day" ? "白天" : "夜间";
+    if (themeLabel) themeLabel.textContent = next === "day" ? AO.t("themeDay") : AO.t("themeNight");
     if (themeBtn) {
       themeBtn.setAttribute("aria-pressed", next === "day" ? "true" : "false");
-      themeBtn.title = next === "day" ? "切换到夜间模式（D）" : "切换到白天模式（D）";
+      themeBtn.title = next === "day" ? AO.t("themeToNight") : AO.t("themeToDay");
     }
     if (persist) {
       try { localStorage.setItem(THEME_KEY, next); } catch (err) {}
@@ -190,10 +193,35 @@
   });
 
   function setPlayLabel() {
-    playBtn.textContent = engine.paused ? "继续" : "暂停";
+    playBtn.textContent = engine.paused ? AO.t("resume") : AO.t("pause");
     playBtn.classList.toggle("is-paused", engine.paused);
     document.body.classList.toggle("sim-paused", engine.paused);
   }
+
+  function setLangLabel() {
+    if (!langBtn) return;
+    langBtn.textContent = AO.lang === "en" ? "中" : "EN";
+    langBtn.title = AO.lang === "en" ? "切换到中文" : "Switch to English";
+    langBtn.setAttribute("aria-label", langBtn.title);
+  }
+  setLangLabel();
+  if (langBtn) {
+    langBtn.addEventListener("click", function () {
+      AO.setLang(AO.lang === "en" ? "zh" : "en", true);
+      setLangLabel();
+      setPlayLabel();
+      applyTheme(document.documentElement.dataset.theme === "day" ? "day" : "night", false);
+      renderer.render();
+      if (renderer.company && renderer.company.isOpen) renderer.company.render();
+    });
+  }
+  document.addEventListener("agent-office:lang", function () {
+    setLangLabel();
+    setPlayLabel();
+    applyTheme(document.documentElement.dataset.theme === "day" ? "day" : "night", false);
+    renderer.render();
+    if (renderer.company && renderer.company.isOpen) renderer.company.render();
+  });
 
   function applySpeed(value) {
     engine.speed = value;
@@ -295,6 +323,11 @@
       if (btn) btn.click();
     } else if (e.key === "t" || e.key === "T") {
       if (renderer.traceLab) renderer.traceLab.toggle();
+    } else if (e.key === "c" || e.key === "C") {
+      if (renderer.company) {
+        if (renderer.company.isOpen) renderer.company.close();
+        else renderer.company.open();
+      }
     }
   });
 
@@ -309,6 +342,14 @@
     });
   }
 
+  if (companyBtn) {
+    companyBtn.addEventListener("click", function () {
+      if (renderer.company) renderer.company.open();
+    });
+  }
+  const companyView = AO.CompanyView ? new AO.CompanyView(engine, renderer, renderer.external) : null;
+  renderer.company = companyView;
+
   renderer.build();
   setPlayLabel();
   scenarioSelect.value = engine.scenarioId;
@@ -321,6 +362,7 @@
   if (params.get("audit") === "1") renderer.switchBoardView("audit");
   if (params.get("hire") === "1" && renderer.hiring) renderer.hiring.open();
   if (params.get("external") === "1" && renderer.external) renderer.external.open();
+  if (params.get("company") === "1" && renderer.company) renderer.company.open();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {
     renderer.traceLab.open();
     if (params.get("trace") === "evals") renderer.traceLab.setTab("evals");

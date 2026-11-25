@@ -1,13 +1,13 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office where six autonomous agents claim work, review each other, hold meetings, handle incidents, and ship a product — with an evidence ledger, an audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing and task delegation, plus day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office and one-person-company workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with an evidence ledger, audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing, task delegation, real-time group chat, a one-person company template, bilingual UI, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -59,6 +59,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Audit](docs/screenshots/audit.jpg) | ![External agent](docs/screenshots/external-agents.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
+| **One-person company** | **Group chat + isolation** |
+| ![Company OS](docs/screenshots/company-os.jpg) | ![Delegation](docs/screenshots/delegation.jpg) |
 
 ## Traceability and audit
 
@@ -78,6 +80,9 @@ This is the core product capability. The simulation is not “agents looking bus
 - **External agents** — a local bridge supports one-time pairing, registration, heartbeats, and event ingestion; external actions, skills, tools, files, tokens, and cost flow into the ledger, feed, Trace Lab, and OTLP. The team panel shows ONLINE / OFFLINE.
 - **Task delegation and writeback** — delegate a backlog task from the task drawer; external agents pull `GET /assignments` and report progress/completion through `PATCH /assignments/<id>`. The board, audit, and Trace update from the bridge.
 - **Day / night** — toggle with the sun/moon button or press `D`; day mode uses warm paper panels and a daylight wash, night mode keeps the command-center palette. The choice persists in localStorage.
+- **One-person company** — generate 8 AI employees, 11 dependency-aware tasks, 4 department channels and an isolated room per task; ready tasks auto-dispatch and dependencies unlock automatically.
+- **Real-time group chat** — SSE message stream; founder, role agents and system events live in separate channels. Task rooms require `assignmentId + executionId`, so an agent working on multiple tasks cannot report into the wrong room.
+- **Bilingual** — `EN / 中` toggle or `?lang=en`; shell, task statuses, chat, company template and generated content support both languages.
 - **Model APIs** — Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen, and Ollama presets. Configure the key in the bridge once, then connect and run a single prompt; real token and latency data lands in Trace.
 - **Rename** — local agents via ✎ in the inspector or dossier; external agents from the external drawer. Local names persist in localStorage, external names sync to the bridge.
 - **Snapshots** — save / restore the current world (tasks, agents, ledger, meetings, history) to localStorage.
@@ -91,6 +96,8 @@ This is the core product capability. The simulation is not “agents looking bus
 ?task=t4                open a task drawer
 ?agent=a4               open an agent dossier
 ?theme=day              open day mode
+?company=1              open the one-person company workspace
+?lang=en                English UI
 ?trace=1                open Trace Lab
 ?hire=1                 open the add-agent dialog
 ?external=1             open external agent pairing
@@ -206,6 +213,8 @@ curl -X POST http://127.0.0.1:8787/events \
 Endpoints:
 
 - `GET /health`
+- `GET /company` / `POST /company/bootstrap` / `POST /company/dispatch` / `DELETE /company`
+- `GET /rooms` / `GET /messages` / `POST /messages` / `GET /stream?since=N`
 - `GET /agents`
 - `POST /agents`
 - `PATCH /agents/<id>`
@@ -231,6 +240,49 @@ Endpoints:
 - `POST /demo/start` / `POST /demo/stop`
 
 The bridge binds `127.0.0.1` only. No API key ever lives in the frontend; the endpoint field on an agent profile is metadata, not a proxy. External events enter the ledger, Trace, and OTLP. Task state changes only through an explicit Assignment writeback. External completion is self-reported, bypasses local review, and leaves unverified checks as audit gaps.
+
+## One-person company, group chat and isolation
+
+Open **One-person company** in the top bar or use `?company=1`.
+
+### Generate the company
+
+Enter a company name, product/offer, weekly goal and generated language. The
+bridge creates:
+
+- 8 roles: Chief of Staff, Product Strategist, Copywriter, Designer, Engineer,
+  QA, Growth and Video Producer;
+- 11 dependency-aware tasks from offer/ICP through launch and weekly review;
+- 4 department channels plus one isolated room per task;
+- role slots (`opc-<role>`) with pair codes;
+- assignments for ready tasks, with dependent tasks unlocked after completion.
+
+Click **Connect Agent** on a role to generate a role-bound pairing code. Send the
+setup message to Claude Code, Codex or another worker. When claimed, the worker
+uses that role identity and polls its assignments.
+
+### Chat and task isolation
+
+- The founder can post in any channel.
+- Worker messages require `roomId`, `assignmentId`, `executionId` and `agentId`.
+- A task-room message is accepted only when the worker, assignment, room and
+  execution context all match. Wrong room, wrong execution or an impersonated
+  agent is rejected by the bridge.
+- One agent may hold two tasks; each assignment has its own execution context and
+  task room.
+- Chat uses `GET /stream?since=N` (SSE) with automatic browser reconnect.
+- Progress/completion is written as a system message and mirrored to the board.
+
+See [docs/COMPANY_OS.md](docs/COMPANY_OS.md) for the role table, dependency graph,
+API and boundaries.
+
+### Bilingual
+
+- `EN / 中` in the top bar; the company header also has a language button.
+- `?lang=en` / `?lang=zh` deep links.
+- Company role names, task titles and briefs are generated in the chosen
+  language; UI labels can switch at any time.
+- Authored simulation dialogue remains original content.
 
 ## Day / night and mobile
 
@@ -285,7 +337,9 @@ agent-office/
 │   ├── fx.js             etched routes / signal comets / meeting radar / particles
 │   ├── trace.js          Trace Lab: spans, timeline, replay, evals, OTLP
 │   ├── hiring.js         add-agent form, hot desks, localStorage
+│   ├── i18n.js           Chinese/English dictionary and language switch
 │   ├── external.js       pairing, bridge polling, task delegation, rename
+│   ├── company.js        one-person template, roles, tasks, chat, SSE, isolation
 │   ├── render.js         DOM rendering, office construction, panels
 │   └── main.js           boot, loop, controls, shortcuts
 ├── bridge.py             localhost external-agent bridge
@@ -293,7 +347,9 @@ agent-office/
 ├── tests/test_bridge.py  bridge integration tests (stdlib unittest)
 ├── docs/PROVIDERS.md     model API setup and troubleshooting
 ├── docs/TASK_DELEGATION.md external task protocol and status machine
+├── docs/COMPANY_OS.md    one-person template, chat and isolation
 ├── theme.css             day theme, Trace Lab light skin, mobile layout
+├── company.css           company workspace, chat and language styles
 ├── start.sh              static server + bridge
 ├── dev-*.html            browser self-check pages
 └── docs/                 architecture, pairing, protocol, roadmap, checklist
@@ -319,8 +375,10 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-external.html` — pairing, claim, one-time enforcement, events, rename, OTLP, persistence.
 - `dev-delegation.html` — delegation, progress/completion writeback, self-report markers, audit gaps.
 - `dev-theme.html` — day/night toggle, persistence, `D` shortcut, 390 px mobile layout, drawers, Trace Lab, external modal.
+- `dev-company.html` — template generation, 8 roles / 11 tasks / 15 rooms, auto-dispatch, role pairing, chat, task-room isolation, completion writeback and i18n.
+- `dev-i18n.html` — English/Chinese toggle, persistence and reload.
 
-Run the 15 bridge integration tests and repository checks with:
+Run the 17 bridge integration tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -350,6 +408,9 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - The rule engine's “autonomy” is a designed behavior space, not open-ended reasoning. The ledger and audit model are reusable for real agents.
 - External task delegation is **pull-based and self-reported**: the bridge does not push a webhook, and external completion bypasses local review. Unverified checks remain as risk/missed audit gaps.
 - Assignments are scoped to the current scenario and `runId`; a new run does not automatically reuse old delegation results.
+- The one-person company auto-dispatches tasks, but real completion requires binding a worker agent. Model API agents are one-shot and excluded from task rooms.
+- SSE is a localhost stream without authentication; company data lives in `~/.agent-office/bridge-state.json`.
+- Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
 - Pairing codes are an invitation mechanism, not authentication. The bridge has no auth or TLS and should only be used on localhost.
 - Model APIs are one-shot adapters, not autonomous task execution. Cost is not computed from vendor prices; token counts use provider usage when available.
 - The office uses fixed coordinates; many more desks require adjusting `AO.HUBS` and obstacles.

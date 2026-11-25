@@ -36,6 +36,8 @@ python3 bridge.py
   - `dev-external.html` (bridge must be running)
   - `dev-delegation.html` (bridge must be running)
   - `dev-theme.html` (theme and mobile layout)
+  - `dev-company.html` (one-person company, chat and isolation)
+  - `dev-i18n.html` (language switch)
 - `bash scripts/check.sh` covers syntax, required files, and the bridge tests run separately above.
 
 `dev-external.html` starts and stops the bridge demo; it should leave the bridge in a clean state.

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>I18n self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style>
+</head><body>
+<h1>I18N SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');
+  function load(src){return new Promise(resolve=>{f.addEventListener('load',()=>setTimeout(resolve,2400),{once:true});f.src=src;});}
+  (async function run(){
+    try{
+      await load('index.html?intro=0&ticks=10&lang=zh&theme=day');
+      let d=f.contentDocument,w=f.contentWindow;
+      check('app exposed',!!w.AgentOfficeApp);
+      check('initial lang zh',d.documentElement.lang==='zh-CN',d.documentElement.lang);
+      check('zh play label',d.getElementById('playBtn').textContent==='暂停',d.getElementById('playBtn').textContent);
+      check('zh company label',d.getElementById('companyBtn').textContent==='一人公司',d.getElementById('companyBtn').textContent);
+      check('zh hire label',/添加 Agent/.test(d.getElementById('hireBtn').textContent));
+      d.getElementById('langBtn').click();
+      await wait(300);
+      check('english lang attr',d.documentElement.lang==='en',d.documentElement.lang);
+      check('english play label',/Pause|Resume/.test(d.getElementById('playBtn').textContent),d.getElementById('playBtn').textContent);
+      check('english company label',d.getElementById('companyBtn').textContent==='COMPANY',d.getElementById('companyBtn').textContent);
+      check('english hire label',/Add agent/.test(d.getElementById('hireBtn').textContent),d.getElementById('hireBtn').textContent);
+      check('language persisted',w.localStorage.getItem('agent-office.lang.v1')==='en');
+      check('theme label translated',d.getElementById('themeLabel').textContent==='Day',d.getElementById('themeLabel').textContent);
+      d.getElementById('companyBtn').click();
+      await wait(500);
+      check('company overlay opens',!d.getElementById('companyLab').hidden);
+      check('company builder English',/Build a one-person company/.test(d.getElementById('companyShell').textContent));
+      check('company roles English',/CHIEF OF STAFF/.test(d.getElementById('companyShell').textContent));
+      d.querySelector('[data-company-close]').click();
+      await wait(100);
+      await load('index.html?intro=0&ticks=0&theme=day');
+      d=f.contentDocument;w=f.contentWindow;
+      check('language survives reload',d.documentElement.lang==='en',d.documentElement.lang);
+      d.getElementById('langBtn').click();await wait(300);
+      check('back to zh',d.documentElement.lang==='zh-CN');
+      check('zh labels restored',d.getElementById('companyBtn').textContent==='一人公司');
+      finish();
+    }catch(err){lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}
+  })();
+})();
+</script></body></html>

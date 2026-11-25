@@ -509,10 +509,14 @@ def load_state() -> dict:
                 data.setdefault("demo", False)
                 data.setdefault("pairs", [])
                 data.setdefault("assignments", [])
+                data.setdefault("company", None)
+                data.setdefault("messages", [])
+                data.setdefault("messageSeq", 0)
                 return data
         except Exception:
             pass
-    return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": [], "assignments": []}
+    return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": [],
+            "assignments": [], "company": None, "messages": [], "messageSeq": 0}
 
 
 STATE = load_state()
@@ -572,11 +576,14 @@ def pair_setup_url(base: str, code: str) -> str:
     return base + "/pair/" + code + "/setup.md"
 
 
-def pair_message(base: str, code: str, expires_at: float) -> str:
+def pair_message(base: str, code: str, expires_at: float, role_name: str = "") -> str:
     setup = pair_setup_url(base, code)
     exp = time.strftime("%H:%M:%S", time.localtime(expires_at))
+    role_line = ("绑定角色：" + role_name + "。领取后会直接接管这个角色，不要重复领取。\n\n"
+                 if role_name else "")
     return (
         "你正在接入 Agent Office。\n\n"
+        + role_line +
         "1. 打开下面的接入说明并按其操作：\n" + setup + "\n\n"
         "2. 连接码：" + code + "（一次性，30 分钟内有效，过期时间 " + exp + "）\n"
         "3. 完成后请向 Agent Office 发送一条问候事件，并在界面里确认接入。\n\n"
@@ -587,12 +594,15 @@ def pair_message(base: str, code: str, expires_at: float) -> str:
 def pair_setup_markdown(base: str, pair: dict) -> str:
     code = pair["code"]
     exp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pair["expiresAt"]))
+    role_line = ("- Role: `" + str(pair.get("roleId")) + "` (claim binds the existing role slot)\n"
+                 if pair.get("roleId") else "")
     return (
         "# Agent Office · External Agent Pairing\n\n"
         "You are connecting an external agent to Agent Office.\n\n"
         "- Bridge: `" + base + "`\n"
         "- Connect code: `" + code + "`\n"
-        "- Expires: " + exp + " (one-time)\n\n"
+        "- Expires: " + exp + " (one-time)\n"
+        + role_line + "\n"
         "## 1. Claim this identity\n\n"
         "```bash\n"
         "curl -X POST " + base + "/pair/" + code + "/claim \\\n"
@@ -699,6 +709,11 @@ def add_assignment(body: dict) -> dict:
         "taskTitle": title,
         "scenarioId": str(body.get("scenarioId") or "")[:40],
         "runId": str(body.get("runId") or "")[:64],
+        "companyId": str(body.get("companyId") or "")[:64],
+        "companyTaskId": str(body.get("companyTaskId") or "")[:80],
+        "roleId": str(body.get("roleId") or "")[:40],
+        "roomId": str(body.get("roomId") or "")[:80],
+        "executionId": str(body.get("executionId") or ("exec-" + uuid.uuid4().hex[:10]))[:64],
         "brief": str(body.get("brief") or "")[:800],
         "status": "assigned",
         "progress": 0,
@@ -817,9 +832,444 @@ def update_assignment(assignment_id: str, body: dict) -> dict:
             "provider": agent.get("provider") if agent else None,
         })
     assignment["lastEventId"] = event.get("id")
+    sync_company_from_assignment(assignment)
     if agent:
         save_state()
     return assignment
+
+
+COMPANY_ROLE_DEFS = [
+    {"id": "chief", "titleZh": "运营操盘手", "titleEn": "Chief of Staff",
+     "missionZh": "拆目标、排优先级、主持复盘，保证公司只在关键路径上花时间。",
+     "missionEn": "Turn goals into priorities, unblock work and run the weekly review.",
+     "skills": ["planning", "coordination", "review"], "color": "#d0a27a", "room": "founder"},
+    {"id": "product", "titleZh": "产品策略", "titleEn": "Product Strategist",
+     "missionZh": "定义 Offer、ICP、MVP 范围和验收标准。",
+     "missionEn": "Define the offer, ICP, MVP scope and acceptance criteria.",
+     "skills": ["research", "prd", "positioning"], "color": "#55d6c2", "room": "product"},
+    {"id": "copy", "titleZh": "文案", "titleEn": "Copywriter",
+     "missionZh": "写落地页、邮件、内容和发布文案，统一品牌语气。",
+     "missionEn": "Write landing pages, emails, content and launch copy in one brand voice.",
+     "skills": ["copy", "seo", "email"], "color": "#ff9ec0", "room": "product"},
+    {"id": "design", "titleZh": "设计", "titleEn": "Designer",
+     "missionZh": "定品牌方向、页面结构和视觉资产，保证移动端体验。",
+     "missionEn": "Set brand direction, page structure and visual assets for mobile-first delivery.",
+     "skills": ["brand", "ui", "figma"], "color": "#b58cff", "room": "product"},
+    {"id": "engineer", "titleZh": "工程师", "titleEn": "Engineer",
+     "missionZh": "搭建可上线的产品页面和自动化，提交可验证的文件与测试。",
+     "missionEn": "Build the shippable product and automation, with verifiable files and tests.",
+     "skills": ["frontend", "backend", "deploy"], "color": "#7cb7ff", "room": "build"},
+    {"id": "qa", "titleZh": "测试", "titleEn": "QA",
+     "missionZh": "做主流程、边界、回归、无障碍和发布前检查。",
+     "missionEn": "Cover main flows, edge cases, regression, accessibility and release checks.",
+     "skills": ["test", "accessibility", "release"], "color": "#f2b544", "room": "build"},
+    {"id": "growth", "titleZh": "增长", "titleEn": "Growth",
+     "missionZh": "做发布计划、埋点、渠道实验和复盘指标。",
+     "missionEn": "Own launch plan, analytics, channel experiments and review metrics.",
+     "skills": ["launch", "analytics", "content"], "color": "#74d6a3", "room": "launch"},
+    {"id": "video", "titleZh": "视频制作", "titleEn": "Video Producer",
+     "missionZh": "把产品价值变成短视频脚本、分镜和发布素材。",
+     "missionEn": "Turn the product value into scripts, storyboards and launch video assets.",
+     "skills": ["script", "video", "editing"], "color": "#e3a06c", "room": "launch"},
+]
+
+COMPANY_TASK_DEFS = [
+    {"id": "t1", "titleZh": "定义 Offer 与 ICP", "titleEn": "Define offer and ICP",
+     "briefZh": "写清楚卖给谁、解决什么问题、为什么现在买、成功标准是什么。",
+     "briefEn": "Define who buys, the problem, why now, and the success criteria.",
+     "roleId": "product", "deps": []},
+    {"id": "t2", "titleZh": "客户与竞品研究", "titleEn": "Customer and competitor research",
+     "briefZh": "找 5 个竞品和 5 个潜在客户，提炼可执行差异点。",
+     "briefEn": "Review five competitors and five prospects; extract actionable differences.",
+     "roleId": "product", "deps": []},
+    {"id": "t3", "titleZh": "落地页文案", "titleEn": "Landing page copy",
+     "briefZh": "基于 Offer 写首屏、价值点、FAQ 和 CTA，全部可上线。",
+     "briefEn": "Write hero, value props, FAQ and CTA based on the offer; ready to ship.",
+     "roleId": "copy", "deps": ["t1"]},
+    {"id": "t4", "titleZh": "品牌与页面视觉", "titleEn": "Brand and page direction",
+     "briefZh": "定色彩、字体、组件和移动端首屏，输出设计说明。",
+     "briefEn": "Set color, type, components and mobile hero; output design notes.",
+     "roleId": "design", "deps": ["t1"]},
+    {"id": "t5", "titleZh": "搭建产品落地页", "titleEn": "Build the landing page",
+     "briefZh": "实现页面、表单、响应式和分析埋点，提交文件与测试。",
+     "briefEn": "Implement the page, form, responsive states and analytics; submit files and tests.",
+     "roleId": "engineer", "deps": ["t3", "t4"]},
+    {"id": "t6", "titleZh": "埋点与分析", "titleEn": "Analytics and tracking",
+     "briefZh": "定义转化事件、看板和归因方式，验证数据能回来。",
+     "briefEn": "Define conversion events, dashboard and attribution; verify data arrives.",
+     "roleId": "growth", "deps": ["t5"]},
+    {"id": "t7", "titleZh": "发布前 QA", "titleEn": "Pre-release QA",
+     "briefZh": "跑主流程、边界、移动端、无障碍和回滚检查。",
+     "briefEn": "Run main flows, edge cases, mobile, accessibility and rollback checks.",
+     "roleId": "qa", "deps": ["t5"]},
+    {"id": "t8", "titleZh": "发布计划", "titleEn": "Launch plan",
+     "briefZh": "写发布节奏、渠道、公告、客服话术和失败预案。",
+     "briefEn": "Write launch cadence, channels, announcement, support copy and rollback plan.",
+     "roleId": "growth", "deps": ["t6", "t7"]},
+    {"id": "t9", "titleZh": "内容日历", "titleEn": "Content calendar",
+     "briefZh": "排 30 天内容，围绕 Offer 做可复用选题和分发。",
+     "briefEn": "Plan 30 days of content with reusable angles and distribution.",
+     "roleId": "copy", "deps": ["t8"]},
+    {"id": "t10", "titleZh": "发布视频", "titleEn": "Launch video",
+     "briefZh": "写 30 秒脚本、分镜和素材清单，交付可剪辑版本。",
+     "briefEn": "Write a 30-second script, storyboard and asset list for editing.",
+     "roleId": "video", "deps": ["t8"]},
+    {"id": "t11", "titleZh": "本周复盘", "titleEn": "Weekly review",
+     "briefZh": "汇总交付、指标、风险和下周唯一优先级。",
+     "briefEn": "Summarize delivery, metrics, risks and next week's single priority.",
+     "roleId": "chief", "deps": ["t8", "t9", "t10"]},
+]
+
+COMPANY_DEPARTMENTS = [
+    {"id": "founder", "nameZh": "创始人会议室", "nameEn": "Founder Room",
+     "roleIds": ["chief", "product", "copy", "design", "engineer", "qa", "growth", "video"]},
+    {"id": "product", "nameZh": "产品与内容", "nameEn": "Product & Content",
+     "roleIds": ["product", "copy", "design", "chief"]},
+    {"id": "build", "nameZh": "构建与质量", "nameEn": "Build & Quality",
+     "roleIds": ["engineer", "qa", "design", "chief"]},
+    {"id": "launch", "nameZh": "发布与增长", "nameEn": "Launch & Growth",
+     "roleIds": ["growth", "copy", "video", "chief"]},
+]
+
+
+def company_text(obj, lang, base):
+    return obj.get(base + ("En" if lang == "en" else "Zh"), obj.get(base + "Zh", ""))
+
+
+def company_role_agent_id(role_id):
+    return "opc-" + role_id
+
+
+def find_company_room(room_id):
+    company = STATE.get("company")
+    if not company:
+        return None
+    for room in company.get("rooms", []):
+        if room.get("id") == room_id:
+            return room
+    return None
+
+
+def find_company_task(task_id):
+    company = STATE.get("company")
+    if not company:
+        return None
+    for task in company.get("tasks", []):
+        if task.get("id") == task_id:
+            return task
+    return None
+
+
+def add_chat_message(room_id, content, kind="system", agent_id=None,
+                     assignment_id=None, execution_id=None, task_id=None,
+                     company_id=None, extra=None):
+    company = STATE.get("company")
+    if not company:
+        raise ValueError("no company")
+    room = find_company_room(room_id)
+    if not room:
+        raise ValueError("unknown room")
+    agent = find_agent(agent_id) if agent_id else None
+    STATE["messageSeq"] = int(STATE.get("messageSeq") or 0) + 1
+    message = {
+        "id": STATE["messageSeq"],
+        "companyId": company_id or company.get("id"),
+        "roomId": room_id,
+        "kind": kind,
+        "agentId": agent_id,
+        "agentName": agent.get("name") if agent else None,
+        "roleId": agent.get("roleId") if agent else None,
+        "content": str(content or "")[:4000],
+        "taskId": task_id or room.get("taskId"),
+        "assignmentId": assignment_id,
+        "executionId": execution_id,
+        "createdAt": now_iso(),
+    }
+    if extra and isinstance(extra, dict):
+        message.update(extra)
+    STATE.setdefault("messages", []).append(message)
+    if len(STATE["messages"]) > 3000:
+        STATE["messages"] = STATE["messages"][-3000:]
+    company["lastMessageAt"] = message["createdAt"]
+    return message
+
+
+def public_company():
+    company = STATE.get("company")
+    if not company:
+        return None
+    out = dict(company)
+    out["roles"] = []
+    for role in company.get("roles", []):
+        item = dict(role)
+        agent = find_agent(role.get("agentId") or "")
+        item["agentName"] = agent.get("name") if agent else role.get("titleZh")
+        item["agentStatus"] = ("online" if online(agent) else "offline") if agent else "offline"
+        item["agentRuntime"] = agent.get("runtime") if agent else "unbound"
+        out["roles"].append(item)
+    out["tasks"] = [dict(t) for t in company.get("tasks", [])]
+    out["rooms"] = [dict(r) for r in company.get("rooms", [])]
+    out["assignments"] = [public_assignment(a) for a in STATE.get("assignments", [])
+                          if a.get("companyTaskId")]
+    return out
+
+
+def company_bootstrap(body):
+    now = now_iso()
+    lang = "en" if str(body.get("language") or "").lower().startswith("en") else "zh"
+    existing = STATE.get("company")
+    if existing and not body.get("replace"):
+        raise ValueError("company already exists; pass replace=true to rebuild")
+    with LOCK:
+        if existing:
+            old_id = existing.get("id")
+            STATE["agents"] = [a for a in STATE["agents"]
+                               if a.get("companyId") != old_id]
+            STATE["assignments"] = [a for a in STATE.get("assignments", [])
+                                    if a.get("companyId") != old_id]
+            STATE["messages"] = []
+            STATE["messageSeq"] = 0
+        company_id = "opc-" + uuid.uuid4().hex[:8]
+        name = str(body.get("name") or "Solo Company")[:80]
+        product = str(body.get("product") or "")[:240]
+        goal = str(body.get("goal") or "")[:400]
+        roles = []
+        for role in COMPANY_ROLE_DEFS:
+            role_agent_id = company_role_agent_id(role["id"])
+            agent = {
+                "id": role_agent_id,
+                "name": company_text(role, lang, "title"),
+                "runtime": "role-slot",
+                "endpoint": "",
+                "skills": list(role["skills"]),
+                "note": company_text(role, lang, "mission"),
+                "color": role["color"],
+                "createdAt": now,
+                "lastSeen": None,
+                "lastSeenTs": 0,
+                "companyId": company_id,
+                "roleId": role["id"],
+            }
+            STATE["agents"].append(agent)
+            roles.append({
+                "id": role["id"],
+                "titleZh": role["titleZh"],
+                "titleEn": role["titleEn"],
+                "missionZh": role["missionZh"],
+                "missionEn": role["missionEn"],
+                "skills": list(role["skills"]),
+                "color": role["color"],
+                "agentId": role_agent_id,
+            })
+        rooms = []
+        role_agents = {r["id"]: company_role_agent_id(r["id"]) for r in COMPANY_ROLE_DEFS}
+        for dept in COMPANY_DEPARTMENTS:
+            rooms.append({
+                "id": "opc-room-" + dept["id"],
+                "name": company_text(dept, lang, "name"),
+                "nameZh": dept["nameZh"],
+                "nameEn": dept["nameEn"],
+                "kind": "department",
+                "companyId": company_id,
+                "memberIds": [role_agents[r] for r in dept["roleIds"]] + ["human"],
+                "createdAt": now,
+            })
+        tasks = []
+        for task_def in COMPANY_TASK_DEFS:
+            task_id = "opc-" + task_def["id"]
+            room_id = "opc-task-" + task_def["id"]
+            rooms.append({
+                "id": room_id,
+                "name": task_id,
+                "nameZh": "任务 · " + task_def["titleZh"],
+                "nameEn": "Task · " + task_def["titleEn"],
+                "kind": "task",
+                "companyId": company_id,
+                "taskId": task_id,
+                "roleId": task_def["roleId"],
+                "memberIds": [role_agents[task_def["roleId"]], "human"],
+                "createdAt": now,
+            })
+            tasks.append({
+                "id": task_id,
+                "titleZh": task_def["titleZh"],
+                "titleEn": task_def["titleEn"],
+                "briefZh": task_def["briefZh"],
+                "briefEn": task_def["briefEn"],
+                "roleId": task_def["roleId"],
+                "deps": ["opc-" + dep for dep in task_def["deps"]],
+                "status": "waiting",
+                "progress": 0,
+                "assignmentId": None,
+                "executionId": None,
+                "roomId": room_id,
+                "result": "",
+                "evidence": [],
+                "createdAt": now,
+                "updatedAt": now,
+                "completedAt": None,
+            })
+        company = {
+            "id": company_id,
+            "name": name,
+            "product": product,
+            "goal": goal,
+            "language": lang,
+            "template": "one-person-company",
+            "createdAt": now,
+            "roles": roles,
+            "tasks": tasks,
+            "rooms": rooms,
+            "lastMessageAt": now,
+        }
+        STATE["company"] = company
+        add_chat_message(
+            "opc-room-founder",
+            ("公司已创建：" + name + "。目标：" + goal) if lang == "zh"
+            else ("Company created: " + name + ". Goal: " + goal),
+            kind="system",
+        )
+        dispatch_ready_company_tasks(company)
+        save_state()
+        return company
+
+
+def dispatch_ready_company_tasks(company=None):
+    company = company or STATE.get("company")
+    if not company:
+        return 0
+    language = company.get("language", "zh")
+    dispatched = 0
+    for task in company.get("tasks", []):
+        if task.get("status") not in ("waiting", "backlog") or task.get("assignmentId"):
+            continue
+        deps = task.get("deps") or []
+        completed = {t.get("id") for t in company.get("tasks", [])
+                     if t.get("status") == "completed"}
+        if any(dep not in completed for dep in deps):
+            continue
+        role = next((r for r in company.get("roles", []) if r.get("id") == task.get("roleId")), None)
+        if not role:
+            continue
+        assignment = add_assignment({
+            "agentId": role.get("agentId"),
+            "taskId": task["id"],
+            "title": company_text(task, language, "title"),
+            "scenarioId": "company",
+            "runId": company.get("id"),
+            "companyTaskId": task["id"],
+            "companyId": company.get("id"),
+            "roleId": role.get("id"),
+            "roomId": task.get("roomId"),
+            "brief": company_text(task, language, "brief"),
+        })
+        task["status"] = "assigned"
+        task["assignmentId"] = assignment["id"]
+        task["executionId"] = assignment.get("executionId")
+        task["updatedAt"] = now_iso()
+        add_chat_message(
+            task.get("roomId"),
+            ("任务已派发：" + company_text(task, language, "title") +
+             " → " + company_text(role, language, "title")) if language == "zh"
+            else ("Task dispatched: " + company_text(task, language, "title") +
+                  " -> " + company_text(role, language, "title")),
+            kind="system", assignment_id=assignment["id"],
+            execution_id=assignment.get("executionId"), task_id=task["id"],
+        )
+        dispatched += 1
+    return dispatched
+
+
+def sync_company_from_assignment(assignment):
+    company = STATE.get("company")
+    if not company or assignment.get("companyId") != company.get("id"):
+        return
+    task = find_company_task(assignment.get("companyTaskId") or "")
+    if not task:
+        return
+    status = assignment.get("status", "assigned")
+    task["progress"] = assignment.get("progress", 0)
+    task["result"] = assignment.get("result", "")
+    task["evidence"] = list(assignment.get("evidence") or [])
+    task["assignmentId"] = assignment.get("id")
+    task["executionId"] = assignment.get("executionId")
+    task["updatedAt"] = now_iso()
+    if status == "assigned":
+        task["status"] = "assigned"
+    elif status == "in_progress":
+        task["status"] = "in_progress"
+    elif status == "completed":
+        task["status"] = "completed"
+        task["completedAt"] = assignment.get("completedAt") or now_iso()
+    elif status == "failed":
+        task["status"] = "failed"
+    elif status == "cancelled":
+        task["status"] = "waiting"
+        task["assignmentId"] = None
+        task["executionId"] = None
+    language = company.get("language", "zh")
+    room_id = assignment.get("roomId") or task.get("roomId")
+    content = ("任务 " + company_text(task, language, "title") + " · " +
+               status + " · " + str(task.get("progress", 0)) + "%")
+    if status == "completed" and task.get("result"):
+        content += " · " + task["result"][:180]
+    add_chat_message(
+        room_id, content, kind="system", agent_id=assignment.get("agentId"),
+        assignment_id=assignment.get("id"), execution_id=assignment.get("executionId"),
+        task_id=task.get("id"),
+    )
+    if status == "completed":
+        dispatch_ready_company_tasks(company)
+
+
+def company_post_message(body):
+    company = STATE.get("company")
+    if not company:
+        raise ValueError("no company")
+    room_id = str(body.get("roomId") or "").strip()
+    room = find_company_room(room_id)
+    if not room:
+        raise ValueError("unknown room")
+    content = str(body.get("content") or "").strip()
+    if not content:
+        raise ValueError("message is empty")
+    agent_id = str(body.get("agentId") or "").strip() or None
+    assignment_id = str(body.get("assignmentId") or "").strip() or None
+    execution_id = str(body.get("executionId") or "").strip() or None
+    if agent_id:
+        agent = find_agent(agent_id)
+        if not agent or agent.get("companyId") != company.get("id"):
+            raise ValueError("agent is not a member of this company")
+        if room.get("kind") == "task":
+            if not assignment_id or not execution_id:
+                raise ValueError("task-room messages require assignmentId and executionId")
+            assignment = find_assignment(assignment_id)
+            if not assignment:
+                raise ValueError("unknown assignment")
+            if assignment.get("agentId") != agent_id:
+                raise ValueError("assignment does not belong to agent")
+            if assignment.get("roomId") != room_id:
+                raise ValueError("assignment is bound to another room")
+            if assignment.get("executionId") != execution_id:
+                raise ValueError("execution context mismatch")
+            if assignment.get("companyTaskId") != room.get("taskId"):
+                raise ValueError("assignment is bound to another task")
+            if assignment.get("status") not in ("assigned", "in_progress", "completed"):
+                raise ValueError("assignment is not active")
+        elif agent_id not in (room.get("memberIds") or []):
+            raise ValueError("agent is not a member of this room")
+        message = add_chat_message(
+            room_id, content, kind="agent", agent_id=agent_id,
+            assignment_id=assignment_id, execution_id=execution_id,
+            task_id=room.get("taskId"), company_id=company.get("id"),
+        )
+    else:
+        message = add_chat_message(
+            room_id, content, kind="human", task_id=room.get("taskId"),
+            company_id=company.get("id"),
+        )
+    save_state()
+    return message
 
 
 def ensure_demo_agent() -> dict:
@@ -1039,6 +1489,41 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("body must be an object")
         return data
 
+    def stream_messages(self, qs):
+        try:
+            since = int((qs.get("since") or [self.headers.get("Last-Event-ID") or "0"])[0])
+        except ValueError:
+            since = 0
+        try:
+            self.send_response(200)
+            self.cors()
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            self.wfile.write(b"retry: 2000\n\nevent: ready\ndata: {}\n\n")
+            self.wfile.flush()
+            last_ping = time.time()
+            while True:
+                with LOCK:
+                    messages = [m for m in STATE.get("messages", [])
+                                if int(m.get("id") or 0) > since]
+                for message in messages:
+                    since = int(message.get("id") or since)
+                    payload = json.dumps(message, ensure_ascii=False)
+                    frame = ("id: %s\nevent: message\ndata: %s\n\n"
+                             % (since, payload)).encode("utf-8")
+                    self.wfile.write(frame)
+                    self.wfile.flush()
+                if time.time() - last_ping >= 15:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                    last_ping = time.time()
+                time.sleep(0.8)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
     def do_OPTIONS(self):
         if not self.request_gate():
             return
@@ -1052,6 +1537,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         qs = parse_qs(parsed.query)
+        if path == "/stream":
+            self.stream_messages(qs)
+            return
         with LOCK:
             if path == "/health":
                 self.send_json({
@@ -1064,9 +1552,32 @@ class Handler(BaseHTTPRequestHandler):
                     "assignments": len(STATE.get("assignments", [])),
                     "activeAssignments": sum(1 for a in STATE.get("assignments", [])
                                             if a.get("status") in ASSIGNMENT_ACTIVE),
+                    "company": bool(STATE.get("company")),
+                    "rooms": len((STATE.get("company") or {}).get("rooms", [])),
+                    "messages": len(STATE.get("messages", [])),
                     "demo": bool(STATE.get("demo")),
                     "time": now_iso(),
                 })
+                return
+            if path == "/company":
+                self.send_json({"company": public_company()})
+                return
+            if path == "/rooms":
+                company = STATE.get("company")
+                self.send_json({"rooms": [dict(r) for r in (company or {}).get("rooms", [])]})
+                return
+            if path == "/messages":
+                room_filter = (qs.get("roomId") or [""])[0]
+                try:
+                    since = int((qs.get("since") or ["0"])[0])
+                except ValueError:
+                    since = 0
+                messages = [m for m in STATE.get("messages", [])
+                            if int(m.get("id") or 0) > since
+                            and (not room_filter or m.get("roomId") == room_filter)]
+                self.send_json({"messages": messages,
+                                "lastMessageId": max([m["id"] for m in messages] or
+                                                     [int(STATE.get("messageSeq") or 0)])})
                 return
             if path == "/assignments":
                 agent_filter = (qs.get("agentId") or [""])[0]
@@ -1131,7 +1642,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -1150,6 +1661,27 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_provider_post(path, body)
             return
         with LOCK:
+            if path == "/company/bootstrap":
+                try:
+                    company = company_bootstrap(body)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 409)
+                    return
+                self.send_json({"ok": True, "company": public_company()})
+                return
+            if path == "/company/dispatch":
+                count = dispatch_ready_company_tasks()
+                save_state()
+                self.send_json({"ok": True, "dispatched": count, "company": public_company()})
+                return
+            if path == "/messages":
+                try:
+                    message = company_post_message(body)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
+                self.send_json({"ok": True, "message": message})
+                return
             if path == "/assignments":
                 try:
                     assignment = add_assignment(body)
@@ -1161,13 +1693,25 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/pair/code":
                 code = new_pair_code()
                 expires_at = time.time() + 30 * 60
+                role_id = str(body.get("roleId") or "")[:40]
+                role_name = ""
+                if role_id:
+                    company = STATE.get("company")
+                    role = next((r for r in (company or {}).get("roles", [])
+                                 if r.get("id") == role_id), None)
+                    if not role:
+                        self.send_json({"error": "unknown role"}, 400)
+                        return
+                    role_name = str(role.get("titleZh") if (company or {}).get("language") != "en"
+                                    else role.get("titleEn"))[:80]
                 pair = {
                     "code": code,
                     "createdAt": now_iso(),
                     "expiresAt": expires_at,
                     "status": "pending",
                     "agentId": None,
-                    "nameHint": str(body.get("nameHint") or "")[:40],
+                    "roleId": role_id or None,
+                    "nameHint": str(body.get("nameHint") or role_name or "")[:40],
                 }
                 STATE.setdefault("pairs", []).append(pair)
                 # Keep every live code. Pending codes expire on their own, so the
@@ -1180,7 +1724,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({
                     "pair": public_pair(pair),
                     "setupUrl": pair_setup_url(base, code),
-                    "message": pair_message(base, code, expires_at),
+                    "message": pair_message(base, code, expires_at, role_name),
                 })
                 return
             if path.startswith("/pair/") and path.endswith("/claim"):
@@ -1194,9 +1738,37 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 name = str(body.get("name") or pair.get("nameHint") or "External Agent")[:40]
                 body["name"] = name
-                # A pairing code always mints a fresh identity; it must not be
-                # able to take over an existing id supplied in the body.
-                agent = create_agent_from_payload(body, "ext-" + uuid.uuid4().hex[:8])
+                if pair.get("roleId"):
+                    company = STATE.get("company")
+                    role = next((r for r in (company or {}).get("roles", [])
+                                 if r.get("id") == pair.get("roleId")), None)
+                    if not company or not role:
+                        self.send_json({"error": "company role no longer exists"}, 409)
+                        return
+                    agent_id = role.get("agentId") or company_role_agent_id(role["id"])
+                    agent = find_agent(agent_id)
+                    if not agent:
+                        agent = {
+                            "id": agent_id, "name": name, "runtime": "role-slot",
+                            "endpoint": "", "skills": list(role.get("skills") or []),
+                            "note": "", "color": role.get("color", "#b58cff"),
+                            "createdAt": now_iso(), "lastSeen": None, "lastSeenTs": 0,
+                            "companyId": company.get("id"), "roleId": role["id"],
+                        }
+                        STATE["agents"].append(agent)
+                    agent["name"] = name
+                    agent["runtime"] = str(body.get("runtime") or "role-slot")[:40]
+                    agent["endpoint"] = str(body.get("endpoint") or "")[:300]
+                    if isinstance(body.get("skills"), list) and body["skills"]:
+                        agent["skills"] = body["skills"]
+                    if body.get("note"):
+                        agent["note"] = str(body["note"])[:300]
+                    agent["lastSeen"] = now_iso()
+                    agent["lastSeenTs"] = time.time()
+                else:
+                    # A pairing code always mints a fresh identity; it must not be
+                    # able to take over an existing id supplied in the body.
+                    agent = create_agent_from_payload(body, "ext-" + uuid.uuid4().hex[:8])
                 agent["lastSeen"] = now_iso()
                 agent["lastSeenTs"] = time.time()
                 pair["status"] = "claimed"
@@ -1411,6 +1983,20 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         with LOCK:
+            if path == "/company":
+                company = STATE.get("company")
+                if company:
+                    old_id = company.get("id")
+                    STATE["agents"] = [a for a in STATE["agents"]
+                                       if a.get("companyId") != old_id]
+                    STATE["assignments"] = [a for a in STATE.get("assignments", [])
+                                            if a.get("companyId") != old_id]
+                STATE["company"] = None
+                STATE["messages"] = []
+                STATE["messageSeq"] = 0
+                save_state()
+                self.send_json({"ok": True})
+                return
             if path.startswith("/assignments/") and path.count("/") == 2:
                 assignment_id = path.split("/")[2]
                 assignment = find_assignment(assignment_id)

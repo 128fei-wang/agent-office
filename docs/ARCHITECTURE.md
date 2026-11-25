@@ -12,6 +12,8 @@ flowchart LR
     T[trace.js<br/>Trace Lab + evals + OTLP]
     H[hiring.js<br/>local hires + hot desks]
     X[external.js<br/>pairing, delegation, bridge polling]
+    C[company.js<br/>one-person template, rooms, chat, isolation]
+    I[i18n.js<br/>zh/en dictionary + toggle]
     L[(localStorage<br/>names / hires / snapshot / profiles)]
     D --> E
     E --> R
@@ -19,6 +21,9 @@ flowchart LR
     R --> T
     R --> H
     R --> X
+    R --> C
+    C --> X
+    R --> I
     X --> E
     R --> L
     X --> L
@@ -27,7 +32,8 @@ flowchart LR
   subgraph Bridge[bridge.py on 127.0.0.1:8787]
     P[one-time pairs]
     A[agent registry]
-    V[heartbeat / events / assignments]
+    V[heartbeat / events / assignments / messages]
+    O[SSE /stream + rooms + company]
     M[demo agent]
     S[(~/.agent-office/bridge-state.json)]
   end
@@ -54,7 +60,7 @@ flowchart LR
 | --- | --- |
 | `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection |
 | `bash scripts/check.sh` | Python syntax, required files, optional JS syntax |
-| `dev-*.html` | browser simulation, audit, Trace Lab, hiring, external pairing, FX, pathfinding |
+| `dev-*.html` | simulation, audit, Trace Lab, hiring, external pairing, delegation, theme/mobile, company/chat/isolation, i18n |
 
 ## Modules
 
@@ -67,6 +73,8 @@ flowchart LR
 | `src/trace.js` | full-screen Trace Lab: span tree, timeline, replay, evals, exports |
 | `src/hiring.js` | add local agent, hot desks, onboarding creation, persistence |
 | `src/external.js` | pairing codes, task delegation, bridge polling, external event ingest, rename dialog |
+| `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
+| `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
 | `bridge.py` | localhost API for pairing, agents, heartbeats and events |
 | `trace.css` / `hiring.css` / `external.css` | feature-specific styling |
 
@@ -90,7 +98,11 @@ flowchart LR
 - Bridge: `~/.agent-office/bridge-state.json` (outside the static web root)
 - Provider keys: bridge env or `~/.agent-office/providers.json` (never in the browser)
 - Assignments: `GET/POST /assignments`, `PATCH/DELETE /assignments/<id>`; external completion is self-reported and leaves audit gaps
+- One-person company: `GET/POST /company`, `POST /company/bootstrap`, `POST /company/dispatch`, `DELETE /company`
+- Rooms/messages: `GET /rooms`, `GET/POST /messages`, `GET /stream?since=N` (SSE)
+- Isolation: task messages require matching `agentId`, `roomId`, `assignmentId`, `executionId`
 - Theme: `html[data-theme="day"]`, persisted in `agent-office.theme.v1`
+- Language: `agent-office.lang.v1`, `?lang=en|zh`
 
 ## Constraints
 

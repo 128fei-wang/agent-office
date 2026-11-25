@@ -957,10 +957,10 @@
           !w.agents.some((a) => a.deskId === d.id)).length;
         const extCount = this.external ? this.external.agents.length : 0;
         const waiting = this.external ? this.external.pendingPairs().length : 0;
-        teamSub.textContent = w.agents.length + " 本地" +
-          (extCount ? " · " + extCount + " 外部" : "") +
-          (waiting ? " · " + waiting + " 等待" : "") +
-          " · " + (hot ? hot + " 热桌" : "热桌满");
+        teamSub.textContent = w.agents.length + " " + AO.t("local") +
+          (extCount ? " · " + extCount + " " + AO.t("external") : "") +
+          (waiting ? " · " + waiting + " " + AO.t("waiting") : "") +
+          " · " + (hot ? hot + " " + AO.t("hotDesk") : AO.t("hotDeskFull"));
       }
     }
 
@@ -970,22 +970,22 @@
       const groups = [
         {
           key: "active",
-          label: "进行中",
+          label: AO.t("boardActive"),
           tasks: w.tasks.filter((t) => t.status === "in_progress" || t.status === "blocked")
         },
         {
           key: "review",
-          label: "评审中",
+          label: AO.t("boardReview"),
           tasks: w.tasks.filter((t) => t.status === "review")
         },
         {
           key: "backlog",
-          label: "待办",
+          label: AO.t("boardBacklog"),
           tasks: w.tasks.filter((t) => t.status === "backlog")
         },
         {
           key: "done",
-          label: "已完成",
+          label: AO.t("boardDone"),
           tasks: w.tasks.filter((t) => t.status === "done")
         }
       ];
@@ -1016,7 +1016,7 @@
               html +=
                 '<div class="task-card ' + t.status + (blocked ? " is-blocked" : "") +
                 '" data-task="' + t.id + '" tabindex="0" role="button" aria-label="' +
-                esc(t.title + " · " + (TASK_STATUS[t.status] || t.status) +
+                esc(t.title + " · " + (AO.taskStatusLabel(t.status) || t.status) +
                   " · 查看工作轨迹") + '" title="' +
                 esc((t.desc || t.title) + " · 点击查看工作轨迹") + '">' +
                 '<div class="task-top"><i class="role-dot" style="background:' +
@@ -1114,7 +1114,7 @@
               '<button class="audit-task" data-task="' + t.id + '" type="button">' +
               '<span class="audit-task-dot ' + t.status + '"></span>' +
               '<span><b>' + esc(t.title) + "</b><em>" +
-              esc(ownerName(t)) + " · " + (TASK_STATUS[t.status] || t.status) +
+              esc(ownerName(t)) + " · " + (AO.taskStatusLabel(t.status) || t.status) +
               "</em></span><span class=\"audit-pct\">" +
               Math.round(t.progress) + "%</span></button>";
           });
@@ -1421,7 +1421,7 @@
         lines.push("");
         lines.push("### " + task.id + " · " + task.title);
         lines.push("");
-        lines.push("- 状态：" + (TASK_STATUS[task.status] || task.status) +
+        lines.push("- 状态：" + (AO.taskStatusLabel(task.status) || task.status) +
           " · 负责人：" + nameOf(task.assignee) +
           " · 评审：" + nameOf(task.reviewerId) +
           " · 返工：" + task.reworkCount + " 次");
@@ -1734,7 +1734,7 @@
         if (!dep) return;
         deps += '<button type="button" class="dep-chip" data-open-task="' + dep.id + '">' +
           esc(dep.id + " · " + dep.title) + " · " +
-          (TASK_STATUS[dep.status] || dep.status) + "</button>";
+          (AO.taskStatusLabel(dep.status) || dep.status) + "</button>";
       });
       if (!deps) deps = '<span class="drawer-muted">无依赖</span>';
 
@@ -1809,7 +1809,7 @@
         "<h2>" + esc(task.title) + "</h2>" +
         '<p class="drawer-desc">' + esc(task.desc) + "</p>" +
         '<div class="drawer-chips"><span class="status-chip ' + task.status + '">' +
-        (TASK_STATUS[task.status] || task.status) + "</span>" +
+        (AO.taskStatusLabel(task.status) || task.status) + "</span>" +
         '<span class="role-chip" style="--role:' + role.color + '">' + esc(role.label) + "</span>" +
         '<span class="prio-chip">P' + task.priority + "</span>" +
         '<span class="prio-chip">' + done + "/" + task.checks.length + " 基础工作</span></div>" +
@@ -1960,7 +1960,7 @@
         const checks = t.checks.filter((c) => c.status === "done").length;
         taskHtml += '<button type="button" class="agent-task" data-open-task="' + t.id + '">' +
           '<span class="agent-task-dot ' + t.status + '"></span><span><b>' +
-          esc(t.title) + "</b><em>" + (TASK_STATUS[t.status] || t.status) +
+          esc(t.title) + "</b><em>" + (AO.taskStatusLabel(t.status) || t.status) +
           " · " + checks + "/" + t.checks.length + " 基础工作</em></span>" +
           '<span class="agent-task-pct">' + Math.round(t.progress) + "%</span></button>";
       });
@@ -2068,11 +2068,14 @@
         occupancy.title = inside ? "老板在办公室" : "老板外出";
       }
       document.getElementById("officeName").textContent = w.officeName;
+      const scenarioLabel = w.scenarioId === "incident"
+        ? AO.t("scenarioIncident")
+        : AO.t("scenarioLaunch");
       document.getElementById("officeSub").textContent =
-        "DAY " + w.day + " · " + w.scenarioName;
+        "DAY " + w.day + " · " + scenarioLabel;
       const neon = document.getElementById("neonSign");
       if (neon) neon.textContent = w.neon;
-      document.getElementById("boardSub").textContent = "目标：" + w.goal;
+      document.getElementById("boardSub").textContent = AO.t("goal") + ": " + w.goal;
 
       const ring = document.getElementById("goalRing");
       ring.style.setProperty("--p", String(pct));
