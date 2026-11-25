@@ -5,5 +5,8 @@ __pycache__/
 bridge-state.tmp
 providers.local.json
 providers.json
+backups/
+last-update.json
+update.lock
 
 build/

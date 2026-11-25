@@ -328,6 +328,8 @@
         if (renderer.company.isOpen) renderer.company.close();
         else renderer.company.open();
       }
+    } else if (e.key === "u" || e.key === "U") {
+      if (renderer.update) renderer.update.toggle();
     }
   });
 
@@ -349,6 +351,8 @@
   }
   const companyView = AO.CompanyView ? new AO.CompanyView(engine, renderer, renderer.external) : null;
   renderer.company = companyView;
+  const updateCenter = AO.UpdateCenter ? new AO.UpdateCenter(renderer) : null;
+  renderer.update = updateCenter;
 
   renderer.build();
   setPlayLabel();
@@ -363,6 +367,7 @@
   if (params.get("hire") === "1" && renderer.hiring) renderer.hiring.open();
   if (params.get("external") === "1" && renderer.external) renderer.external.open();
   if (params.get("company") === "1" && renderer.company) renderer.company.open();
+  if (params.get("update") === "1" && renderer.update) renderer.update.open();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {
     renderer.traceLab.open();
     if (params.get("trace") === "evals") renderer.traceLab.setTab("evals");

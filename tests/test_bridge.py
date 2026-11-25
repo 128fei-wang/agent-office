@@ -35,6 +35,26 @@ class MockProviderHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    def do_GET(self):
+        if self.path.startswith("/update/latest"):
+            data = {
+                "tag_name": "v9.9.9",
+                "name": "Agent Office v9.9.9",
+                "body": "Mock release for bridge tests.",
+                "html_url": "https://example.test/releases/v9.9.9",
+                "tarball_url": "http://127.0.0.1:%d/update/tarball" % self.server.server_address[1],
+                "published_at": "2026-11-25T00:00:00Z",
+            }
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
@@ -107,6 +127,10 @@ class BridgeTest(unittest.TestCase):
         env = os.environ.copy()
         env["BRIDGE_STATE"] = str(Path(cls.tmp.name) / "bridge-state.json")
         env["BRIDGE_PROVIDERS"] = str(providers_path)
+        env["AGENT_OFFICE_UPDATE_API"] = (
+            "http://127.0.0.1:%d/update/latest" % cls.mock_port
+        )
+        env["AGENT_OFFICE_UPDATE_MODE"] = "archive"
         cls.proc = subprocess.Popen(
             [sys.executable, "-I", str(BRIDGE), "--port", str(cls.port)],
             cwd=cls.tmp.name,
@@ -164,6 +188,32 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(data["ok"])
         self.assertEqual(data["service"], "agent-office-bridge")
+        self.assertTrue(data["version"])
+        self.assertTrue(data["bootId"])
+
+    def test_update_check_status_and_bad_token(self):
+        status, data = self.request("/update/check?refresh=1")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["updateAvailable"])
+        self.assertEqual(data["latestVersion"], "9.9.9")
+        self.assertTrue(data["token"])
+        self.assertTrue(data["rollbackToken"])
+        self.assertEqual(data["deployment"]["mode"], "archive")
+        self.assertTrue(data["deployment"]["canApply"])
+
+        status, job = self.request("/update/status")
+        self.assertEqual(status, 200)
+        self.assertEqual(job["status"], "idle")
+        self.assertTrue(job["currentVersion"])
+        self.assertTrue(job["bootId"])
+
+        status, error = self.request("/update/apply", "POST", {
+            "token": "not-a-real-token", "version": "9.9.9",
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(error["code"], "bad_token")
+        status, job = self.request("/update/status")
+        self.assertEqual(job["status"], "idle")
 
     def test_pair_claim_is_one_time_and_greets(self):
         pair = self.make_pair()

@@ -15,6 +15,7 @@ import json
 import os
 import secrets
 import ssl
+import sys
 import threading
 import time
 import urllib.error
@@ -25,6 +26,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+try:
+    import updater
+except Exception:  # keep the bridge usable if the updater module is missing
+    updater = None
+
 STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-office")).expanduser()
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
 LOCK = threading.RLock()
@@ -36,6 +44,24 @@ PROVIDERS_FILE = Path(
     os.environ.get("BRIDGE_PROVIDERS") or (STATE_DIR / "providers.json")
 ).expanduser()
 PROVIDER_TIMEOUT = float(os.environ.get("BRIDGE_PROVIDER_TIMEOUT") or 30)
+BOOT_ID = secrets.token_hex(8)
+UPDATE_TOKENS = {}
+UPDATE_TOKEN_LOCK = threading.Lock()
+UPDATE_JOB_LOCK = threading.Lock()
+UPDATE_JOB = {
+    "status": "idle",
+    "kind": "",
+    "stage": "",
+    "percent": 0,
+    "message": "",
+    "error": "",
+    "code": "",
+    "startedAt": "",
+    "finishedAt": "",
+    "fromVersion": "",
+    "toVersion": "",
+    "result": None,
+}
 
 # Provider presets. Keys are never stored in or returned to the browser.
 # Every remote provider is called from the bridge process only.
@@ -527,6 +553,139 @@ def save_state() -> None:
     tmp = STATE_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(STATE, ensure_ascii=False, indent=2), "utf-8")
     tmp.replace(STATE_FILE)
+
+
+def app_version() -> str:
+    if updater:
+        return updater.read_version(ROOT) or "0.0.0"
+    try:
+        return (ROOT / "VERSION").read_text("utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+def issue_update_tokens(latest_version: str) -> dict:
+    now = time.time()
+    apply_token = secrets.token_urlsafe(24)
+    rollback_token = secrets.token_urlsafe(24)
+    with UPDATE_TOKEN_LOCK:
+        UPDATE_TOKENS.clear()
+        UPDATE_TOKENS[apply_token] = {
+            "scope": "apply", "expiresAt": now + 600, "target": latest_version,
+        }
+        UPDATE_TOKENS[rollback_token] = {
+            "scope": "rollback", "expiresAt": now + 600, "target": latest_version,
+        }
+    return {"token": apply_token, "rollbackToken": rollback_token}
+
+
+def consume_update_token(token: str, scope: str) -> dict:
+    if not token or not isinstance(token, str):
+        raise ValueError("missing update token; run check again")
+    with UPDATE_TOKEN_LOCK:
+        context = UPDATE_TOKENS.pop(token, None)
+    if not context or context.get("scope") != scope:
+        raise ValueError("invalid or expired update token; run check again")
+    if time.time() > float(context.get("expiresAt") or 0):
+        raise ValueError("update token expired; run check again")
+    return context
+
+
+def update_public_status() -> dict:
+    with UPDATE_JOB_LOCK:
+        job = dict(UPDATE_JOB)
+    job["bootId"] = BOOT_ID
+    if updater:
+        job["currentVersion"] = app_version()
+        job["backups"] = [
+            {key: row.get(key) for key in ("id", "version", "createdAt", "targetVersion")}
+            for row in updater.list_backups()[:5]
+        ]
+        if job.get("status") == "idle":
+            job["last"] = updater.last_update()
+    else:
+        job["currentVersion"] = app_version()
+        job["backups"] = []
+        job["last"] = None
+        job["error"] = job.get("error") or "updater module is not installed"
+    return job
+
+
+def _set_update_job(**fields) -> None:
+    with UPDATE_JOB_LOCK:
+        UPDATE_JOB.update(fields)
+
+
+def _restart_bridge() -> None:
+    try:
+        with LOCK:
+            save_state()
+    except Exception:
+        pass
+    try:
+        target = str(ROOT / "bridge.py")
+        os.execv(sys.executable, [sys.executable, "-u", target] + sys.argv[1:])
+    except Exception as exc:
+        _set_update_job(
+            status="error", stage="restart_failed", code="restart_failed",
+            error="bridge restart failed: %s" % exc, finishedAt=now_iso(),
+        )
+
+
+def _run_update_job(kind: str, target: str) -> None:
+    def progress(stage, percent, message):
+        _set_update_job(stage=stage, percent=int(percent), message=str(message or ""))
+
+    try:
+        if kind == "apply":
+            result = updater.apply_update(target_version=target, progress=progress)
+            to_version = result.get("toVersion") or target
+        else:
+            result = updater.rollback_last(progress=progress)
+            to_version = result.get("toVersion") or ""
+        _set_update_job(
+            status="restarting", stage="restarting", percent=100,
+            message="restarting bridge", result=result, toVersion=to_version,
+        )
+        if os.environ.get("BRIDGE_UPDATE_DRY_RUN") == "1":
+            _set_update_job(status="done", stage="done", finishedAt=now_iso())
+            return
+        timer = threading.Timer(1.2, _restart_bridge)
+        timer.daemon = True
+        timer.start()
+    except updater.UpdateError as exc:
+        _set_update_job(
+            status="error", stage="error", error=str(exc), code=exc.code,
+            finishedAt=now_iso(),
+        )
+        try:
+            updater.record_last_update({
+                "status": "failed", "action": kind,
+                "fromVersion": app_version(), "toVersion": target,
+                "message": str(exc), "code": exc.code,
+            })
+        except Exception:
+            pass
+    except Exception as exc:
+        _set_update_job(
+            status="error", stage="error", code="update_failed",
+            error="update failed: %s" % exc, finishedAt=now_iso(),
+        )
+
+
+def start_update_job(kind: str, target: str) -> dict:
+    with UPDATE_JOB_LOCK:
+        if UPDATE_JOB.get("status") in ("running", "restarting"):
+            raise ValueError("an update is already running")
+        UPDATE_JOB.update({
+            "status": "running", "kind": kind, "stage": "preparing",
+            "percent": 0, "message": "preparing", "error": "", "code": "",
+            "startedAt": now_iso(), "finishedAt": "", "result": None,
+            "fromVersion": app_version(), "toVersion": target,
+        })
+    thread = threading.Thread(target=_run_update_job, args=(kind, target), daemon=True)
+    thread.start()
+    return update_public_status()
 
 
 def online(agent: dict) -> bool:
@@ -1489,6 +1648,45 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("body must be an object")
         return data
 
+    def handle_update_action(self, path, body):
+        if not updater:
+            self.send_json({"error": "updater module is not installed",
+                            "code": "no_updater"}, 503)
+            return
+        kind = "apply" if path == "/update/apply" else "rollback"
+        with UPDATE_JOB_LOCK:
+            busy = UPDATE_JOB.get("status") in ("running", "restarting")
+        if busy:
+            self.send_json({"error": "an update is already running",
+                            "code": "update_busy"}, 409)
+            return
+        try:
+            context = consume_update_token(body.get("token"), kind)
+        except ValueError as exc:
+            self.send_json({"error": str(exc), "code": "bad_token"}, 403)
+            return
+        if kind == "apply":
+            target = str(body.get("version") or context.get("target") or "").lstrip("v")
+            if not target or target != context.get("target"):
+                self.send_json({"error": "requested version is not the checked release",
+                                "code": "bad_version"}, 409)
+                return
+        else:
+            backup = updater.rollback_candidate(
+                current_version=updater.read_version(ROOT)
+            )
+            if not backup:
+                self.send_json({"error": "no previous-version backup is available",
+                                "code": "no_backup"}, 404)
+                return
+            target = str(backup.get("version") or "")
+        try:
+            job = start_update_job(kind, target)
+        except ValueError as exc:
+            self.send_json({"error": str(exc), "code": "update_busy"}, 409)
+            return
+        self.send_json({"ok": True, "job": job}, 202)
+
     def stream_messages(self, qs):
         try:
             since = int((qs.get("since") or [self.headers.get("Last-Event-ID") or "0"])[0])
@@ -1540,11 +1738,30 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/stream":
             self.stream_messages(qs)
             return
+        if path == "/update/check":
+            if not updater:
+                self.send_json({"error": "updater module is not installed",
+                                "code": "no_updater"}, 503)
+                return
+            force = str((qs.get("refresh") or [""])[0]).lower() in ("1", "true", "yes")
+            try:
+                check = updater.check_for_update(force=force)
+            except updater.UpdateError as exc:
+                self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                return
+            check.update(issue_update_tokens(check["latestVersion"]))
+            self.send_json(check)
+            return
+        if path == "/update/status":
+            self.send_json(update_public_status())
+            return
         with LOCK:
             if path == "/health":
                 self.send_json({
                     "ok": True,
                     "service": "agent-office-bridge",
+                    "version": app_version(),
+                    "bootId": BOOT_ID,
                     "agents": len(STATE["agents"]),
                     "events": len(STATE["events"]),
                     "lastEventId": STATE["nextEvent"] - 1,
@@ -1642,7 +1859,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -1659,6 +1876,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith("/providers/"):
             self.handle_provider_post(path, body)
+            return
+        if path in ("/update/apply", "/update/rollback"):
+            self.handle_update_action(path, body)
             return
         with LOCK:
             if path == "/company/bootstrap":

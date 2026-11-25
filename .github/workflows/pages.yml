@@ -26,7 +26,7 @@ jobs:
       - name: Stage the static app
         run: |
           mkdir -p _site
-          cp -R index.html styles.css trace.css hiring.css external.css theme.css company.css favicon.svg src _site/
+          cp -R index.html styles.css trace.css hiring.css external.css theme.css company.css update.css favicon.svg src _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

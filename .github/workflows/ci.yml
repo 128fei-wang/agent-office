@@ -23,7 +23,7 @@ jobs:
           node-version: "20"
 
       - name: Python syntax
-        run: python -m py_compile bridge.py
+        run: python -m py_compile bridge.py updater.py
 
       - name: JavaScript syntax
         run: |

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0] - 2026-11-25
+
+### Added
+- In-app self-update center: check the official GitHub release, view release notes, update, restart the bridge and reload the page.
+- Terminal updater `update.sh` with `--check`, `--apply`, `--rollback`, `--status` and `--json`.
+- Bridge update API: `GET /update/check`, `GET /update/status`, `POST /update/apply`, `POST /update/rollback`.
+- Automatic local backups under `~/.agent-office/backups` and one-click rollback to the previous version.
+- Git mode uses a clean fast-forward; archive mode updates non-git deployments from the official release tarball.
+- Tokens are one-time and expire after 10 minutes; the app backs up before writing and auto-restores if verification fails.
+- Archive validation for traversal, symlinks, device entries, size and required files; Python files are compiled before restart.
+- `docs/UPGRADING.md` and `dev-update.html` self-check.
+
+### Changed
+- Version bumped to 1.3.0.
+- README and English README document update behavior, API and rollback.
+- Bridge `/health` now reports `version` and `bootId`; update state survives a bridge restart via `last-update.json`.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added

@@ -23,6 +23,10 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - One-time pairing codes are single-use and expire after 30 minutes, but they are not a substitute for authentication. Do not post them publicly.
 - The frontend never receives an LLM provider API key. Real agent credentials belong in the external agent process or a local bridge, not in browser code.
 - External agent endpoints and notes are stored as metadata; the current bridge does not call those endpoints.
+- Self-update is user-initiated only. It reads the latest release from the official GitHub repository over TLS; there is no separate signature beyond TLS and the GitHub release pipeline. A compromised upstream release account is therefore a trust boundary.
+- `/update/apply` and `/update/rollback` require a one-time token returned by `/update/check` and expire after 10 minutes. The bridge still relies on its localhost Host/Origin gate; any local process that can call the bridge can request a token. Do not expose the bridge.
+- Before writing, the updater copies the app to `~/.agent-office/backups` (excluding state and provider files). Archive extraction rejects path traversal, symlinks, hard links, device entries and oversized inputs, and verifies required files plus Python syntax. Verification failure restores the backup.
+- A Git checkout with local modifications is not overwritten.
 - The app uses `localStorage` for names, hires, snapshots and external profiles. Treat browser storage as local, unencrypted state.
 - The demo agent is for local demonstration only.
 

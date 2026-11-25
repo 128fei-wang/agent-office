@@ -1,13 +1,13 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批、外部 Agent 配对、任务委派、实时群聊、一人公司模板、中英文切换，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批、外部 Agent 配对、任务委派、实时群聊、一人公司模板、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -83,6 +83,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **一人公司工作台**：一键生成 8 个 AI 员工、11 个依赖任务、4 个部门频道和每个任务的隔离房间；任务自动派发，依赖完成后自动解锁下一个任务。
 - **实时群聊**：bridge 提供 SSE 消息流；创始人、角色 Agent 和系统事件进入各自频道。任务房间要求 `assignmentId + executionId`，防止同一个 Agent 把不同任务的汇报发错群。
 - **中英文切换**：顶部 `EN / 中` 或 `?lang=en`；主界面、任务状态、群聊、公司模板和生成内容都支持两种语言。
+- **自行升级**：顶部 `升级` / `U` 检查官方 GitHub Release；先备份到 `~/.agent-office/backups`，再更新、校验、重启 bridge 并刷新页面。支持失败自动恢复、一键回滚和 `./update.sh` 命令行升级。
 - **常用模型 API**：外部 Agent 弹窗内置豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama；配置一次 bridge 密钥即可「接入」并「试跑」，真实 token/延迟进入 Trace。
 - **重命名**：本地 agent 在 Inspector / 完整档案里点 ✎；外部 agent 在外部档案里点「重命名」。本地名字写入 localStorage，外部名字同步到 bridge。
 - **进度快照**：`AUDIT` 底部可「保存进度 / 恢复进度」，把当前 world（任务、agent、ledger、会议、历史）存到浏览器 localStorage。刷新后手动恢复，适合演示中途保存现场。
@@ -248,6 +249,8 @@ curl -X POST http://127.0.0.1:8787/events \
 - `POST /agents/<id>/heartbeat`
 - `POST /events`
 - `GET /events?since=N`
+- `GET /update/check` / `GET /update/status`
+- `POST /update/apply` / `POST /update/rollback`
 - `GET /assignments` / `GET /assignments?agentId=...`
 - `POST /assignments`
 - `PATCH /assignments/<id>`
@@ -307,6 +310,18 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - `?lang=en` / `?lang=zh` 可直接打开对应语言。
 - 公司模板的角色、任务、任务说明会按生成语言写入；界面标签可随时切换。
 - 仿真叙事和任务正文属于内容层，保留原始语言。
+
+## 自行升级
+
+- 顶部 **`升级`**，或按 `U`，打开升级中心。
+- 点击 **检查更新**：bridge 读取官方 GitHub Release，与本地 `VERSION` 比较。
+- 有新版本时显示版本、发布日期和更新内容；点击 **立即升级** 并确认。
+- 升级前自动备份当前应用；更新后校验 `VERSION`、必要文件和 Python 语法，再重启 bridge，页面自动刷新。
+- Git 部署使用干净的 `git pull --ff-only`；有未提交修改时拒绝覆盖。非 Git 部署下载官方 release 压缩包并做路径/符号链接/大小校验。
+- 最近一次可回滚备份（版本不同于当前）可在升级中心 **回滚**；数据目录 `~/.agent-office` 不会被更新覆盖。
+- 命令行：`./update.sh --check`、`--apply`、`--rollback`、`--status`。
+
+安全模型、API、失败处理和首次从 1.2.0 手动升级到 1.3.0 的说明见 [docs/UPGRADING.md](docs/UPGRADING.md)。
 
 ## 怎么添加 Agent
 
@@ -410,6 +425,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 | 白天 / 夜间 | 顶部主题按钮，或按 `D` |
 | 一人公司 / 群聊 | 顶部 `一人公司`，或按 `C` |
 | 中英文 | 顶部 `EN / 中`，或 `?lang=en` |
+| 自行升级 | 顶部 `升级`，或按 `U`，或 `?update=1` |
 | 重命名 | Inspector / 完整档案里的 ✎；外部 agent 在外部档案里重命名 |
 | 审计 tab / `A` | 打开/关闭 `AUDIT` 面板 |
 | AUDIT 保存/恢复 | 手动保存或恢复当前模拟进度（localStorage） |
@@ -436,6 +452,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 ?external=1                  直接打开外部 Agent 接入面板
 ?theme=day                   直接打开白天主题
 ?company=1                   直接打开一人公司工作台
+?update=1                    直接打开升级中心
 ?lang=en                     英文界面
 ```
 
@@ -455,6 +472,7 @@ agent-office/
 │   ├── i18n.js         中英文词典、语言切换
 │   ├── external.js     外部 Agent 连接、配对、任务委派、心跳轮询、重命名
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
+│   ├── update.js       升级中心、进度、重启检测、回滚
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -472,17 +490,23 @@ agent-office/
 ├── dev-theme.html      自检白天/夜间、主题持久化、移动端布局
 ├── dev-company.html    自检一人公司、任务派发、群聊、隔离、自动解锁
 ├── dev-i18n.html       自检中英文切换和持久化
+├── dev-update.html     自检升级 UI、确认、进度、重启和完成态
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
 ├── theme.css           白天主题、Trace Lab 明色皮肤、移动端样式
 ├── company.css         一人公司工作台 / 群聊 / 语言样式
-├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 心跳 / 事件）
+├── update.css          升级中心样式
+├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 心跳 / 升级）
+├── updater.py          检查、下载、备份、更新、校验、回滚
+├── update.sh           命令行升级入口
 ├── providers.example.json  模型 API 配置模板（密钥不提交）
 ├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
+├── tests/test_updater.py 更新器单元测试
 ├── docs/PROVIDERS.md   模型 API 配置与故障排查
 ├── docs/TASK_DELEGATION.md 外部任务委派协议与状态机
 ├── docs/COMPANY_OS.md  一人公司模板、群聊、任务隔离
+├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
 ```
 
@@ -626,7 +650,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-i18n.html` 会验证主界面/公司界面的英文切换、`?lang`、持久化和刷新恢复。
 
-bridge 自身的 17 个集成测试不依赖浏览器：
+`dev-update.html` 会验证升级按钮、检查结果、更新说明、备份、确认、进度、重启检测和完成态。
+
+bridge 自身的 18 个集成测试和更新器的 11 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -642,7 +668,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.2.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.3.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -656,6 +682,8 @@ python3 -m unittest discover -s tests -v
 - 一人公司的任务自动派发，但真实完成仍需要绑定角色并连接执行 Agent；模型 API Agent 只做单次调用，不参与任务房间。
 - SSE 是 localhost 实时流，没有鉴权；公司数据保存在 `~/.agent-office/bridge-state.json`。
 - 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
+- 自行升级只读取官方 GitHub Release，不会后台自动安装；更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次才能使用内置升级中心。
+- 压缩包更新不会删除上游已移除的旧文件；这些文件不影响运行，可手动清理。
 - 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。
 - 模型 API 是单次调用适配器，不会自动完成模拟任务；`cost` 不按厂商价格计算，token 以返回的 usage 为准。
 - bridge 是 localhost 开发服务，没有鉴权、TLS 或多租户；不要直接暴露到公网。

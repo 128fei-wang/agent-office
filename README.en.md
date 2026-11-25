@@ -1,13 +1,13 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office and one-person-company workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with an evidence ledger, audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing, task delegation, real-time group chat, a one-person company template, bilingual UI, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office and one-person-company workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with an evidence ledger, audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing, task delegation, real-time group chat, a one-person company template, bilingual UI, self-update, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -83,6 +83,7 @@ This is the core product capability. The simulation is not “agents looking bus
 - **One-person company** — generate 8 AI employees, 11 dependency-aware tasks, 4 department channels and an isolated room per task; ready tasks auto-dispatch and dependencies unlock automatically.
 - **Real-time group chat** — SSE message stream; founder, role agents and system events live in separate channels. Task rooms require `assignmentId + executionId`, so an agent working on multiple tasks cannot report into the wrong room.
 - **Bilingual** — `EN / 中` toggle or `?lang=en`; shell, task statuses, chat, company template and generated content support both languages.
+- **Self-update** — click **UPDATE** / press `U` to check the official GitHub release; Agent Office backs up to `~/.agent-office/backups`, updates, verifies, restarts the bridge and reloads the page. Failed verification restores the backup; rollback and a terminal `./update.sh` are available.
 - **Model APIs** — Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen, and Ollama presets. Configure the key in the bridge once, then connect and run a single prompt; real token and latency data lands in Trace.
 - **Rename** — local agents via ✎ in the inspector or dossier; external agents from the external drawer. Local names persist in localStorage, external names sync to the bridge.
 - **Snapshots** — save / restore the current world (tasks, agents, ledger, meetings, history) to localStorage.
@@ -97,6 +98,7 @@ This is the core product capability. The simulation is not “agents looking bus
 ?agent=a4               open an agent dossier
 ?theme=day              open day mode
 ?company=1              open the one-person company workspace
+?update=1               open the update center
 ?lang=en                English UI
 ?trace=1                open Trace Lab
 ?hire=1                 open the add-agent dialog
@@ -222,6 +224,8 @@ Endpoints:
 - `POST /agents/<id>/heartbeat`
 - `POST /events`
 - `GET /events?since=N`
+- `GET /update/check` / `GET /update/status`
+- `POST /update/apply` / `POST /update/rollback`
 - `GET /assignments` / `GET /assignments?agentId=...`
 - `POST /assignments`
 - `PATCH /assignments/<id>`
@@ -300,7 +304,20 @@ API and boundaries.
 ```text
 ?theme=day                  open day mode
 ?theme=night                open night mode
+?update=1                   open the update center
 ```
+
+## Self-update
+
+- Click **UPDATE** in the top bar, press `U`, or open `?update=1`.
+- **Check for updates** asks the bridge to compare the local `VERSION` with the official GitHub release.
+- When a release is available, review the version, date and notes, then confirm **Update now**.
+- Agent Office backs up the current app, applies the update, validates `VERSION`, required files and Python syntax, restarts the bridge and reloads the page.
+- Git deployments use a clean `git pull --ff-only`; uncommitted changes block the update. Non-git deployments download the official release tarball with path/symlink/size validation.
+- **Roll back** restores the newest backup from a different version. `~/.agent-office` data is never part of the app update.
+- Terminal: `./update.sh --check`, `--apply`, `--rollback`, `--status`.
+
+See [docs/UPGRADING.md](docs/UPGRADING.md) for the security model, API, failure handling and the one-time manual upgrade required from 1.2.0 to 1.3.0.
 
 ## Add an agent
 
@@ -340,16 +357,22 @@ agent-office/
 │   ├── i18n.js           Chinese/English dictionary and language switch
 │   ├── external.js       pairing, bridge polling, task delegation, rename
 │   ├── company.js        one-person template, roles, tasks, chat, SSE, isolation
+│   ├── update.js         update center, progress, restart detection, rollback
 │   ├── render.js         DOM rendering, office construction, panels
 │   └── main.js           boot, loop, controls, shortcuts
 ├── bridge.py             localhost external-agent bridge
+├── updater.py            check, download, backup, update, verify, roll back
+├── update.sh             terminal update entry point
 ├── providers.example.json model API config template (no secrets)
 ├── tests/test_bridge.py  bridge integration tests (stdlib unittest)
+├── tests/test_updater.py updater unit tests
 ├── docs/PROVIDERS.md     model API setup and troubleshooting
 ├── docs/TASK_DELEGATION.md external task protocol and status machine
 ├── docs/COMPANY_OS.md    one-person template, chat and isolation
+├── docs/UPGRADING.md     self-update, backups, rollback and security
 ├── theme.css             day theme, Trace Lab light skin, mobile layout
 ├── company.css           company workspace, chat and language styles
+├── update.css            update center styles
 ├── start.sh              static server + bridge
 ├── dev-*.html            browser self-check pages
 └── docs/                 architecture, pairing, protocol, roadmap, checklist
@@ -377,8 +400,9 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-theme.html` — day/night toggle, persistence, `D` shortcut, 390 px mobile layout, drawers, Trace Lab, external modal.
 - `dev-company.html` — template generation, 8 roles / 11 tasks / 15 rooms, auto-dispatch, role pairing, chat, task-room isolation, completion writeback and i18n.
 - `dev-i18n.html` — English/Chinese toggle, persistence and reload.
+- `dev-update.html` — update button, check result, release notes, backup, confirmation, progress, restart detection and completion state.
 
-Run the 17 bridge integration tests and repository checks with:
+Run the 18 bridge integration tests, 11 updater unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -411,6 +435,8 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - The one-person company auto-dispatches tasks, but real completion requires binding a worker agent. Model API agents are one-shot and excluded from task rooms.
 - SSE is a localhost stream without authentication; company data lives in `~/.agent-office/bridge-state.json`.
 - Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
+- Self-update only reads the official GitHub Release and never installs in the background. It needs the bridge and restarts it. Versions 1.2.0 and older need one manual upgrade before the in-app updater exists.
+- Archive updates do not delete files removed upstream; stale files are harmless and can be cleaned manually.
 - Pairing codes are an invitation mechanism, not authentication. The bridge has no auth or TLS and should only be used on localhost.
 - Model APIs are one-shot adapters, not autonomous task execution. Cost is not computed from vendor prices; token counts use provider usage when available.
 - The office uses fixed coordinates; many more desks require adjusting `AO.HUBS` and obstacles.
