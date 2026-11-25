@@ -674,3 +674,58 @@
 @media (max-width: 620px) {
   .ext-provider-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* external task delegation */
+.external-chip {
+  flex: none;
+  align-self: center;
+  padding: 1px 3px;
+  border: 1px solid rgba(181, 140, 255, 0.4);
+  border-radius: 2px;
+  background: rgba(181, 140, 255, 0.08);
+  color: #d3bcff;
+  font-family: var(--mono);
+  font-size: 5.5px;
+  font-style: normal;
+  letter-spacing: 0.4px;
+}
+.external-owner { color: #d3bcff; }
+.delegate-section {
+  border-color: rgba(181, 140, 255, 0.18);
+  background: rgba(181, 140, 255, 0.025);
+}
+.delegate-form { display: flex; flex-direction: column; gap: 6px; }
+.delegate-form select,
+.delegate-form textarea {
+  width: 100%;
+  border: 1px solid #2b4052;
+  border-radius: 4px;
+  background: rgba(3, 9, 14, 0.55);
+  color: #d3e4ef;
+  padding: 6px 7px;
+  font-family: var(--ui);
+  font-size: 8px;
+  outline: none;
+}
+.delegate-form select { height: 28px; }
+.delegate-form textarea { min-height: 52px; resize: vertical; line-height: 1.5; }
+.delegate-form select:focus,
+.delegate-form textarea:focus { border-color: rgba(181, 140, 255, 0.5); }
+.delegate-actions { display: flex; justify-content: flex-end; }
+.delegate-submit {
+  border-color: rgba(181, 140, 255, 0.42) !important;
+  background: rgba(181, 140, 255, 0.1) !important;
+  color: #d6c1ff !important;
+}
+.delegate-submit:hover { background: rgba(181, 140, 255, 0.18) !important; }
+.external-result {
+  margin: 0;
+  padding: 7px 8px;
+  border-left: 2px solid rgba(181, 140, 255, 0.45);
+  background: rgba(181, 140, 255, 0.04);
+  color: #c4d6e3;
+  font-size: 8px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>External delegation self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+.ok{color:#7bd88f}.bad{color:#ff7a7a}
+</style></head>
+<body>
+<h1>EXTERNAL TASK DELEGATION SELF-CHECK</h1>
+<pre id="out">running…</pre>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&scenario=launch';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2400));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s),$$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const engine=app.engine,renderer=app.renderer,ext=renderer.external;
+    engine.paused=true;
+    engine.reset('launch');
+    renderer.build();
+    await wait(250);
+    check('external connector',!!ext);
+    await wait(600);
+    check('bridge online',ext.bridgeOnline===true);
+
+    const agentId='ext-test-delegation';
+    await fetch(ext.bridgeUrl+'/agents/'+agentId,{method:'DELETE'}).catch(()=>{});
+    const agentRes=await fetch(ext.bridgeUrl+'/agents',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:agentId,name:'Delegation Test Agent',runtime:'http',endpoint:'local://test',
+        skills:['edit','test'],note:'self-check agent'})});
+    check('test agent registered',agentRes.status===200);
+    await ext.refresh();
+    check('test agent visible',!!ext.agentById(agentId));
+
+    const task=engine.taskById('t1');
+    check('task starts in backlog',task&&task.status==='backlog',task&&task.status);
+    check('delegate allowed',task&&engine.canDelegateTask(task).ok===true);
+
+    renderer.openTaskDrawer('t1');
+    await wait(120);
+    const select=$('#delegateAgentSelect');
+    const button=$('[data-delegate-task="t1"]');
+    check('delegate select rendered',!!select);
+    check('delegate button rendered',!!button);
+    if(select){
+      select.value=agentId;
+      check('delegate select has agent',select.value===agentId);
+    }
+    if(button) button.click();
+    await wait(1100);
+    check('task delegated',task.status==='in_progress'&&task.external===true,task&&task.status);
+    check('external assignee',task.assignee===agentId,task&&task.assignee);
+    check('assignment linked',!!task.externalAssignmentId,task&&task.externalAssignmentId);
+    check('assignment on bridge',ext.assignments.some(a=>a.id===task.externalAssignmentId&&a.status==='assigned'));
+    check('board external chip',!!$('[data-task="t1"] .external-chip'));
+    check('drawer external callout',/委托外部 Agent/.test($('#detailDrawer').textContent));
+
+    const assignmentId=task.externalAssignmentId;
+    let res=await fetch(ext.bridgeUrl+'/assignments/'+assignmentId,{method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status:'in_progress',progress:50,result:'halfway'})});
+    check('progress patch accepted',res.status===200);
+    await ext.refresh();
+    check('progress writeback',task.progress===50,'progress='+task.progress);
+    check('external status writeback',task.externalStatus==='in_progress',task.externalStatus);
+
+    res=await fetch(ext.bridgeUrl+'/assignments/'+assignmentId,{method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status:'completed',progress:100,result:'staging verification passed',
+        evidence:['tests/12-passed','run://staging']})});
+    check('completion patch accepted',res.status===200);
+    await ext.refresh();
+    check('task marked done',task.status==='done',task.status);
+    check('task progress complete',task.progress===100,'progress='+task.progress);
+    check('external completion counted',engine.world.stats.externalCompletions===1,
+      'count='+engine.world.stats.externalCompletions);
+    check('unverified checks flagged',task.checks.some(c=>c.status==='risk'||c.status==='missed'));
+    check('external result stored',/staging verification/.test(task.externalResult||''));
+    check('external evidence stored',(task.externalEvidence||[]).length===2);
+    check('claim event recorded',engine.world.ledger.some(e=>e.taskId==='t1'&&e.kind==='claim'&&e.external));
+    check('completion event ingested',engine.world.ledger.some(e=>e.taskId==='t1'&&e.kind==='complete'&&e.external));
+    check('external review marker',engine.world.ledger.some(e=>e.taskId==='t1'&&e.kind==='review'&&e.status==='external'));
+    check('done task cannot be delegated',engine.canDelegateTask(task).ok===false);
+    check('audit keeps gaps',engine.audit().risk.concat(engine.audit().missed).some(r=>r.taskId==='t1'));
+
+    renderer.renderDrawer();
+    await wait(120);
+    check('drawer shows external receipt',/外部回执/.test($('#detailDrawer').textContent));
+    check('drawer shows result',/staging verification passed/.test($('#detailDrawer').textContent));
+    check('drawer shows self-report warning',/自报完成/.test($('#detailDrawer').textContent));
+
+    await fetch(ext.bridgeUrl+'/agents/'+agentId,{method:'DELETE'}).catch(()=>{});
+    await ext.refresh();
+    check('test agent removed',!ext.agentById(agentId));
+    renderer.closeDrawer();
+    finish();
+  }
+})();
+</script>
+</body></html>

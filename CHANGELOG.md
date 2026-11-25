@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0] - 2026-11-25
+
+### Added
+- External task delegation: backlog task → assignment → progress/completion/failure writeback.
+- Pull-based assignment API (`GET/POST /assignments`, `PATCH/DELETE /assignments/<id>`) with scenario/run scoping.
+- Self-reported external completion: unverified checks become risk/missed and remain in the audit/release gate.
+- Demo agent automatically advances its assignments.
+- Day/night theme toggle (`D` / sun-moon button), persisted in localStorage.
+- Day skin for panels, drawers, Trace Lab, external-agent modal and provider rail.
+- Mobile layout checks at 390 px, horizontal control rail, full-width drawers/modals.
+- `docs/TASK_DELEGATION.md`, `dev-delegation.html`, `dev-theme.html`.
+- New day-mode and mobile screenshots.
+
+### Fixed
+- External provider cards now render after the first polling refresh.
+- Tests tolerate pre-existing external agents instead of assuming a clean bridge.
+
+### Changed
+- Version bumped to 1.1.0.
+- README and English README document delegation, themes and mobile behavior.
+
 ## [1.0.0] - 2026-11-24
 
 Initial open-source preparation.

@@ -73,6 +73,7 @@
       this.pairs = [];
       this.pairMessages = {};
       this.agents = [];
+      this.assignments = [];
       this.providers = [];
       this.providerBusy = {};
       this.providerConfigError = "";
@@ -394,6 +395,16 @@
         });
         this.agents = Object.keys(map).map(function (id) { return map[id]; });
 
+        try {
+          const assignmentRes = await this.request("/assignments");
+          this.assignments = assignmentRes.assignments || [];
+          this.assignments.forEach((assignment) => {
+            this.engine.applyExternalAssignment(assignment, this.agentById(assignment.agentId));
+          });
+        } catch (err) {
+          this.assignments = [];
+        }
+
         if (this.cursor == null) this.cursor = health.lastEventId || 0;
         if ((health.lastEventId || 0) < this.cursor) this.cursor = health.lastEventId || 0;
         const result = await this.request("/events?since=" + this.cursor);
@@ -416,6 +427,7 @@
         }
         this.renderList();
         this.renderPairs();
+        this.renderProviders();
       } catch (err) {
         this.bridgeOnline = false;
         this.demo = false;
@@ -466,6 +478,62 @@
       return this.engine.world.ledger.filter(function (e) {
         return e.agentId === id;
       }).slice(-16).reverse();
+    }
+
+    assignmentsFor(id) {
+      return (this.assignments || []).filter(function (assignment) {
+        return assignment.agentId === id;
+      }).slice(0, 8);
+    }
+
+    assignmentForTask(taskId) {
+      return (this.assignments || []).find(function (assignment) {
+        return assignment.taskId === taskId &&
+          (assignment.status === "assigned" || assignment.status === "in_progress");
+      }) || null;
+    }
+
+    async delegateTask(taskId, agentId, brief) {
+      if (!this.bridgeOnline) {
+        this.renderer.toast("先启动 bridge：python3 bridge.py");
+        return false;
+      }
+      const task = this.engine.taskById(taskId);
+      const agent = this.agentById(agentId);
+      if (!task || !agent) {
+        this.renderer.toast("找不到任务或外部 Agent");
+        return false;
+      }
+      const check = this.engine.canDelegateTask(task);
+      if (!check.ok) {
+        this.renderer.toast(check.error || "这个任务不能委托");
+        return false;
+      }
+      try {
+        const res = await this.request("/assignments", {
+          method: "POST",
+          body: JSON.stringify({
+            agentId: agentId,
+            taskId: task.id,
+            title: task.title,
+            scenarioId: this.engine.scenarioId,
+            runId: this.engine.world.runId,
+            brief: String(brief || task.desc || "").slice(0, 800)
+          })
+        }, 8000);
+        this.assignments = [res.assignment].concat((this.assignments || []).filter(function (a) {
+          return a.id !== res.assignment.id;
+        }));
+        this.engine.applyExternalAssignment(res.assignment, agent);
+        this.renderer.render();
+        if (this.renderer.drawerMode === "task") this.renderer.renderDrawer();
+        this.renderer.toast("任务已派给 " + agent.name);
+        await this.refresh();
+        return true;
+      } catch (err) {
+        this.renderer.toast("派发失败 · " + String(err.message || "检查 bridge").slice(0, 100));
+        return false;
+      }
     }
 
     async addFromForm() {

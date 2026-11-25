@@ -7,7 +7,9 @@ metadata, model names and aggregated token counts.
 This is a **one-shot model call adapter**, not a fully autonomous coding agent.
 It is useful for verifying a provider, generating a real trace entry, and
 demonstrating how external telemetry lands in the ledger, Trace Lab and OTLP
-export.
+export. Provider-managed agents are intentionally excluded from task
+delegation: they do not poll assignments. Use Claude Code / Codex or another
+worker agent for assignments.
 
 ## Security model
 

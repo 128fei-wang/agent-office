@@ -92,6 +92,21 @@ External events do **not** change `task.status`, `task.progress` or checks. They
 - `openinference.span.kind`
 - `agentops.external`, `agentops.runtime`, `agentops.provider`, `agentops.event.kind`, `agentops.event.status`
 
+## Assignment events
+
+A delegated task produces normal external events:
+
+- `handoff` — created by `POST /assignments`
+- `skill` — progress updates from `PATCH /assignments/<id>`
+- `complete` — completion with `result` and `evidence`
+- `risk` — failure or cancellation
+
+The browser mirrors the bridge assignment into `task.status`, `task.progress`,
+`task.externalName`, `task.externalAssignmentId`, `task.externalResult` and
+`task.externalEvidence`. A completed external task is marked `done` but its
+unverified checks are finalized as risk/missed. See
+[TASK_DELEGATION.md](TASK_DELEGATION.md).
+
 ## Model API adapter
 
 `POST /providers/<id>/run` makes one model call and then emits a normal external

@@ -306,6 +306,83 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertEqual(data["code"], "provider_not_configured")
 
+    def test_assignment_delegation_and_writeback(self):
+        status, agent = self.request("/agents", "POST", {
+            "id": "ext-test-assign", "name": "Test Assignee", "runtime": "http",
+            "skills": ["edit"]
+        })
+        self.assertEqual(status, 200)
+        status, data = self.request("/assignments", "POST", {
+            "agentId": "ext-test-assign", "taskId": "t-test-1",
+            "title": "Delegate the staging check", "scenarioId": "launch",
+            "runId": "run-test", "brief": "Run the staging verification."
+        })
+        self.assertEqual(status, 200)
+        assignment = data["assignment"]
+        self.assertEqual(assignment["status"], "assigned")
+        self.assertEqual(assignment["progress"], 0)
+        self.assertEqual(assignment["agentName"], "Test Assignee")
+        assignment_id = assignment["id"]
+        self.assertTrue(assignment_id.startswith("asg-"))
+
+        status, listed = self.request("/assignments?agentId=ext-test-assign")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(a["id"] == assignment_id for a in listed["assignments"]))
+
+        status, data = self.request("/assignments/" + assignment_id, "PATCH", {
+            "status": "in_progress", "progress": 40, "result": "halfway"
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(data["assignment"]["status"], "in_progress")
+        self.assertEqual(data["assignment"]["progress"], 40)
+
+        status, data = self.request("/assignments/" + assignment_id, "PATCH", {
+            "status": "completed", "progress": 100, "result": "verified",
+            "evidence": ["tests/12-passed", "run://staging"]
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(data["assignment"]["status"], "completed")
+        self.assertEqual(data["assignment"]["progress"], 100)
+        self.assertTrue(data["assignment"]["completedAt"])
+        self.assertEqual(data["assignment"]["evidence"], ["tests/12-passed", "run://staging"])
+
+        status, data = self.request("/assignments/" + assignment_id, "PATCH", {
+            "status": "failed"
+        })
+        self.assertEqual(status, 400)
+
+        status, events = self.request("/events?since=0")
+        self.assertEqual(status, 200)
+        kinds = [e["kind"] for e in events["events"] if e.get("taskId") == "t-test-1"]
+        self.assertIn("handoff", kinds)
+        self.assertIn("complete", kinds)
+
+    def test_assignment_validation_and_cancel(self):
+        status, _ = self.request("/assignments", "POST", {
+            "agentId": "ext-missing", "taskId": "t-x", "title": "x"
+        })
+        self.assertEqual(status, 400)
+        status, _ = self.request("/assignments", "POST", {
+            "agentId": "ext-test-assign", "taskId": "t-x"
+        })
+        self.assertEqual(status, 400)
+
+        status, agent = self.request("/agents", "POST", {
+            "id": "ext-test-cancel", "name": "Cancel Assignee", "runtime": "http"
+        })
+        self.assertEqual(status, 200)
+        status, data = self.request("/assignments", "POST", {
+            "agentId": "ext-test-cancel", "taskId": "t-test-2",
+            "title": "Cancel me", "scenarioId": "launch"
+        })
+        self.assertEqual(status, 200)
+        assignment_id = data["assignment"]["id"]
+        status, data = self.request("/assignments/" + assignment_id, "DELETE")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["assignment"]["status"], "cancelled")
+        status, _ = self.request("/assignments/unknown-id", "PATCH", {"progress": 10})
+        self.assertEqual(status, 400)
+
     def test_missing_agent_event_is_rejected(self):
         status, data = self.request("/events", "POST", {"agentId": "ext-missing", "kind": "skill"})
         self.assertEqual(status, 400)

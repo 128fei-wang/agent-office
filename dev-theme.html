@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>Theme and mobile self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body>
+<h1>THEME / MOBILE SELF-CHECK</h1><pre id="out">running…</pre>
+<iframe id="desk" width="1200" height="800"></iframe>
+<iframe id="mobile" width="390" height="844"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  function load(frame,src){return new Promise(resolve=>{frame.addEventListener('load',()=>setTimeout(resolve,2200),{once:true});frame.src=src;});}
+  (async function run(){
+    try{
+      const desk=document.getElementById('desk');
+      await load(desk,'index.html?intro=0&ticks=10&theme=night');
+      const d=desk.contentDocument,w=desk.contentWindow;
+      check('desktop app exposed',!!w.AgentOfficeApp);
+      check('night theme initial',d.documentElement.dataset.theme==='night',d.documentElement.dataset.theme);
+      check('theme button exists',!!d.getElementById('themeBtn'));
+      const nightBg=getComputedStyle(d.documentElement).getPropertyValue('--bg').trim();
+      d.getElementById('themeBtn').click();
+      await wait(250);
+      check('day theme toggled',d.documentElement.dataset.theme==='day',d.documentElement.dataset.theme);
+      check('day label',d.getElementById('themeLabel').textContent==='白天',d.getElementById('themeLabel').textContent);
+      const dayBg=getComputedStyle(d.documentElement).getPropertyValue('--bg').trim();
+      check('theme variables changed',nightBg!==dayBg,nightBg+' -> '+dayBg);
+      check('theme persisted',w.localStorage.getItem('agent-office.theme.v1')==='day');
+      const dKey=new w.KeyboardEvent('keydown',{key:'d',bubbles:true});
+      d.dispatchEvent(dKey); await wait(120);
+      check('D toggles night',d.documentElement.dataset.theme==='night',d.documentElement.dataset.theme);
+      d.getElementById('themeBtn').click(); await wait(120);
+      check('day restored for mobile',d.documentElement.dataset.theme==='day');
+
+      const mobile=document.getElementById('mobile');
+      await load(mobile,'index.html?intro=0&ticks=10');
+      const md=mobile.contentDocument,mw=mobile.contentWindow;
+      check('mobile app exposed',!!mw.AgentOfficeApp);
+      check('mobile inherits day theme',md.documentElement.dataset.theme==='day',md.documentElement.dataset.theme);
+      const vw=mobile.contentWindow.innerWidth;
+      check('mobile no horizontal page overflow',md.documentElement.scrollWidth<=vw+1,
+        md.documentElement.scrollWidth+' / '+vw);
+      const themeRect=md.getElementById('themeBtn').getBoundingClientRect();
+      check('mobile theme button visible',themeRect.width>0&&themeRect.right<=vw+1,
+        Math.round(themeRect.right)+' / '+vw);
+      const controls=md.querySelector('.controls');
+      check('mobile controls scroll rail',getComputedStyle(controls).overflowX==='auto');
+      const stageTools=md.querySelector('.stage-tools').getBoundingClientRect();
+      check('mobile stage tools fit',stageTools.right<=vw+1,Math.round(stageTools.right)+' / '+vw);
+      check('mobile feed filters fit',md.querySelector('.feed-filters').getBoundingClientRect().right<=vw+1);
+      md.querySelector('[data-task="t4"]').click(); await wait(200);
+      check('mobile task drawer opens',!md.getElementById('detailDrawer').hidden);
+      const drawerW=md.getElementById('detailDrawer').getBoundingClientRect().width;
+      check('mobile drawer fits',drawerW<=vw+1,Math.round(drawerW)+' / '+vw);
+      md.querySelector('[data-drawer-close]').click(); await wait(100);
+      md.getElementById('traceBtn').click(); await wait(250);
+      check('mobile trace lab opens',!md.getElementById('traceLab').hidden);
+      const tlW=md.querySelector('.tl-shell').getBoundingClientRect().width;
+      check('mobile trace shell fits',tlW<=vw+1,Math.round(tlW)+' / '+vw);
+      md.querySelector('#traceLab [data-tl-close]').click(); await wait(100);
+      md.getElementById('externalBtn').click(); await wait(300);
+      check('mobile external modal opens',!md.getElementById('externalModal').hidden);
+      const extW=md.querySelector('.ext-shell').getBoundingClientRect().width;
+      check('mobile external shell fits',extW<=vw+1,Math.round(extW)+' / '+vw);
+      md.querySelector('#externalModal [data-ext-close]').click();
+      finish();
+    }catch(err){lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}
+  })();
+})();
+</script>
+</body></html>

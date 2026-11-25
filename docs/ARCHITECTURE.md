@@ -11,7 +11,7 @@ flowchart LR
     F[fx.js<br/>routes, beams, radar]
     T[trace.js<br/>Trace Lab + evals + OTLP]
     H[hiring.js<br/>local hires + hot desks]
-    X[external.js<br/>bridge polling, pairing, rename]
+    X[external.js<br/>pairing, delegation, bridge polling]
     L[(localStorage<br/>names / hires / snapshot / profiles)]
     D --> E
     E --> R
@@ -27,7 +27,7 @@ flowchart LR
   subgraph Bridge[bridge.py on 127.0.0.1:8787]
     P[one-time pairs]
     A[agent registry]
-    V[heartbeat / events]
+    V[heartbeat / events / assignments]
     M[demo agent]
     S[(~/.agent-office/bridge-state.json)]
   end
@@ -52,7 +52,7 @@ flowchart LR
 
 | Command | Coverage |
 | --- | --- |
-| `python3 -m unittest discover -s tests -v` | pairing, one-time claim, cancel, id takeover, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection |
+| `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection |
 | `bash scripts/check.sh` | Python syntax, required files, optional JS syntax |
 | `dev-*.html` | browser simulation, audit, Trace Lab, hiring, external pairing, FX, pathfinding |
 
@@ -66,7 +66,7 @@ flowchart LR
 | `src/fx.js` | SVG network, live beams, meeting radar, bursts, motes |
 | `src/trace.js` | full-screen Trace Lab: span tree, timeline, replay, evals, exports |
 | `src/hiring.js` | add local agent, hot desks, onboarding creation, persistence |
-| `src/external.js` | pairing codes, bridge polling, external event ingest, rename dialog |
+| `src/external.js` | pairing codes, task delegation, bridge polling, external event ingest, rename dialog |
 | `bridge.py` | localhost API for pairing, agents, heartbeats and events |
 | `trace.css` / `hiring.css` / `external.css` | feature-specific styling |
 
@@ -77,6 +77,7 @@ flowchart LR
 3. Audit derives baseline checks and a release gate from task checks.
 4. Trace Lab projects ledger into run/task/event spans and deterministic evals.
 5. External events arrive from `bridge.py`; `external.js` polls and calls `engine.ingestExternalEvent()`, so they join the same ledger and Trace Lab.
+6. Assignments are polled separately; `engine.applyExternalAssignment()` mirrors progress/completion into the task board and finalizes unverified checks as risk/missed.
 6. `engine.otlp()` projects the same events into OTLP/GenAI-style span JSON.
 
 ## State and persistence
@@ -88,6 +89,8 @@ flowchart LR
 - Snapshot: `agent-office.snapshot.v1`
 - Bridge: `~/.agent-office/bridge-state.json` (outside the static web root)
 - Provider keys: bridge env or `~/.agent-office/providers.json` (never in the browser)
+- Assignments: `GET/POST /assignments`, `PATCH/DELETE /assignments/<id>`; external completion is self-reported and leaves audit gaps
+- Theme: `html[data-theme="day"]`, persisted in `agent-office.theme.v1`
 
 ## Constraints
 

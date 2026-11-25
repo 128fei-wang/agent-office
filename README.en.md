@@ -1,13 +1,13 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office where six autonomous agents claim work, review each other, hold meetings, handle incidents, and ship a product — with an evidence ledger, an audit view, Trace Lab, deterministic evals, human release approval, and one-time pairing for external agents.
+A zero-dependency, local-first pixel-art office where six autonomous agents claim work, review each other, hold meetings, handle incidents, and ship a product — with an evidence ledger, an audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing and task delegation, plus day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -57,6 +57,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Office](docs/screenshots/office.jpg) | ![Trace Lab](docs/screenshots/trace-lab.jpg) |
 | **Audit** | **External agent pairing** |
 | ![Audit](docs/screenshots/audit.jpg) | ![External agent](docs/screenshots/external-agents.jpg) |
+| **Day mode** | **Mobile** |
+| ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
 
 ## Traceability and audit
 
@@ -74,6 +76,8 @@ This is the core product capability. The simulation is not “agents looking bus
 - **Evals** — seven deterministic assertions (completion, trace completeness, code evidence, review independence, definition-of-done quality, release safety, human approval), runnable with history.
 - **Human-in-the-loop** — when all tasks are done but the release gate is blocked by risk, approve an exception or send the work back; the decision is written to the ledger and changes the gate state.
 - **External agents** — a local bridge supports one-time pairing, registration, heartbeats, and event ingestion; external actions, skills, tools, files, tokens, and cost flow into the ledger, feed, Trace Lab, and OTLP. The team panel shows ONLINE / OFFLINE.
+- **Task delegation and writeback** — delegate a backlog task from the task drawer; external agents pull `GET /assignments` and report progress/completion through `PATCH /assignments/<id>`. The board, audit, and Trace update from the bridge.
+- **Day / night** — toggle with the sun/moon button or press `D`; day mode uses warm paper panels and a daylight wash, night mode keeps the command-center palette. The choice persists in localStorage.
 - **Model APIs** — Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen, and Ollama presets. Configure the key in the bridge once, then connect and run a single prompt; real token and latency data lands in Trace.
 - **Rename** — local agents via ✎ in the inspector or dossier; external agents from the external drawer. Local names persist in localStorage, external names sync to the bridge.
 - **Snapshots** — save / restore the current world (tasks, agents, ledger, meetings, history) to localStorage.
@@ -86,6 +90,7 @@ This is the core product capability. The simulation is not “agents looking bus
 ?audit=1                open the audit view
 ?task=t4                open a task drawer
 ?agent=a4               open an agent dossier
+?theme=day              open day mode
 ?trace=1                open Trace Lab
 ?hire=1                 open the add-agent dialog
 ?external=1             open external agent pairing
@@ -147,8 +152,34 @@ WorkBuddy needs a local OpenAI-compatible gateway (for example
 notes, and troubleshooting.
 
 > These are **one-shot model calls**, not autonomous coding agents. They do not
-> claim or complete simulated tasks. Cost stays `0`; token counts come from
-> provider usage when available.
+> claim tasks by themselves; delegation uses the Assignment protocol below.
+> Cost stays `0`; token counts come from provider usage when available.
+
+### Delegate a task to an external agent
+
+1. Connect an external agent (pairing code or model API).
+2. Open a **backlog** task whose dependencies are done.
+3. At the bottom of the task drawer, select the agent and click **Delegate**.
+4. The task moves to **in progress** with an `EXT` marker; the agent polls
+   `GET /assignments?agentId=...`.
+5. The agent reports `in_progress` / `completed` / `failed` with `progress`,
+   `result`, and optional `evidence`.
+6. A completed task is marked **self-reported**. Unverified high-severity checks
+   become risk and the rest become missed; the release gate keeps those gaps.
+
+```bash
+curl -s 'http://127.0.0.1:8787/assignments?agentId=ext-my-agent'
+
+curl -X PATCH http://127.0.0.1:8787/assignments/asg-xxxxxxxx \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"completed","progress":100,"result":"12 tests passed","evidence":["tests/12-passed"]}'
+```
+
+![Task delegation](docs/screenshots/delegation.jpg)
+
+The demo agent advances its assignments automatically, so the flow can be
+demonstrated without a separate process. See
+[docs/TASK_DELEGATION.md](docs/TASK_DELEGATION.md).
 
 ### External agent API
 
@@ -182,6 +213,10 @@ Endpoints:
 - `POST /agents/<id>/heartbeat`
 - `POST /events`
 - `GET /events?since=N`
+- `GET /assignments` / `GET /assignments?agentId=...`
+- `POST /assignments`
+- `PATCH /assignments/<id>`
+- `DELETE /assignments/<id>` (cancel)
 - `GET /providers`
 - `GET /providers/<id>`
 - `POST /providers/<id>/connect`
@@ -195,7 +230,25 @@ Endpoints:
 - `DELETE /pair/<code>`
 - `POST /demo/start` / `POST /demo/stop`
 
-The bridge binds `127.0.0.1` only. No API key ever lives in the frontend; the endpoint field on an agent profile is metadata, not a proxy. External events are currently **observability events**: they enter the ledger, Trace, and OTLP, but they do not claim or complete simulated tasks. Task delegation and writeback are the next layer.
+The bridge binds `127.0.0.1` only. No API key ever lives in the frontend; the endpoint field on an agent profile is metadata, not a proxy. External events enter the ledger, Trace, and OTLP. Task state changes only through an explicit Assignment writeback. External completion is self-reported, bypasses local review, and leaves unverified checks as audit gaps.
+
+## Day / night and mobile
+
+- Toggle with the **☀ / ☾** button or press `D`; the choice is stored in
+  `agent-office.theme.v1`.
+- Day mode turns panels, drawers, Trace Lab, and the external-agent modal into
+  warm paper surfaces and adds a daylight wash to the office. Night mode keeps
+  the command-center palette.
+- The theme is CSS-only: no images, no Canvas.
+- Mobile uses a single-column layout: office, feed, team, board. The top control
+  bar scrolls horizontally, and task/agent drawers, Trace Lab, and the external
+  modal fill a 390 px viewport.
+- Day and mobile screenshots are in the screenshot table above.
+
+```text
+?theme=day                  open day mode
+?theme=night                open night mode
+```
 
 ## Add an agent
 
@@ -232,13 +285,15 @@ agent-office/
 │   ├── fx.js             etched routes / signal comets / meeting radar / particles
 │   ├── trace.js          Trace Lab: spans, timeline, replay, evals, OTLP
 │   ├── hiring.js         add-agent form, hot desks, localStorage
-│   ├── external.js       pairing, bridge polling, external agents, rename
+│   ├── external.js       pairing, bridge polling, task delegation, rename
 │   ├── render.js         DOM rendering, office construction, panels
 │   └── main.js           boot, loop, controls, shortcuts
 ├── bridge.py             localhost external-agent bridge
 ├── providers.example.json model API config template (no secrets)
 ├── tests/test_bridge.py  bridge integration tests (stdlib unittest)
 ├── docs/PROVIDERS.md     model API setup and troubleshooting
+├── docs/TASK_DELEGATION.md external task protocol and status machine
+├── theme.css             day theme, Trace Lab light skin, mobile layout
 ├── start.sh              static server + bridge
 ├── dev-*.html            browser self-check pages
 └── docs/                 architecture, pairing, protocol, roadmap, checklist
@@ -262,8 +317,10 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-tracelab.html` — spans, timeline, replay, evals, OTLP, human approval.
 - `dev-hiring.html` — add agent, hot desks, onboarding, persistence.
 - `dev-external.html` — pairing, claim, one-time enforcement, events, rename, OTLP, persistence.
+- `dev-delegation.html` — delegation, progress/completion writeback, self-report markers, audit gaps.
+- `dev-theme.html` — day/night toggle, persistence, `D` shortcut, 390 px mobile layout, drawers, Trace Lab, external modal.
 
-Run the bridge integration tests and repository checks with:
+Run the 15 bridge integration tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -291,7 +348,8 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - File paths, line numbers, diffs, and skill calls are **simulated evidence**, not real repository changes.
 - Trace Lab token / cost / duration values are **reproducible simulated telemetry**, not real billing. The OTLP JSON follows OpenTelemetry / GenAI semantics so real data can replace it, but there is no trace ingest endpoint yet.
 - The rule engine's “autonomy” is a designed behavior space, not open-ended reasoning. The ledger and audit model are reusable for real agents.
-- External agents are **observable-only**: events enter the ledger, Trace, and OTLP, but do not claim or complete simulated tasks. Delegation and writeback are not implemented.
+- External task delegation is **pull-based and self-reported**: the bridge does not push a webhook, and external completion bypasses local review. Unverified checks remain as risk/missed audit gaps.
+- Assignments are scoped to the current scenario and `runId`; a new run does not automatically reuse old delegation results.
 - Pairing codes are an invitation mechanism, not authentication. The bridge has no auth or TLS and should only be used on localhost.
 - Model APIs are one-shot adapters, not autonomous task execution. Cost is not computed from vendor prices; token counts use provider usage when available.
 - The office uses fixed coordinates; many more desks require adjusting `AO.HUBS` and obstacles.

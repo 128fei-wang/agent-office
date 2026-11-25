@@ -27,6 +27,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('bridge defaults local',ext.bridgeUrl.indexOf('127.0.0.1')>=0);
     await wait(500);
     check('bridge health online',ext.bridgeOnline===true);
+    const baselineExt=ext.agents.length;
 
     // local rename
     renderer.select('a2');
@@ -111,7 +112,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('greeting event ingested',engine.world.ledger.some(e=>e.external&&e.kind==='hello'&&e.agentId===added.id));
     check('external team card',!!$('[data-external="'+added.id+'"]'));
     check('waiting card removed',!$('[data-ext-pair-open="'+pair.code+'"]'));
-    check('team sub counts ext',/1 外部/.test($('#teamSub').textContent),$('#teamSub').textContent);
+    check('team sub counts ext',new RegExp((baselineExt+1)+' 外部').test($('#teamSub').textContent),$('#teamSub').textContent);
 
     // external drawer + rename
     $('[data-external="'+added.id+'"]').click();
@@ -184,8 +185,8 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
         check('reload app exposed',!!app2);
         const a=app2.engine.world.agents.find(x=>x.id==='a2');
         check('local rename survives reload',a&&a.name==='苏晚晚','name='+(a&&a.name));
-        check('external list survives reload',app2.renderer.external.agents.length===0,
-          'agents='+app2.renderer.external.agents.length);
+        check('external list survives reload',app2.renderer.external.agents.length===baselineExt,
+          'agents='+app2.renderer.external.agents.length+' baseline='+baselineExt);
       }catch(e){lines.push('FAIL reload exception '+e);failed++;}
       finish();
     },2400));

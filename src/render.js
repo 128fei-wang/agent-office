@@ -263,6 +263,23 @@
           if (a) self.external.diagnose(a);
           return;
         }
+        if (e.target.closest("[data-open-external]")) {
+          if (self.external) self.external.open();
+          return;
+        }
+        const delegateBtn = e.target.closest("[data-delegate-task]");
+        if (delegateBtn) {
+          const select = self.drawer.querySelector("#delegateAgentSelect");
+          const brief = self.drawer.querySelector("#delegateBrief");
+          if (select && self.external) {
+            self.external.delegateTask(
+              delegateBtn.getAttribute("data-delegate-task"),
+              select.value,
+              brief ? brief.value : ""
+            );
+          }
+          return;
+        }
         const runProvider = e.target.closest("[data-ext-run-provider]");
         if (runProvider) {
           self.external.runProvider(runProvider.getAttribute("data-ext-run-provider"));
@@ -991,7 +1008,7 @@
               const reviewer = t.reviewerId ? this.engine.agentById(t.reviewerId) : null;
               const meta = t.status === "review"
                 ? (reviewer ? reviewer.name + " 评审中" : "等待评审")
-                : (assignee ? assignee.name : "待认领");
+                : (t.externalName || (assignee ? assignee.name : "待认领"));
               const blocked = t.status === "blocked";
               const checkDone = t.checks.filter((c) => c.status === "done").length;
               const checkRisk = t.checks.filter((c) => c.status === "risk").length;
@@ -1004,6 +1021,7 @@
                 esc((t.desc || t.title) + " · 点击查看工作轨迹") + '">' +
                 '<div class="task-top"><i class="role-dot" style="background:' +
                 role.color + '"></i><span class="task-title">' + esc(t.title) + "</span>" +
+                (t.external ? '<em class="external-chip">EXT</em>' : "") +
                 (blocked ? '<em class="blocked-chip">阻塞</em>' : "") + "</div>" +
                 '<div class="task-meta"><span>' + esc(meta) + "</span><span>" +
                 Math.round(t.progress) + "%</span></div>" +
@@ -1049,7 +1067,7 @@
       });
       const ownerName = (task) => {
         const a = task.assignee ? this.engine.agentById(task.assignee) : null;
-        return a ? a.name : "待认领";
+        return a ? a.name : (task.externalName || "待认领");
       };
 
       let gapHtml = "";
@@ -1650,6 +1668,11 @@
       const events = w.ledger.filter((e) => e.taskId === task.id);
       const owner = task.assignee ? this.engine.agentById(task.assignee) : null;
       const reviewer = task.reviewerId ? this.engine.agentById(task.reviewerId) : null;
+      const externalOwner = task.external ? (task.externalName || task.assignee) : null;
+      const externalAgents = this.external ? (this.external.agents || []).filter(function (a) {
+        // Model API agents are one-shot chat adapters, not assignment workers.
+        return !a.managed && (a.status === "online" || a.provider || a.runtime);
+      }) : [];
       const role = AO.ROLES[task.role] || { color: "#55d6c2", label: task.role };
       const done = task.checks.filter((c) => c.status === "done").length;
       const risk = task.checks.filter((c) => c.status === "risk").length;
@@ -1717,7 +1740,17 @@
 
       const gapCount = risk + missed;
       let callout = "";
-      if (task.status === "done" && gapCount) {
+      if (task.external) {
+        if (task.status === "done") {
+          callout = '<div class="drawer-callout warn">外部 Agent 自报完成，<b>未经过本地评审</b>。未验证的基础工作已进入风险 / 遗漏，审计会保留这些缺口。</div>';
+        } else if (task.status === "blocked") {
+          callout = '<div class="drawer-callout warn">外部 Agent 报告失败：' +
+            esc(task.blockedReason || "未返回原因") + "</div>";
+        } else {
+          callout = '<div class="drawer-callout">已委托外部 Agent，当前进度 <b>' +
+            Math.round(task.progress) + "%</b>。状态由 bridge 回写。</div>";
+        }
+      } else if (task.status === "done" && gapCount) {
         callout = '<div class="drawer-callout warn">已通过评审，但仍有 <b>' + gapCount +
           "</b> 项基础工作未覆盖或未验证。审计报告会保留这些缺口。</div>";
       } else if (task.status === "review") {
@@ -1731,6 +1764,43 @@
       const timeline = events.length
         ? events.map((e) => this.traceEventHTML(e, task)).join("")
         : '<div class="drawer-empty">还没有工作记录。等 agent 认领后会在这里留下技能调用、文件变更和评审记录。</div>';
+
+      let delegateSection = "";
+      if (task.status === "backlog" && this.external) {
+        if (!externalAgents.length) {
+          delegateSection = '<div class="drawer-section delegate-section">' +
+            '<div class="drawer-section-head"><h3>委托外部 Agent</h3><span>EXTERNAL</span></div>' +
+            '<p class="drawer-muted">还没有外部 Agent。先从 TEAM 面板接入一个，或启动演示 Agent。</p>' +
+            '<button type="button" class="dep-chip" data-open-external>打开外部 Agent 面板</button></div>';
+        } else {
+          const options = externalAgents.map(function (a) {
+            const state = a.status === "online" ? "ONLINE" : "OFFLINE";
+            return '<option value="' + esc(a.id) + '">' + esc(a.name) + " · " + state +
+              " · " + esc(a.provider || a.runtime || "external") + "</option>";
+          }).join("");
+          delegateSection = '<div class="drawer-section delegate-section">' +
+            '<div class="drawer-section-head"><h3>委托外部 Agent</h3><span>可选 ' +
+            externalAgents.length + " 个</span></div>" +
+            '<div class="delegate-form">' +
+            '<select id="delegateAgentSelect">' + options + "</select>" +
+            '<textarea id="delegateBrief" maxlength="800" placeholder="给外部 Agent 的任务说明（可选）">' +
+            esc(task.desc || "") + "</textarea>" +
+            '<div class="delegate-actions"><button type="button" class="dep-chip delegate-submit" data-delegate-task="' +
+            esc(task.id) + '">派发任务</button></div></div>' +
+            '<p class="drawer-muted">外部完成会回写状态并标记为「自报完成」，未验证的基础工作会进入风险 / 遗漏。模型 API Agent 只做单次调用，不参与任务委派；请使用 Claude Code / Codex / 演示 Agent。</p>' +
+            "</div>";
+        }
+      }
+      const externalResult = task.external && (task.externalResult || (task.externalEvidence || []).length)
+        ? '<div class="drawer-section"><div class="drawer-section-head"><h3>外部回执</h3><span>' +
+          esc(task.externalProvider || "external") + "</span></div>" +
+          (task.externalResult ? '<p class="external-result">' + esc(task.externalResult) + "</p>" : "") +
+          (task.externalEvidence && task.externalEvidence.length
+            ? '<div class="drawer-chips">' + task.externalEvidence.map(function (e) {
+                return '<span class="tl-chip">' + esc(e) + "</span>";
+              }).join("") + "</div>"
+            : "") + "</div>"
+        : "";
 
       return '<div class="drawer-head">' +
         '<button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>' +
@@ -1749,15 +1819,20 @@
         "<div><span>负责人</span><b>" + (owner
           ? '<button type="button" class="drawer-link" data-open-agent="' + owner.id + '">' +
             esc(owner.name) + "</button>"
-          : "待认领") + "</b></div>" +
+          : (externalOwner
+            ? '<span class="external-owner">' + esc(externalOwner) +
+              ' <em class="external-chip">EXT</em></span>'
+            : "待认领")) + "</b></div>" +
         "<div><span>评审</span><b>" + (reviewer
           ? '<button type="button" class="drawer-link" data-open-agent="' + reviewer.id + '">' +
             esc(reviewer.name) + "</button>"
-          : "—") + "</b></div>" +
+          : (task.external ? "外部自报 · 未本地评审" : "—")) + "</b></div>" +
         "<div><span>周期</span><b>" + cycle + "</b></div>" +
         "<div><span>返工</span><b>" + task.reworkCount + " 次</b></div>" +
         "</div>" +
         callout +
+        delegateSection +
+        externalResult +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>工作轨迹</h3>' +
         "<span>" + events.length + " 条事件</span></div>" +
         '<div class="trace-list">' + timeline + "</div></div>" +
@@ -1774,6 +1849,7 @@
 
     externalDrawerHTML(agent) {
       const events = this.external.eventsFor(agent.id);
+      const assignments = this.external.assignmentsFor(agent.id);
       const online = agent.status === "online";
       const skills = (agent.skills || []).map(function (s) {
         return '<span class="tl-chip">' + esc(s) + "</span>";
@@ -1790,6 +1866,23 @@
       });
       if (!eventHtml) {
         eventHtml = '<div class="drawer-empty">还没有外部事件。启动演示 Agent，或让外部 agent 调用 bridge 的 /events 接口。</div>';
+      }
+      let assignmentHtml = "";
+      assignments.forEach((assignment) => {
+        const task = this.engine.taskById(assignment.taskId);
+        const state = assignment.status === "completed" ? "完成" :
+          assignment.status === "failed" ? "失败" :
+          assignment.status === "cancelled" ? "取消" :
+          assignment.status === "in_progress" ? "进行中" : "已派发";
+        assignmentHtml += '<button type="button" class="agent-event" ' +
+          (task ? 'data-open-task="' + task.id + '"' : 'disabled') + ">" +
+          '<span class="ae-time">' + Math.round(assignment.progress || 0) + '%</span>' +
+          '<span class="ae-copy"><b>' + esc(assignment.taskTitle || assignment.taskId) + "</b><em>" +
+          esc(state + " · " + (assignment.updatedAt || "")) + "</em></span>" +
+          "<span class='ae-kind'>⇢</span></button>";
+      });
+      if (!assignmentHtml) {
+        assignmentHtml = '<div class="drawer-empty">还没有委托任务。打开一个待办任务，选择这个外部 Agent 派发。</div>';
       }
       return '<div class="drawer-head">' +
         '<button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>' +
@@ -1822,6 +1915,8 @@
           : "") +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>SKILLS</h3></div>' +
         '<div class="drawer-chips">' + (skills || '<span class="drawer-muted">未声明</span>') + "</div></div>" +
+        '<div class="drawer-section"><div class="drawer-section-head"><h3>委托任务</h3>' +
+        "<span>" + assignments.length + " 个</span></div>" + assignmentHtml + "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>最近外部事件</h3>' +
         "<span>" + events.length + " 条</span></div>" + eventHtml + "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>连接</h3></div>' +

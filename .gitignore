@@ -5,3 +5,5 @@ __pycache__/
 bridge-state.tmp
 providers.local.json
 providers.json
+
+build/

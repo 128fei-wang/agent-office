@@ -117,6 +117,38 @@
   const speedSeg = document.getElementById("speedSeg");
   const focusBtn = document.getElementById("focusBtn");
   const fxBtn = document.getElementById("fxBtn");
+  const themeBtn = document.getElementById("themeBtn");
+  const themeIcon = document.getElementById("themeIcon");
+  const themeLabel = document.getElementById("themeLabel");
+  const THEME_KEY = "agent-office.theme.v1";
+
+  function applyTheme(theme, persist) {
+    const next = theme === "day" ? "day" : "night";
+    document.documentElement.dataset.theme = next;
+    document.documentElement.classList.toggle("theme-day", next === "day");
+    document.documentElement.style.colorScheme = next === "day" ? "light" : "dark";
+    if (themeIcon) themeIcon.textContent = next === "day" ? "☀" : "☾";
+    if (themeLabel) themeLabel.textContent = next === "day" ? "白天" : "夜间";
+    if (themeBtn) {
+      themeBtn.setAttribute("aria-pressed", next === "day" ? "true" : "false");
+      themeBtn.title = next === "day" ? "切换到夜间模式（D）" : "切换到白天模式（D）";
+    }
+    if (persist) {
+      try { localStorage.setItem(THEME_KEY, next); } catch (err) {}
+    }
+  }
+
+  let initialTheme = "night";
+  try { initialTheme = localStorage.getItem(THEME_KEY) || "night"; } catch (err) {}
+  const themeParam = params.get("theme");
+  if (themeParam === "day" || themeParam === "night") initialTheme = themeParam;
+  applyTheme(initialTheme, false);
+  if (themeBtn) {
+    themeBtn.addEventListener("click", function () {
+      applyTheme(document.documentElement.dataset.theme === "day" ? "night" : "day", true);
+    });
+  }
+
   let timer = null;
 
   function toggleFocus() {
@@ -252,6 +284,8 @@
       renderer.render();
     } else if (e.key === "f" || e.key === "F") {
       toggleFocus();
+    } else if (e.key === "d" || e.key === "D") {
+      applyTheme(document.documentElement.dataset.theme === "day" ? "night" : "day", true);
     } else if (e.key === "x" || e.key === "X") {
       if (fxBtn) fxBtn.click();
     } else if (e.key === "a" || e.key === "A") {

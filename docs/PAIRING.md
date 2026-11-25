@@ -48,7 +48,7 @@ GET /pairs
 
 The bridge accepts only local Host and Origin headers. The app should be served from `http://127.0.0.1:5173` (or another localhost port). Direct `file://` usage is blocked unless `BRIDGE_ALLOW_FILE_ORIGIN=1` is set.
 
-The setup document contains exact curl examples for claim, heartbeat and events.
+The setup document contains exact curl examples for claim, heartbeat, events, and assignment polling. Task delegation is described in [TASK_DELEGATION.md](TASK_DELEGATION.md).
 
 ## Diagnostics
 

@@ -34,6 +34,8 @@ python3 bridge.py
   - `dev-tracelab.html?scenario=launch` and `?scenario=incident`
   - `dev-hiring.html`
   - `dev-external.html` (bridge must be running)
+  - `dev-delegation.html` (bridge must be running)
+  - `dev-theme.html` (theme and mobile layout)
 - `bash scripts/check.sh` covers syntax, required files, and the bridge tests run separately above.
 
 `dev-external.html` starts and stops the bridge demo; it should leave the bridge in a clean state.

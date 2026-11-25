@@ -508,10 +508,11 @@ def load_state() -> dict:
                 data.setdefault("nextEvent", 1)
                 data.setdefault("demo", False)
                 data.setdefault("pairs", [])
+                data.setdefault("assignments", [])
                 return data
         except Exception:
             pass
-    return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": []}
+    return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": [], "assignments": []}
 
 
 STATE = load_state()
@@ -611,7 +612,18 @@ def pair_setup_markdown(base: str, pair: dict) -> str:
         "  -d '{\"agentId\":\"<agent-id>\",\"kind\":\"skill\",\"action\":\"inspect repo\",\"skill\":\"repo-map\",\"tool\":\"bash\"}'\n"
         "```\n\n"
         "## 4. Greeting\n\n"
-        "Send `POST /events` with `kind: \"hello\"` and a short greeting. It will appear in Agent Office.\n"
+        "Send `POST /events` with `kind: \"hello\"` and a short greeting. It will appear in Agent Office.\n\n"
+        "## 5. Work on delegated tasks\n\n"
+        "Poll assignments for this agent:\n\n"
+        "```bash\n"
+        "curl " + base + "/assignments?agentId=<agent-id>\n"
+        "```\n\n"
+        "Report progress or completion:\n\n"
+        "```bash\n"
+        "curl -X PATCH " + base + "/assignments/<assignment-id> \\\n"
+        "  -H 'Content-Type: application/json' \\\n"
+        "  -d '{\"status\":\"completed\",\"progress\":100,\"result\":\"done\",\"evidence\":[\"tests/12-passed\"]}'\n"
+        "```\n"
     )
 
 
@@ -644,6 +656,170 @@ def find_agent(agent_id: str):
         if a.get("id") == agent_id:
             return a
     return None
+
+
+ASSIGNMENT_ACTIVE = ("assigned", "in_progress")
+ASSIGNMENT_TERMINAL = ("completed", "failed", "cancelled")
+
+
+def public_assignment(assignment: dict) -> dict:
+    out = dict(assignment)
+    agent = find_agent(out.get("agentId") or "")
+    if agent:
+        out["agentName"] = agent.get("name") or out.get("agentName")
+        out["agentStatus"] = "online" if online(agent) else "offline"
+        out["provider"] = agent.get("provider") or agent.get("runtime")
+    else:
+        out["agentStatus"] = "offline"
+        out["provider"] = ""
+    return out
+
+
+def find_assignment(assignment_id: str):
+    for assignment in STATE.get("assignments", []):
+        if assignment.get("id") == assignment_id:
+            return assignment
+    return None
+
+
+def add_assignment(body: dict) -> dict:
+    agent = find_agent(str(body.get("agentId") or ""))
+    if not agent:
+        raise ValueError("unknown agentId")
+    task_id = str(body.get("taskId") or "").strip()[:80]
+    title = str(body.get("title") or "").strip()[:160]
+    if not task_id or not title:
+        raise ValueError("taskId and title are required")
+    now = now_iso()
+    assignment = {
+        "id": "asg-" + uuid.uuid4().hex[:8],
+        "agentId": agent["id"],
+        "agentName": agent.get("name"),
+        "taskId": task_id,
+        "taskTitle": title,
+        "scenarioId": str(body.get("scenarioId") or "")[:40],
+        "runId": str(body.get("runId") or "")[:64],
+        "brief": str(body.get("brief") or "")[:800],
+        "status": "assigned",
+        "progress": 0,
+        "result": "",
+        "evidence": [],
+        "createdAt": now,
+        "updatedAt": now,
+        "completedAt": None,
+    }
+    STATE.setdefault("assignments", []).append(assignment)
+    # Keep active work; retain recent history.
+    active = [a for a in STATE["assignments"] if a.get("status") in ASSIGNMENT_ACTIVE]
+    done = [a for a in STATE["assignments"] if a.get("status") not in ASSIGNMENT_ACTIVE]
+    STATE["assignments"] = done[-80:] + active
+    event = add_event({
+        "agentId": agent["id"],
+        "taskId": task_id,
+        "kind": "handoff",
+        "action": "委托任务 · " + title,
+        "skill": "delegation",
+        "tool": "bridge",
+        "status": "delegated",
+        "note": assignment["brief"] or "通过 Agent Office 委托",
+        "provider": agent.get("provider"),
+    })
+    assignment["lastEventId"] = event.get("id")
+    save_state()
+    return assignment
+
+
+def update_assignment(assignment_id: str, body: dict) -> dict:
+    assignment = find_assignment(assignment_id)
+    if not assignment:
+        raise ValueError("unknown assignment")
+    current = assignment.get("status") or "assigned"
+    if current in ASSIGNMENT_TERMINAL:
+        if body.get("status") in (None, current):
+            return assignment
+        raise ValueError("assignment is already " + current)
+    status = str(body.get("status") or current)
+    allowed = {"assigned", "in_progress", "completed", "failed", "cancelled"}
+    if status not in allowed:
+        raise ValueError("invalid status")
+    if current == "assigned" and status not in ("in_progress", "completed", "failed", "cancelled"):
+        raise ValueError("invalid transition")
+    try:
+        progress = int(body.get("progress", assignment.get("progress") or 0))
+    except (TypeError, ValueError):
+        raise ValueError("progress must be an integer")
+    progress = max(0, min(100, progress))
+    if status in ("completed", "failed", "cancelled"):
+        progress = 100 if status == "completed" else progress
+    result = str(body.get("result") or "").strip()[:1200]
+    if result:
+        assignment["result"] = result
+    evidence = body.get("evidence")
+    if isinstance(evidence, list):
+        assignment["evidence"] = [str(item)[:300] for item in evidence[:20]]
+    assignment["status"] = status
+    assignment["progress"] = progress
+    assignment["updatedAt"] = now_iso()
+    if status in ASSIGNMENT_TERMINAL:
+        assignment["completedAt"] = assignment.get("completedAt") or now_iso()
+    agent = find_agent(assignment["agentId"])
+    if agent:
+        agent["lastSeen"] = now_iso()
+        agent["lastSeenTs"] = time.time()
+    if status == "completed":
+        event = add_event({
+            "agentId": assignment["agentId"],
+            "taskId": assignment["taskId"],
+            "kind": "complete",
+            "action": "外部任务完成 · " + assignment["taskTitle"],
+            "skill": "external-complete",
+            "tool": "bridge",
+            "status": "done",
+            "note": result or "外部 Agent 自报完成",
+            "provider": agent.get("provider") if agent else None,
+        })
+    elif status == "failed":
+        event = add_event({
+            "agentId": assignment["agentId"],
+            "taskId": assignment["taskId"],
+            "kind": "risk",
+            "action": "外部任务失败 · " + assignment["taskTitle"],
+            "skill": "external-failure",
+            "tool": "bridge",
+            "status": "failed",
+            "note": result or "外部 Agent 自报失败",
+            "provider": agent.get("provider") if agent else None,
+        })
+    elif status == "cancelled":
+        event = add_event({
+            "agentId": assignment["agentId"],
+            "taskId": assignment["taskId"],
+            "kind": "risk",
+            "action": "外部任务取消 · " + assignment["taskTitle"],
+            "skill": "external-cancel",
+            "tool": "bridge",
+            "status": "cancelled",
+            "note": result or "委托已取消",
+            "provider": agent.get("provider") if agent else None,
+        })
+    else:
+        if status == "in_progress" and current == "assigned":
+            assignment["status"] = "in_progress"
+        event = add_event({
+            "agentId": assignment["agentId"],
+            "taskId": assignment["taskId"],
+            "kind": "skill",
+            "action": "外部任务进度 · " + assignment["taskTitle"] + " · " + str(progress) + "%",
+            "skill": "external-progress",
+            "tool": "bridge",
+            "status": "in_progress",
+            "note": result or ("进度 " + str(progress) + "%"),
+            "provider": agent.get("provider") if agent else None,
+        })
+    assignment["lastEventId"] = event.get("id")
+    if agent:
+        save_state()
+    return assignment
 
 
 def ensure_demo_agent() -> dict:
@@ -746,11 +922,28 @@ def demo_loop():
         try:
             with LOCK:
                 ensure_demo_agent()
-                item = dict(DEMO_SEQUENCE[idx % len(DEMO_SEQUENCE)])
-                item["agentId"] = "ext-demo-claude"
-                idx += 1
-                ev = add_event(item)
-                print("demo event", ev["id"], flush=True)
+                active = next(
+                    (a for a in STATE.get("assignments", [])
+                     if a.get("agentId") == "ext-demo-claude"
+                     and a.get("status") in ("assigned", "in_progress")),
+                    None,
+                )
+                if active:
+                    progress = min(100, int(active.get("progress") or 0) + 25)
+                    body = {
+                        "status": "completed" if progress >= 100 else "in_progress",
+                        "progress": progress,
+                        "result": "演示 Agent 已处理任务并回写证据。",
+                        "evidence": ["demo://workspace", "demo://tests/12-passed"],
+                    }
+                    active = update_assignment(active["id"], body)
+                    print("demo assignment", active["id"], active["status"], progress, flush=True)
+                else:
+                    item = dict(DEMO_SEQUENCE[idx % len(DEMO_SEQUENCE)])
+                    item["agentId"] = "ext-demo-claude"
+                    idx += 1
+                    ev = add_event(item)
+                    print("demo event", ev["id"], flush=True)
         except Exception as exc:
             import traceback
             print("demo error:", exc, flush=True)
@@ -868,9 +1061,25 @@ class Handler(BaseHTTPRequestHandler):
                     "events": len(STATE["events"]),
                     "lastEventId": STATE["nextEvent"] - 1,
                     "pendingPairs": sum(1 for p in STATE.get("pairs", []) if pair_status(p) == "pending"),
+                    "assignments": len(STATE.get("assignments", [])),
+                    "activeAssignments": sum(1 for a in STATE.get("assignments", [])
+                                            if a.get("status") in ASSIGNMENT_ACTIVE),
                     "demo": bool(STATE.get("demo")),
                     "time": now_iso(),
                 })
+                return
+            if path == "/assignments":
+                agent_filter = (qs.get("agentId") or [""])[0]
+                status_filter = (qs.get("status") or [""])[0]
+                rows = []
+                for assignment in STATE.get("assignments", []):
+                    if agent_filter and assignment.get("agentId") != agent_filter:
+                        continue
+                    if status_filter and assignment.get("status") != status_filter:
+                        continue
+                    rows.append(public_assignment(assignment))
+                rows.sort(key=lambda a: a.get("updatedAt", ""), reverse=True)
+                self.send_json({"assignments": rows})
                 return
             if path == "/providers":
                 self.send_json(providers_payload())
@@ -922,7 +1131,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/agents", "/providers", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -941,6 +1150,14 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_provider_post(path, body)
             return
         with LOCK:
+            if path == "/assignments":
+                try:
+                    assignment = add_assignment(body)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
+                self.send_json({"ok": True, "assignment": public_assignment(assignment)})
+                return
             if path == "/pair/code":
                 code = new_pair_code()
                 expires_at = time.time() + 30 * 60
@@ -1165,6 +1382,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(exc)}, 400)
             return
         with LOCK:
+            if path.startswith("/assignments/") and path.count("/") == 2:
+                assignment_id = path.split("/")[2]
+                try:
+                    assignment = update_assignment(assignment_id, body)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
+                self.send_json({"ok": True, "assignment": public_assignment(assignment)})
+                return
             if path.startswith("/agents/"):
                 agent_id = path.split("/")[2]
                 agent = find_agent(agent_id)
@@ -1185,6 +1411,19 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         with LOCK:
+            if path.startswith("/assignments/") and path.count("/") == 2:
+                assignment_id = path.split("/")[2]
+                assignment = find_assignment(assignment_id)
+                if not assignment:
+                    self.send_json({"error": "unknown assignment"}, 404)
+                    return
+                try:
+                    assignment = update_assignment(assignment_id, {"status": "cancelled"})
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, 400)
+                    return
+                self.send_json({"ok": True, "assignment": public_assignment(assignment)})
+                return
             if path.startswith("/pair/") and path.count("/") == 2:
                 code = path.split("/")[2]
                 pair = find_pair(code)

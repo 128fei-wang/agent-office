@@ -165,7 +165,7 @@
         messages: [],
         meeting: null,
         eventsApplied: {},
-        stats: { meetings: 0, reviews: 0, approvals: 0, coffees: 0, messages: 0 },
+        stats: { meetings: 0, reviews: 0, approvals: 0, coffees: 0, messages: 0, externalCompletions: 0 },
         done: false,
         finishedAt: null,
         messageSeq: 0,
@@ -640,7 +640,8 @@
       w.evalRuns = Array.isArray(w.evalRuns) ? w.evalRuns : [];
       w.humanReview = w.humanReview || null;
       w.runId = w.runId || hex32(hash32(w.scenarioId + "|" + w.goal + "|" + w.tick), 16);
-      w.stats = w.stats || { meetings: 0, reviews: 0, approvals: 0, coffees: 0, messages: 0 };
+      w.stats = w.stats || { meetings: 0, reviews: 0, approvals: 0, coffees: 0, messages: 0, externalCompletions: 0 };
+      w.stats.externalCompletions = Number(w.stats.externalCompletions) || 0;
       w.tick = Number(w.tick) || 0;
       w.minutes = Number(w.minutes) || 9 * 60;
       w.ledgerSeq = Number(w.ledgerSeq) ||
@@ -1143,6 +1144,165 @@
 
     taskById(id) {
       return this.world.tasks.find((t) => t.id === id);
+    }
+
+    canDelegateTask(task) {
+      if (!task) return { ok: false, error: "找不到任务" };
+      if (task.status !== "backlog") {
+        return { ok: false, error: "只能委托待办任务" };
+      }
+      const missing = (task.deps || []).filter((id) => {
+        const dep = this.taskById(id);
+        return dep && dep.status !== "done";
+      });
+      if (missing.length) {
+        return { ok: false, error: "依赖未完成：" + missing.join(", ") };
+      }
+      return { ok: true };
+    }
+
+    delegateTaskToExternal(taskId, agent, assignmentId) {
+      const task = this.taskById(taskId);
+      if (!task || !agent) return null;
+      task.assignee = agent.id;
+      task.external = true;
+      task.externalName = agent.name;
+      task.externalProvider = agent.provider || agent.runtime || "external";
+      task.externalAssignmentId = assignmentId || null;
+      task.externalStatus = "assigned";
+      task.externalResult = "";
+      task.externalEvidence = [];
+      task.status = "in_progress";
+      task.progress = 0;
+      task.startedAt = this.world.tick;
+      task.completedAt = null;
+      task.reviewerId = null;
+      task.blockedReason = null;
+      return task;
+    }
+
+    applyExternalAssignment(assignment, agentMeta) {
+      if (!assignment || !assignment.taskId) return null;
+      const w = this.world;
+      if (assignment.scenarioId && assignment.scenarioId !== this.scenarioId) return null;
+      if (assignment.runId && w.runId && assignment.runId !== w.runId) return null;
+      const task = this.taskById(assignment.taskId);
+      if (!task) return null;
+      const name = assignment.agentName || (agentMeta && agentMeta.name) || "External Agent";
+      const provider = assignment.provider || (agentMeta && (agentMeta.provider || agentMeta.runtime)) || "external";
+      const first = task.externalAssignmentId !== assignment.id;
+      task.external = true;
+      task.externalAssignmentId = assignment.id;
+      task.externalName = name;
+      task.externalProvider = provider;
+      task.externalStatus = assignment.status || "assigned";
+      task.externalResult = assignment.result || "";
+      task.externalEvidence = Array.isArray(assignment.evidence) ? assignment.evidence.slice() : [];
+      task.assignee = assignment.agentId;
+      task.reviewerId = null;
+
+      if (first) {
+        task.status = "in_progress";
+        task.progress = Math.max(0, Math.min(100, Number(assignment.progress) || 0));
+        task.startedAt = w.tick;
+        task.completedAt = null;
+        task.blockedReason = null;
+        this.recordEvent({
+          agentId: task.assignee,
+          agentName: name,
+          runtime: provider,
+          provider: provider,
+          external: true,
+          taskId: task.id,
+          kind: "claim",
+          action: "外部委托 · " + task.title,
+          status: "claimed",
+          note: (assignment.brief || task.desc || "").slice(0, 300)
+        });
+      } else if (task.status !== "done") {
+        task.progress = Math.max(0, Math.min(100, Number(assignment.progress) || 0));
+      }
+
+      if (assignment.status === "completed") {
+        if (task.status !== "done") {
+          task.status = "done";
+          task.progress = 100;
+          task.completedAt = w.tick;
+          task.blockedReason = null;
+          const summary = this.finalizeExternalChecks(task, assignment);
+          w.stats.externalCompletions = (w.stats.externalCompletions || 0) + 1;
+          this.recordEvent({
+            agentId: task.assignee,
+            agentName: name,
+            runtime: provider,
+            provider: provider,
+            external: true,
+            taskId: task.id,
+            kind: "review",
+            action: "外部完成 · 未本地评审 · " + task.title,
+            status: "external",
+            note: (assignment.result || "外部 Agent 自报完成") +
+              " · 基础工作 " + summary.done + "/" + summary.total +
+              " · 风险 " + summary.risk + " · 遗漏 " + summary.missed
+          });
+          this.addMessage(
+            "done",
+            name + " 外部完成「" + task.title + "」，等待本地审计",
+            task.assignee
+          );
+          this.checkDone();
+        }
+      } else if (assignment.status === "failed") {
+        if (task.status !== "done") {
+          task.status = "blocked";
+          task.blockedReason = "外部 Agent 失败：" +
+            (assignment.result || "未返回原因");
+          this.addMessage(
+            "alert",
+            name + " 外部任务失败「" + task.title + "」",
+            task.assignee
+          );
+        }
+      } else if (assignment.status === "cancelled") {
+        if (task.status !== "done") {
+          task.status = "backlog";
+          task.progress = 0;
+          task.assignee = null;
+          task.external = false;
+          task.externalStatus = "cancelled";
+          task.externalAssignmentId = null;
+          task.externalName = null;
+          task.startedAt = null;
+          task.blockedReason = null;
+        }
+      } else if (task.status !== "done") {
+        task.status = task.status === "blocked" ? "in_progress" : "in_progress";
+        task.progress = Math.max(0, Math.min(100, Number(assignment.progress) || 0));
+        task.blockedReason = null;
+      }
+      return task;
+    }
+
+    finalizeExternalChecks(task, assignment) {
+      let done = 0;
+      let risk = 0;
+      let missed = 0;
+      (task.checks || []).forEach((check) => {
+        if (check.status === "done") {
+          done += 1;
+          return;
+        }
+        if (check.severity === "high") {
+          check.status = "risk";
+          risk += 1;
+        } else {
+          check.status = "missed";
+          missed += 1;
+        }
+        check.note = "外部 Agent 自报完成，未提供本地验证";
+        check.agentId = assignment.agentId;
+      });
+      return { done, risk, missed, total: (task.checks || []).length };
     }
 
     deskSeat(agent) {

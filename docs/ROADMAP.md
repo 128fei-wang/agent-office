@@ -12,13 +12,14 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Bridge integration tests and local Host/Origin checks.
 - [x] Optional static GitHub Pages demo workflow.
 - [x] Model API adapters: Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen, Ollama.
-- [ ] Create the GitHub repository, add description/topics, social preview and a release tag.
-- [ ] Confirm the license and maintainer identity with the owner.
+- [x] Create the public GitHub repository, add description/topics/homepage, social preview and a release tag.
+- [x] Confirm the MIT copyright holder.
 - [ ] Add a short demo video/GIF (optional but recommended for launch).
 
 ## P1 — product correctness
 
-- [ ] External task delegation: assign a task to an external agent, receive progress/complete events, validate and write back status.
+- [x] External task delegation: assign backlog tasks, poll assignments, receive progress/completion, write back status with self-report flags.
+- [ ] Push delegation to a webhook and verify test/CI evidence automatically.
 - [ ] Persist bridge state in SQLite (or document JSON as a demo-only store).
 - [ ] Bridge authentication/TLS guidance for non-local deployments.
 - [ ] Real run comparison and trace import (OTLP ingest).
@@ -30,6 +31,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [ ] Automated browser E2E on CI (Playwright) for the `dev-*.html` pages.
 - [ ] Extract CSS into feature modules / design tokens.
 - [ ] TypeScript or JSDoc type checking for the engine/event schema.
+- [x] Day/night theme, mobile layout checks and 390 px browser self-check.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.
 - [ ] i18n (zh-CN / en) beyond the README.
 - [ ] Packaging: Docker or a `start.sh` that waits for/reuses a healthy bridge.
@@ -37,7 +39,7 @@ This is an early open-source prototype, not a production observability or agent-
 
 ## Known limitations
 
-- External agents and model APIs do not claim or complete tasks yet.
+- External agents only receive tasks through the pull-based assignment protocol; completion is self-reported and not locally reviewed.
 - Model API calls are one-shot; no streaming, retries or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.

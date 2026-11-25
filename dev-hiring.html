@@ -44,7 +44,7 @@
             engine.paused = true;
             check("starts with six agents", engine.world.agents.length === 6);
             check("two empty hot desks", win.AgentOffice.availableHotDesks().length === 2);
-            check("team count shows hot desks", /6 本地 · 2 热桌/.test($("#teamSub").textContent));
+            check("team count shows hot desks", /6 本地.*2 热桌/.test($("#teamSub").textContent));
             const hireBtn = $("#hireBtn");
             check("hire button exists", !!hireBtn);
             if (hireBtn) hireBtn.click();
@@ -75,7 +75,7 @@
             check("onboarding task exists", !!engine.taskById("onb-" + newAgent.id));
             check("onboarding assigned", engine.taskById("onb-" + newAgent.id).assignee === newAgent.id);
             check("one hot desk remains", win.AgentOffice.availableHotDesks().length === 1);
-            check("team count updates", /7 本地 · 1 热桌/.test($("#teamSub").textContent),
+            check("team count updates", /7 本地.*1 热桌/.test($("#teamSub").textContent),
               $("#teamSub").textContent);
             check("desk label updates", /何弦/.test($("#officeLayer").textContent));
             check("hire logged", engine.world.ledger.some((e) => e.kind === "hire" && e.agentId === newAgent.id));
@@ -124,7 +124,7 @@
             check("second agent added", engine.world.agents.length === 8);
             check("second agent desk", engine.world.agents[7].deskId === "d8");
             check("no hot desks remain", win.AgentOffice.availableHotDesks().length === 0);
-            check("team full text", /8 本地 · 热桌满/.test($("#teamSub").textContent));
+            check("team full text", /8 本地.*热桌满/.test($("#teamSub").textContent));
             const hireBtn3 = $("#hireBtn");
             if (hireBtn3) hireBtn3.click();
             check("full modal disables submit", $("#hireSubmit").disabled === true);
