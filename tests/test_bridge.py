@@ -69,19 +69,28 @@ class MockProviderHandler(BaseHTTPRequestHandler):
             "x-goog-api-key": self.headers.get("x-goog-api-key"),
             "payload": payload,
         })
+        mission_report = "deliverable" in json.dumps(payload)
+        report_text = json.dumps({
+            "summary": "Mock agent report", "done": ["mock step"],
+            "next": ["review"], "risks": ["mock risk"],
+            "solution": "mock fallback and verification", "evidence": ["mock"],
+            "deliverable": "# Mock deliverable\n\nThis is a test artifact.",
+            "needsBoss": [],
+        })
         if self.path.endswith("/chat/completions"):
             data = {
-                "choices": [{"message": {"content": "OK from openai"}}],
+                "choices": [{"message": {"content": report_text if mission_report else "OK from openai"}}],
                 "usage": {"prompt_tokens": 7, "completion_tokens": 2},
             }
         elif self.path.endswith("/messages"):
             data = {
-                "content": [{"type": "text", "text": "OK from anthropic"}],
+                "content": [{"type": "text", "text": report_text if mission_report else "OK from anthropic"}],
                 "usage": {"input_tokens": 5, "output_tokens": 2},
             }
         elif ":generateContent" in self.path:
             data = {
-                "candidates": [{"content": {"parts": [{"text": "OK from gemini"}]}}],
+                "candidates": [{"content": {"parts": [
+                    {"text": report_text if mission_report else "OK from gemini"}]}}],
                 "usageMetadata": {"promptTokenCount": 6, "candidatesTokenCount": 2},
             }
         else:
@@ -178,6 +187,20 @@ class BridgeTest(unittest.TestCase):
             raw = exc.read().decode("utf-8")
             return exc.code, json.loads(raw) if raw.startswith(("{", "[")) else raw
 
+    @classmethod
+    def raw_request(cls, path, body, headers=None):
+        req = urllib.request.Request(
+            cls.base + path, data=body, method="POST",
+            headers={"Content-Type": "application/octet-stream", **(headers or {})},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as res:
+                raw = res.read().decode("utf-8")
+                return res.status, json.loads(raw) if raw.startswith(("{", "[")) else raw
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8")
+            return exc.code, json.loads(raw) if raw.startswith(("{", "[")) else raw
+
     def make_pair(self):
         status, data = self.request("/pair/code", "POST", {})
         self.assertEqual(status, 200)
@@ -190,6 +213,115 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(data["service"], "agent-office-bridge")
         self.assertTrue(data["version"])
         self.assertTrue(data["bootId"])
+
+    def test_mission_workspace_flow(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Bridge mission test",
+            "description": "Build a tested landing page with copy, design, code and QA.",
+            "acceptance": "Landing page works and tests pass.",
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        self.assertTrue(mission["conversationId"])
+        self.assertGreaterEqual(len(mission["tasks"]), 4)
+        self.assertTrue(mission["coverage"]["noIdle"])
+        member = mission["members"][0]
+
+        status, overview = self.request("/missions/overview")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(m["id"] == mission["id"] for m in overview["missions"]))
+
+        status, msg = self.request(
+            "/conversations/%s/messages" % mission["conversationId"], "POST",
+            {"senderId": "boss", "senderType": "boss", "text": "bridge chat"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(msg["message"]["text"], "bridge chat")
+
+        status, upload = self.raw_request(
+            "/files", b"# bridge document\n",
+            {"X-Filename": "bridge.md", "X-Mime": "text/markdown",
+             "X-Mission-Id": mission["id"],
+             "X-Conversation-Id": mission["conversationId"]},
+        )
+        self.assertEqual(status, 200, upload)
+        artifact = upload["artifact"]
+        self.assertIn("bridge document", artifact["extractedText"])
+        status, attached = self.request(
+            "/conversations/%s/messages" % mission["conversationId"], "POST",
+            {"senderId": "boss", "senderType": "boss", "text": "attachment",
+             "attachmentIds": [artifact["id"]]},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(attached["message"]["attachments"][0]["name"], "bridge.md")
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/files/%s/raw" % artifact["id"])
+            res = conn.getresponse()
+            self.assertEqual(res.status, 200)
+            self.assertIn(b"bridge document", res.read())
+        finally:
+            conn.close()
+
+        status, error = self.request(
+            "/conversations/%s/messages" % mission["conversationId"], "POST",
+            {"senderId": member["id"], "senderType": "agent", "type": "report",
+             "report": {"summary": "x", "done": [], "next": ["y"], "risks": ["z"],
+                        "solution": ""}},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(error["code"], "report_needs_solution")
+
+        status, report = self.request(
+            "/conversations/%s/messages" % mission["conversationId"], "POST",
+            {"senderId": member["id"], "senderType": "agent", "type": "report",
+             "report": {"summary": "need budget", "done": ["r"], "next": ["buy"],
+                        "risks": ["cost"], "solution": "buy smallest first",
+                        "needsBoss": ["spend"],
+                        "approval": {"type": "spend", "title": "Bridge spend",
+                                     "amount": 10}}},
+        )
+        self.assertEqual(status, 201)
+        status, approvals = self.request("/approvals?status=pending")
+        approval = next(a for a in approvals["approvals"] if a["title"] == "Bridge spend")
+        status, resolved = self.request(
+            "/approvals/%s/resolve" % approval["id"], "POST",
+            {"decision": "approved", "note": "ok"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(resolved["approval"]["status"], "approved")
+
+        status, direct = self.request("/conversations", "POST", {
+            "kind": "direct", "memberIds": [member["id"]],
+        })
+        self.assertEqual(status, 201)
+        status, _ = self.request("/conversations/%s" % direct["conversation"]["id"], "DELETE")
+        self.assertEqual(status, 200)
+        status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
+        self.assertEqual(status, 200)
+
+    def test_mission_ai_task_run(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "AI run mission",
+            "description": "Produce a concrete plan and a deliverable for a landing page.",
+            "acceptance": "A report and a Markdown deliverable are stored.",
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        task = next(t for t in mission["tasks"] if t["status"] == "assigned")
+        status, result = self.request(
+            "/missions/%s/tasks/%s/run" % (mission["id"], task["id"]), "POST", {})
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result["task"]["status"], "review")
+        self.assertTrue(result["artifact"]["extractedText"])
+        self.assertIn("Mock deliverable", result["artifact"]["extractedText"])
+        self.assertTrue(result["provider"])
+        messages = self.request(
+            "/conversations/%s/messages" % mission["conversationId"])[1]["messages"]
+        self.assertTrue(any(m["type"] == "report" for m in messages))
+        self.request("/missions/%s" % mission["id"], "DELETE")
 
     def test_update_check_status_and_bad_token(self):
         status, data = self.request("/update/check?refresh=1")

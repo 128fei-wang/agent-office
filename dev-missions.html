@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>Mission workspace self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body>
+<h1>MISSION WORKSPACE SELF-CHECK</h1>
+<pre id="out">running…</pre>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&missions=1&theme=day&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2600));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s);
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const view=app.renderer.missions, ext=app.renderer.external, bridge=ext.bridgeUrl;
+    check('mission view constructed',!!view);
+    check('mission button rendered',!!$('#missionBtn')&&/任务/.test($('#missionBtn').textContent));
+    check('mission overlay opens',!$('#missionLab').hidden);
+    const title='自检任务 '+Date.now().toString().slice(-6);
+    $('#missionBtn').click();
+    await wait(300);
+    $('[data-mission-new="mission"]').click();
+    await wait(200);
+    const form=$('#missionCreateForm');
+    check('mission form opens',!!form);
+    if(!form){finish();return;}
+    form.elements.title.value=title;
+    form.elements.description.value='为自检创建一条真实任务，包含文档和图片附件、任务规则、自动分配和审批。';
+    form.elements.acceptance.value='任务群创建成功，所有成员有任务，附件可读取，审批可处理。';
+    form.elements.autoDiscuss.checked=false;
+    const dt=new w.DataTransfer();
+    dt.items.add(new w.File(['# 任务背景\n这是自检文档内容。\n'], 'brief.md', {type:'text/markdown'}));
+    const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nNwAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
+    dt.items.add(new w.File([png], 'pixel.png', {type:'image/png'}));
+    const fileInput=$('#missionCreateFiles');
+    fileInput.files=dt.files;
+    fileInput.dispatchEvent(new w.Event('change',{bubbles:true}));
+    form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+    let mission=null;
+    for(let i=0;i<20;i++){
+      await wait(500);
+      if(view.mission&&view.mission.title===title){mission=view.mission;break;}
+    }
+    check('mission created',!!mission,mission&&mission.id);
+    if(!mission){finish();return;}
+    check('group conversation created',!!mission.conversationId);
+    check('auto tasks generated',(mission.tasks||[]).length>=4,'tasks='+(mission.tasks||[]).length);
+    check('no idle coverage',mission.coverage&&mission.coverage.noIdle===true,JSON.stringify(mission.coverage));
+    check('members assigned',(mission.members||[]).every(m=>(mission.tasks||[]).some(t=>t.assigneeId===m.id)));
+    check('rules present',(mission.rules||[]).length>=5);
+    check('document attachment stored',(mission.artifacts||[]).some(a=>a.name==='brief.md'&&/自检文档内容/.test(a.extractedText||'')));
+    check('image attachment stored',(mission.artifacts||[]).some(a=>a.kind==='image'));
+    const doc=(mission.artifacts||[]).find(a=>a.name==='brief.md');
+    if(doc){
+      await view.openArtifact(doc.id);
+      await wait(200);
+      check('document preview opens',/自检文档内容/.test(($('.mission-artifact')||{}).textContent||''));
+      const close=$('[data-artifact-close]');if(close)close.click();
+    }
+    const image=(mission.artifacts||[]).find(a=>a.kind==='image');
+    if(image){
+      await view.openArtifact(image.id);
+      await wait(200);
+      check('image preview opens',!!$('.mission-artifact img'));
+      check('image OCR control',!!$('[data-artifact-vision]'));
+      const close=$('[data-artifact-close]');if(close)close.click();
+    }
+    const draft=$('#missionDraft');
+    draft.value='自检消息：请把方案和风险发到群里。';
+    draft.dispatchEvent(new w.Event('input',{bubbles:true}));
+    $('#missionChatForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+    await wait(900);
+    check('group message sent',/自检消息/.test($('#missionMessages').textContent));
+
+    const report={
+      summary:'需要授权域名预算', done:['完成调研'], next:['购买域名'],
+      risks:['预算不足'], solution:'先买基础域名，后续升级',
+      evidence:['brief.md'], needsBoss:['spend'],
+      approval:{type:'spend',title:'自检域名预算',amount:88,currency:'CNY'}
+    };
+    const bad=await fetch(bridge+'/conversations/'+mission.conversationId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({senderId:mission.members[0].id,senderType:'agent',type:'report',text:'technical',report:{summary:'x',done:['a'],next:['b'],risks:['c'],solution:'',needsBoss:['technical']}})});
+    check('report without solution rejected',bad.status===400,'status='+bad.status);
+    const good=await fetch(bridge+'/conversations/'+mission.conversationId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({senderId:mission.members[0].id,senderType:'agent',type:'report',text:'approval',report:report})});
+    check('valid report accepted',good.status===201,'status='+good.status);
+    await view.selectMission(mission.id);
+    await wait(400);
+    check('boss gate rendered',/自检域名预算/.test($('#missionMessages').textContent)&&/花费/.test($('#missionMessages').textContent));
+    const approve=$('[data-approval-decision][data-approval-action="approved"]');
+    check('approval action rendered',!!approve);
+    if(approve){approve.click();await wait(700);}
+    const approvals=await (await fetch(bridge+'/approvals')).json();
+    const mine=(approvals.approvals||[]).find(a=>a.title==='自检域名预算');
+    check('approval resolved',!!mine&&mine.status==='approved',mine&&mine.status);
+
+    $('[data-mission-new="group"]').click();
+    await wait(200);
+    const groupForm=$('#missionCreateForm');
+    const groupBoxes=groupForm?Array.from(groupForm.querySelectorAll('input[name="memberIds"]')):[];
+    check('group form opens',groupBoxes.length>=2);
+    if(groupBoxes.length>=2){
+      groupBoxes[0].checked=true;groupBoxes[1].checked=true;
+      groupForm.elements.title.value='自检群聊';
+      groupForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+      await wait(800);
+      check('group chat created',view.conversation&&view.conversation.kind==='group');
+      const groupId=view.conversation&&view.conversation.id;
+      if(groupId){
+        const msg=await fetch(bridge+'/conversations/'+groupId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({senderId:'boss',senderType:'boss',type:'text',text:'群聊自检'})});
+        check('group message accepted',msg.status===201);
+        await view.selectConversation(groupId,'group');
+        await wait(300);
+        check('group message rendered',/群聊自检/.test($('#missionMessages').textContent));
+        await fetch(bridge+'/conversations/'+groupId,{method:'DELETE'});
+      }
+    }
+
+    $('[data-mission-new="direct"]').click();
+    await wait(200);
+    const directForm=$('#missionCreateForm');
+    const radio=directForm&&directForm.querySelector('input[name="memberId"]');
+    check('direct form opens',!!radio);
+    if(radio){
+      radio.checked=true;
+      directForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+      await wait(800);
+      check('direct chat created',view.conversation&&view.conversation.kind==='direct');
+      const directId=view.conversation&&view.conversation.id;
+      if(directId){
+        const msg=await fetch(bridge+'/conversations/'+directId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({senderId:'boss',senderType:'boss',type:'text',text:'私聊自检'})});
+        check('direct message accepted',msg.status===201);
+        await view.selectConversation(directId,'direct');
+        await wait(300);
+        check('direct message rendered',/私聊自检/.test($('#missionMessages').textContent));
+        await fetch(bridge+'/conversations/'+directId,{method:'DELETE'});
+      }
+    }
+
+    const del=await fetch(bridge+'/missions/'+mission.id,{method:'DELETE'});
+    check('mission cleanup',del.status===200);
+    const after=await (await fetch(bridge+'/missions')).json();
+    check('mission removed',!(after.missions||[]).some(m=>m.id===mission.id));
+    finish();
+  }
+})();
+</script>
+</body></html>

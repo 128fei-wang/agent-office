@@ -6,13 +6,15 @@
 - `README.md` + `README.en.md`
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`
 - `CHANGELOG.md`, `VERSION`, `.editorconfig`, `.gitignore`
-- `docs/ARCHITECTURE.md`, `docs/PAIRING.md`, `docs/PROVIDERS.md`, `docs/TASK_DELEGATION.md`, `docs/COMPANY_OS.md`, `docs/UPGRADING.md`, `docs/EVENT_PROTOCOL.md`, `docs/ROADMAP.md`
+- `docs/ARCHITECTURE.md`, `docs/PAIRING.md`, `docs/PROVIDERS.md`, `docs/TASK_DELEGATION.md`, `docs/COMPANY_OS.md`, `docs/MISSIONS.md`, `docs/UPGRADING.md`, `docs/EVENT_PROTOCOL.md`, `docs/ROADMAP.md`
 - `.github/workflows/ci.yml` (syntax, bridge integration tests, required files)
 - `.github/workflows/pages.yml` (optional static UI demo; the bridge is local-only)
 - issue templates + PR template
 - screenshots in `docs/screenshots/`
 - `tests/test_bridge.py` (bridge integration tests)
 - `tests/test_updater.py` (self-update unit tests)
+- `tests/test_missions.py` (mission planning, reports, approvals and file extraction)
+- `missions.py` + `src/missions.js` (Mission Control)
 - `updater.py` + `update.sh` (in-app and terminal self-update)
 - `scripts/check.sh`
 
@@ -25,7 +27,7 @@
 4. Add topics:
    `agents`, `multi-agent`, `observability`, `llm`, `agentops`, `opentelemetry`, `simulation`, `pixel-art`, `local-first`, `one-person-company`, `group-chat`, `i18n`.
 5. Upload a screenshot as the social preview (use `docs/screenshots/office.jpg`).
-6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.4.0`).
+6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.5.0`).
 7. Enable Issues and Discussions (recommended).
 8. Enable GitHub Pages with **Source: GitHub Actions** if you want a live UI demo
    (the static office works; external-agent pairing needs a local bridge).

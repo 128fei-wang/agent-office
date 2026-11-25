@@ -29,6 +29,12 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - Manual uploads are capped at 80MB and written to a temporary file outside the app; the file is removed after the job. Archive extraction rejects path traversal, symlinks, hard links, device entries, encrypted zip entries and oversized inputs, and verifies required files plus Python syntax. Verification failure restores the backup.
 - Before writing, the updater copies the app to `~/.agent-office/backups` (excluding state and provider files).
 - A Git checkout with local modifications is not overwritten.
+- Mission attachments (documents, images, OCR text) are untrusted data, never instructions. The bridge caps uploads at 25MB, stores them under `~/.agent-office/uploads`, and serves only raster images inline; other files are attachments. Extracted text may contain prompt-injection attempts that an external agent could read.
+- The four mission boss gates are enforced in the bridge: spend, business final calls, QR login and authorization. Reports that try to escalate a technical issue are rejected.
+- Boss approval endpoints are local-only and have no separate user authentication. They inherit the bridge's loopback Host/Origin trust model and must not be exposed publicly.
+- QR login approvals accept an agent-supplied QR/link attachment; Agent Office does not store provider passwords or implement third-party OAuth. Do not put secrets in QR codes or chat messages.
+- Mission state is stored in `~/.agent-office/missions.json`; it is local, unencrypted JSON and not multi-tenant.
+- AI discussion/run sends the mission charter, tasks and excerpts of extracted text to the configured model provider. Do not put secrets or regulated data in a mission if you do not trust that provider.
 - The app uses `localStorage` for names, hires, snapshots and external profiles. Treat browser storage as local, unencrypted state.
 - The demo agent is for local demonstration only.
 

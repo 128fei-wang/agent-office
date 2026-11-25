@@ -1,13 +1,13 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office and one-person-company workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with an evidence ledger, audit view, Trace Lab, deterministic evals, human release approval, external-agent pairing, task delegation, real-time group chat, a one-person company template, bilingual UI, self-update, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, automatic team selection and assignment, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -59,8 +59,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Audit](docs/screenshots/audit.jpg) | ![External agent](docs/screenshots/external-agents.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
-| **One-person company** | **Group chat + isolation** |
-| ![Company OS](docs/screenshots/company-os.jpg) | ![Delegation](docs/screenshots/delegation.jpg) |
+| **Mission Control** | **One-person company** |
+| ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 
 ## Traceability and audit
 
@@ -80,6 +80,10 @@ This is the core product capability. The simulation is not “agents looking bus
 - **External agents** — a local bridge supports one-time pairing, registration, heartbeats, and event ingestion; external actions, skills, tools, files, tokens, and cost flow into the ledger, feed, Trace Lab, and OTLP. The team panel shows ONLINE / OFFLINE.
 - **Task delegation and writeback** — delegate a backlog task from the task drawer; external agents pull `GET /assignments` and report progress/completion through `PATCH /assignments/<id>`. The board, audit, and Trace update from the bridge.
 - **Day / night** — toggle with the sun/moon button or press `D`; day mode uses warm paper panels and a daylight wash, night mode keeps the command-center palette. The choice persists in localStorage.
+- **Mission Control** — create a task with a charter, description, acceptance, priority, deadline and files; auto-select and assign a team, open a group, keep every member covered, and discuss/decide technical topics without the boss.
+- **Only four boss gates** — spend, final business calls, QR login and authorization. Technical architecture, tools, schedules, tests, copy and design tradeoffs are decided by the team; escalating a technical issue is rejected by the bridge.
+- **No idle / no waiting** — every member gets a primary or useful standby check; every blocker report must include a solution or fallback; assignment reasons and coverage are recorded.
+- **Mission chat and files** — task groups, ad-hoc groups and DMs; document/image uploads, DOCX/XLSX extraction, optional OCR/vision, structured reports and inline approvals.
 - **One-person company** — generate 8 AI employees, 11 dependency-aware tasks, 4 department channels and an isolated room per task; ready tasks auto-dispatch and dependencies unlock automatically.
 - **Real-time group chat** — SSE message stream; founder, role agents and system events live in separate channels. Task rooms require `assignmentId + executionId`, so an agent working on multiple tasks cannot report into the wrong room.
 - **Bilingual** — `EN / 中` toggle or `?lang=en`; shell, task statuses, chat, company template and generated content support both languages.
@@ -98,6 +102,7 @@ This is the core product capability. The simulation is not “agents looking bus
 ?agent=a4               open an agent dossier
 ?theme=day              open day mode
 ?company=1              open the one-person company workspace
+?missions=1             open Mission Control
 ?update=1               open Tools & update
 ?lang=en                English UI
 ?trace=1                open Trace Lab
@@ -228,6 +233,14 @@ Endpoints:
 - `POST /update/apply` / `POST /update/rollback`
 - `GET /update/manual/token`
 - `POST /update/manual` (raw tar.gz/tgz/zip/tar archive, 80MB cap)
+- `GET /missions` / `GET /missions/overview` / `GET /missions/agents`
+- `POST /missions` / `GET /missions/<id>` / `DELETE /missions/<id>`
+- `POST /missions/<id>/discuss` / `POST /missions/<id>/tasks/<taskId>/run`
+- `GET /mission-tasks?agentId=` / `PATCH /mission-tasks/<id>`
+- `GET /conversations` / `POST /conversations` / `GET /conversations/<id>/messages` / `POST /conversations/<id>/messages`
+- `GET /approvals` / `POST /approvals` / `POST /approvals/<id>/resolve`
+- `POST /files` / `GET /files/<id>` / `GET /files/<id>/raw` / `POST /files/<id>/vision`
+- `GET /missions/stream?since=N`
 - `GET /assignments` / `GET /assignments?agentId=...`
 - `POST /assignments`
 - `PATCH /assignments/<id>`
@@ -306,8 +319,24 @@ API and boundaries.
 ```text
 ?theme=day                  open day mode
 ?theme=night                open night mode
+?missions=1                 open Mission Control
 ?update=1                   open Tools & update
 ```
+
+## Mission Control
+
+Open **TASKS** in the top bar or use `?missions=1`.
+
+- **New task** — description, acceptance, priority, deadline, budget and document/image attachments.
+- **Auto team and plan** — skill-based selection, dependency-aware tasks and a recorded reason for every assignment; each member gets a primary or useful standby task, so nobody idles.
+- **Task group / group chat / DM** — each mission opens its own group; ad-hoc groups and one-to-one DMs are available too.
+- **Files and images** — text, Markdown, CSV, JSON, HTML, DOCX, XLSX, PDF and images; optional vision/tesseract OCR.
+- **Rules first** — the charter, acceptance criteria, boss gates and report format are posted into the group. Technical issues must be solved by the team, not forwarded to the boss.
+- **Boss gates** — only spend, final business calls, QR login and authorization enter the boss inbox; work waits for approval and approvals are one-time.
+- **Structured reports** — done / next / risks / solution / evidence. A missing solution, or a technical issue listed as a boss gate, is rejected.
+- **AI discussion/run** — with a configured model service, the team can discuss and virtual role agents can produce deliverables in the same task thread. External agents use the `/mission-tasks` protocol.
+
+See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker protocol.
 
 ## Tools & self-update
 
@@ -367,6 +396,7 @@ agent-office/
 │   ├── external.js       pairing, bridge polling, task delegation, rename
 │   ├── company.js        one-person template, roles, tasks, chat, SSE, isolation
 │   ├── update.js         tools panel, auto/manual update, progress, restart, rollback
+│   ├── missions.js       mission workspace, groups/DMs, files, approvals, AI discussion/run
 │   ├── render.js         DOM rendering, office construction, panels
 │   └── main.js           boot, loop, controls, shortcuts
 ├── bridge.py             localhost external-agent bridge
@@ -375,13 +405,18 @@ agent-office/
 ├── providers.example.json model API config template (no secrets)
 ├── tests/test_bridge.py  bridge integration tests (stdlib unittest)
 ├── tests/test_updater.py updater unit tests
+├── tests/test_missions.py mission planning, reports, approvals and extraction tests
 ├── docs/PROVIDERS.md     model API setup and troubleshooting
 ├── docs/TASK_DELEGATION.md external task protocol and status machine
 ├── docs/COMPANY_OS.md    one-person template, chat and isolation
+├── docs/MISSIONS.md      mission workspace, approvals, files and agent protocol
 ├── docs/UPGRADING.md     self-update, backups, rollback and security
 ├── theme.css             day theme, Trace Lab light skin, mobile layout
 ├── company.css           company workspace, chat and language styles
 ├── update.css            tools and update panel styles
+├── missions.css          mission workspace, chat, files and approval styles
+├── missions.py           charters, auto-assignment, chat, files, approvals and report rules
+├── ocr_vision.swift      local macOS Vision OCR fallback
 ├── start.sh              static server + bridge
 ├── dev-*.html            browser self-check pages
 └── docs/                 architecture, pairing, protocol, roadmap, checklist
@@ -411,8 +446,9 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-i18n.html` — English/Chinese toggle, persistence and reload.
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
+- `dev-missions.html` — task creation, auto team/plan, no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
 
-Run the 18 bridge integration tests, 14 updater unit tests and repository checks with:
+Run the 20 bridge integration tests, 14 updater unit tests, 7 mission unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -445,6 +481,9 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - The one-person company auto-dispatches tasks, but real completion requires binding a worker agent. Model API agents are one-shot and excluded from task rooms.
 - SSE is a localhost stream without authentication; company data lives in `~/.agent-office/bridge-state.json`.
 - Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
+- Mission AI discussion/AI run needs a reachable model service. When local WorkBuddy/Ollama is not running, the rule plan remains and the UI says so. PDF extraction needs `pdftotext`; image OCR uses a vision model, macOS Vision as a local fallback, or `tesseract` on other platforms.
+- QR login is a boss approval gate for an agent-supplied QR/link; Agent Office does not implement each provider's OAuth flow. Approvals are a local trust model, not multi-tenant authentication.
+- Mission data lives in `~/.agent-office/missions.json`; large deployments should move to SQLite/Postgres.
 - Self-update never installs in the background. Automatic update needs the official GitHub Release; manual update needs a local archive newer than the running version. Both need the bridge and restart it. Versions 1.2.0 and older need one manual upgrade to 1.3.0+ before the in-app tools panel exists.
 - Archive updates do not delete files removed upstream; stale files are harmless and can be cleaned manually.
 - Pairing codes are an invitation mechanism, not authentication. The bridge has no auth or TLS and should only be used on localhost.

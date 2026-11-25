@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0] - 2026-11-25
+
+### Added
+- Mission Control workspace: new task charter, automatic team selection, dependency-aware plan and skill-based assignment with a reason on every task.
+- Task groups, ad-hoc group chats and one-to-one DMs with live SSE updates and unread markers.
+- Document and image attachments; text/Markdown/CSV/JSON/HTML/DOCX/XLSX extraction, optional PDF extraction, and on-demand image OCR via a vision provider or `tesseract`.
+- Mission rules: only spend, final business calls, QR login and authorization may go to the boss. Technical escalations are rejected by the bridge.
+- Boss approval inbox with amount, options, scopes, service, QR/link attachments, one-time resolve and approval messages in the task thread.
+- Structured reports with done/next/risks/solution/evidence; a report without a solution is rejected. Reports create valid boss approvals when needed.
+- No-idle coverage: every member gets a primary task or a useful risk/evidence/acceptance standby task, with a coverage card and assignment reasons.
+- AI discussion via a configured model provider, plus per-task AI execution producing a Markdown deliverable and a structured report.
+- External agent mission protocol: `/mission-tasks?agentId=`, `PATCH /mission-tasks/<id>`, full `docs/MISSIONS.md`.
+- Mission screenshot, browser self-check, bridge integration coverage and seven mission unit tests.
+
+### Changed
+- Version bumped to 1.5.0.
+- README, English README, architecture, security, roadmap and docs now document Mission Control.
+- The bridge health payload reports mission and pending-approval counts.
+
 ## [1.4.0] - 2026-11-25
 
 ### Added

@@ -13,6 +13,7 @@ flowchart LR
     H[hiring.js<br/>local hires + hot desks]
     X[external.js<br/>pairing, delegation, bridge polling]
     C[company.js<br/>one-person template, rooms, chat, isolation]
+    M[missions.js<br/>tasks, groups/DMs, files, approvals]
     U[update.js<br/>tools panel + auto/manual update + rollback]
     I[i18n.js<br/>zh/en dictionary + toggle]
     L[(localStorage<br/>names / hires / snapshot / profiles)]
@@ -24,6 +25,8 @@ flowchart LR
     R --> X
     R --> C
     C --> X
+    R --> M
+    M --> X
     R --> U
     U --> X
     R --> I
@@ -38,12 +41,16 @@ flowchart LR
     V[heartbeat / events / assignments / messages]
     O[SSE /stream + rooms + company]
     M[demo agent]
+    J[missions.py<br/>charter → team → tasks → reports → approvals]
     N[updater.py<br/>GitHub / local archive → backup → apply → restart]
     S[(~/.agent-office/bridge-state.json)]
+    Q[(~/.agent-office/missions.json + uploads)]
     B[(~/.agent-office/backups)]
   end
 
   X <-->|/health /agents /pairs /events| Bridge
+  M <-->|/missions /conversations /approvals /files /missions/stream| Bridge
+  J --> Q
   U <-->|/update/check /update/apply /update/manual /update/status| Bridge
   N --> B
   P --> A
@@ -65,7 +72,7 @@ flowchart LR
 
 | Command | Coverage |
 | --- | --- |
-| `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection, updater version/archive/manual/rollback/git guards |
+| `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection, updater version/archive/manual/rollback/git guards, mission planning/no-idle/reports/approvals/files |
 | `bash scripts/check.sh` | Python syntax, required files, optional JS syntax |
 | `dev-*.html` | simulation, audit, Trace Lab, hiring, external pairing, delegation, theme/mobile, company/chat/isolation, i18n, self-update |
 
@@ -82,10 +89,13 @@ flowchart LR
 | `src/external.js` | pairing codes, task delegation, bridge polling, external event ingest, rename dialog |
 | `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
+| `src/missions.js` | mission workspace, charter, groups/DMs, files/OCR, approvals, AI discussion/run |
 | `src/update.js` | tools panel, automatic/manual update, confirmation, progress, restart detection, rollback |
+| `missions.py` | mission plan, assignment, no-idle coverage, chat, artifact metadata, report and approval rules |
+| `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
-| `bridge.py` | localhost API for pairing, agents, heartbeats, events and updates |
-| `trace.css` / `hiring.css` / `external.css` / `update.css` | feature-specific styling |
+| `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files and updates |
+| `trace.css` / `hiring.css` / `external.css` / `update.css` / `missions.css` | feature-specific styling |
 
 ## Data flow
 
@@ -96,7 +106,9 @@ flowchart LR
 5. External events arrive from `bridge.py`; `external.js` polls and calls `engine.ingestExternalEvent()`, so they join the same ledger and Trace Lab.
 6. Assignments are polled separately; `engine.applyExternalAssignment()` mirrors progress/completion into the task board and finalizes unverified checks as risk/missed.
 7. `engine.otlp()` projects the same events into OTLP/GenAI-style span JSON.
-8. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
+8. Mission Control creates a charter, selects a team, plans dependency-aware tasks and assigns every member; groups/DMs, reports and approvals are stored by `missions.py`.
+9. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
+10. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence
 
@@ -117,6 +129,11 @@ flowchart LR
 - Last update result: `~/.agent-office/last-update.json`
 - Update progress: `GET /update/status`; apply/manual/rollback use one-time 10-minute tokens and restart the bridge
 - Manual upload: raw archive to `POST /update/manual` with an 80MB cap; the same backup/verify/restart path is used
+- Missions: `~/.agent-office/missions.json` (missions, conversations, messages, approvals, artifacts, decisions)
+- Uploads: `~/.agent-office/uploads/` (served through the bridge; not the static server)
+- Mission live stream: `GET /missions/stream?since=N` (SSE over global message sequence)
+- Boss gates: only `spend`, `decision`, `login`, `authorization`; technical escalations are rejected
+- Report contract: summary + done + next + risks + solution; evidence is recorded and rendered
 
 ## Constraints
 
@@ -125,3 +142,6 @@ flowchart LR
 - Synthetic trace telemetry is intentionally labeled `SIM`/`EST.`; real external events use their supplied fields.
 - External task delegation is pull-based and self-reported; the bridge does not push webhooks or run the external worker.
 - Self-update reads the official GitHub release or a user-supplied local archive. It requires the local bridge, backs up first, and never installs without a user action. Manual archives must be newer than the running version.
+- Mission AI discussion/run requires a reachable model provider; when none is available, the rule plan and chat remain functional and the UI says so.
+- Mission attachments are untrusted data: extraction and OCR results must never be treated as instructions. Files are served as attachments except raster images.
+- Mission data is a local JSON store with a single-process lock; it is not a multi-tenant database.

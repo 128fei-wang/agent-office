@@ -36,6 +36,9 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Real-time group chat over SSE with room + assignment + execution isolation.
 - [x] Chinese/English UI and generated company content.
 - [x] Self-update: GitHub release check, local archive install, backup, git/archive apply, verification, bridge restart, rollback and CLI.
+- [x] Mission Control: task charter, auto team/plan/assignment, no-idle standby work, groups/DMs, file/image upload, OCR, boss gates, reports with solutions and AI discussion/run.
+- [ ] Provider-backed evaluation of task deliverables and independent QA verification.
+- [ ] Retention, search and export for mission history and uploaded artifacts.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.
 - [ ] i18n (zh-CN / en) beyond the README.
 - [ ] Packaging: Docker or a `start.sh` that waits for/reuses a healthy bridge.
@@ -47,6 +50,9 @@ This is an early open-source prototype, not a production observability or agent-
 - The one-person company needs a real worker bound to each role for real completion; provider API agents are one-shot and excluded from task rooms.
 - SSE is localhost-only and unauthenticated.
 - Self-update never installs in the background. Automatic update reads the official GitHub release; manual update accepts a local archive newer than the running version. Both require the local bridge to apply/restart. Versions before 1.3.0 need one manual upgrade.
+- Mission AI discussion/run requires a reachable model service. Local provider gateways are probed; when none is available the rule plan remains, but agents cannot generate AI deliverables.
+- PDF extraction needs `pdftotext`; image OCR needs a vision model or `tesseract`. QR login is an approval gate, not a provider OAuth implementation.
+- Mission data is a local JSON store without search/retention or multi-user authentication.
 - Model API calls are one-shot; no streaming, retries or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.

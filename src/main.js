@@ -123,6 +123,7 @@
   const themeLabel = document.getElementById("themeLabel");
   const langBtn = document.getElementById("langBtn");
   const companyBtn = document.getElementById("companyBtn");
+  const missionBtn = document.getElementById("missionBtn");
   const THEME_KEY = "agent-office.theme.v1";
 
   function applyTheme(theme, persist) {
@@ -349,10 +350,17 @@
       if (renderer.company) renderer.company.open();
     });
   }
+  if (missionBtn) {
+    missionBtn.addEventListener("click", function () {
+      if (renderer.missions) renderer.missions.open();
+    });
+  }
   const companyView = AO.CompanyView ? new AO.CompanyView(engine, renderer, renderer.external) : null;
   renderer.company = companyView;
   const updateCenter = AO.UpdateCenter ? new AO.UpdateCenter(renderer) : null;
   renderer.update = updateCenter;
+  const missionView = AO.MissionView ? new AO.MissionView(renderer) : null;
+  renderer.missions = missionView;
 
   renderer.build();
   setPlayLabel();
@@ -367,6 +375,7 @@
   if (params.get("hire") === "1" && renderer.hiring) renderer.hiring.open();
   if (params.get("external") === "1" && renderer.external) renderer.external.open();
   if (params.get("company") === "1" && renderer.company) renderer.company.open();
+  if (params.get("missions") === "1" && renderer.missions) renderer.missions.open();
   if (params.get("update") === "1" && renderer.update) renderer.update.open();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {
     renderer.traceLab.open();

@@ -11,10 +11,16 @@ Run:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import mimetypes
 import os
+import re
 import secrets
+import shutil
+import socket
 import ssl
+import subprocess
 import sys
 import tempfile
 import threading
@@ -33,6 +39,10 @@ try:
     import updater
 except Exception:  # keep the bridge usable if the updater module is missing
     updater = None
+try:
+    import missions
+except Exception:  # keep the bridge usable if the mission module is missing
+    missions = None
 
 STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-office")).expanduser()
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
@@ -45,6 +55,11 @@ PROVIDERS_FILE = Path(
     os.environ.get("BRIDGE_PROVIDERS") or (STATE_DIR / "providers.json")
 ).expanduser()
 PROVIDER_TIMEOUT = float(os.environ.get("BRIDGE_PROVIDER_TIMEOUT") or 30)
+MISSION_STORE = (
+    missions.MissionStore(STATE_DIR / "missions.json", STATE_DIR / "uploads")
+    if missions else None
+)
+MISSION_DISCUSS_LOCK = threading.Lock()
 BOOT_ID = secrets.token_hex(8)
 UPDATE_TOKENS = {}
 UPDATE_TOKEN_LOCK = threading.Lock()
@@ -563,6 +578,489 @@ def app_version() -> str:
         return (ROOT / "VERSION").read_text("utf-8").strip() or "0.0.0"
     except OSError:
         return "0.0.0"
+
+
+def _external_agent_role(agent):
+    skills = [str(s).lower() for s in (agent.get("skills") or [])]
+    joined = " ".join(skills)
+    if any(word in joined for word in ("code", "edit", "repo", "frontend", "backend", "test")):
+        return "engineer"
+    if any(word in joined for word in ("office", "writing", "doc")):
+        return "product"
+    if any(word in joined for word in ("review", "audit")):
+        return "qa"
+    return "operator"
+
+
+def mission_agent_directory():
+    rows = []
+    company = STATE.get("company")
+    if company:
+        for role in company.get("roles", []):
+            bound = find_agent(role.get("agentId") or "")
+            rows.append({
+                "id": role.get("id"),
+                "name": (bound or {}).get("name") or role.get("titleEn") or role.get("titleZh"),
+                "role": str(role.get("id") or "").replace("opc-", ""),
+                "titleZh": role.get("titleZh"),
+                "titleEn": role.get("titleEn"),
+                "skills": list(role.get("skills") or []),
+                "color": role.get("color"),
+                "source": "company",
+                "virtual": not bool(bound),
+                "online": bool(bound and online(bound)),
+            })
+    elif missions:
+        rows = missions.builtin_directory()
+    with LOCK:
+        external = [dict(a) for a in STATE.get("agents", [])]
+    for agent in external:
+        rows.append({
+            "id": agent.get("id"),
+            "name": agent.get("name") or agent.get("id"),
+            "role": _external_agent_role(agent),
+            "titleZh": agent.get("name") or agent.get("id"),
+            "titleEn": agent.get("name") or agent.get("id"),
+            "skills": list(agent.get("skills") or []),
+            "color": agent.get("color") or "#7cb7ff",
+            "source": "external",
+            "virtual": False,
+            "online": online(agent),
+            "runtime": agent.get("runtime") or "",
+        })
+    seen = set()
+    unique = []
+    for row in rows:
+        if not row.get("id") or row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        unique.append(row)
+    return unique
+
+
+def _provider_local_ready(settings):
+    parsed = urlparse(settings.get("baseUrl") or "")
+    host = (parsed.hostname or "").lower()
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return True
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=0.35):
+            return True
+    except OSError:
+        return False
+
+
+def _configured_providers():
+    ids = []
+    for provider_id in PROVIDER_CATALOG:
+        try:
+            settings = provider_settings(provider_id)
+        except Exception:
+            continue
+        if settings and settings.get("configured") and _provider_local_ready(settings):
+            ids.append(provider_id)
+    return ids
+
+
+def mission_provider_candidates(preferred=""):
+    available = _configured_providers()
+    order = []
+    if preferred in available:
+        order.append(preferred)
+    for provider_id in ("workbuddy", "ollama", "gemini", "openai", "anthropic",
+                        "deepseek", "doubao", "qwen", "kimi"):
+        if provider_id in available and provider_id not in order:
+            order.append(provider_id)
+    for provider_id in available:
+        if provider_id not in order:
+            order.append(provider_id)
+    return order
+
+
+def _parse_model_json(text):
+    raw = str(text or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I)
+    raw = re.sub(r"\s*```$", "", raw)
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start:end + 1])
+        return data if isinstance(data, dict) else None
+    except ValueError:
+        return None
+
+
+def _mission_discussion_prompt(mission):
+    members = mission.get("members", [])
+    tasks = mission.get("tasks", [])
+    language = "中文" if mission.get("language") != "en" else "English"
+    member_lines = "\n".join(
+        "- %s | %s | role=%s | skills=%s" % (
+            m.get("id"), m.get("titleZh") or m.get("name"), m.get("role"),
+            ",".join(m.get("skills") or []))
+        for m in members
+    )
+    task_lines = "\n".join(
+        "- %s | %s | owner=%s | status=%s | deps=%s | brief=%s" % (
+            t.get("id"), t.get("title"), t.get("assigneeName") or t.get("assigneeId"),
+            t.get("status"), ",".join(t.get("deps") or []), (t.get("brief") or "")[:160])
+        for t in tasks
+    )
+    return (
+        "任务标题：" + mission.get("title", "") + "\n"
+        "任务描述：" + (mission.get("description") or "")[:1200] + "\n"
+        "验收标准：" + (mission.get("acceptance") or "")[:800] + "\n"
+        "规则：" + "；".join(mission.get("rules") or []) + "\n\n"
+        "成员：\n" + member_lines + "\n\n任务：\n" + task_lines + "\n\n"
+        "请生成一次简洁的任务启动讨论。只输出 JSON，不要 Markdown。\n"
+        "语言：" + language + "。\n"
+        "格式：{\"messages\":[{\"agentId\":\"成员 id\",\"text\":\"讨论内容\","
+        "\"proposal\":{\"topic\":\"\",\"option\":\"\",\"rationale\":\"\"}}],"
+        "\"decisions\":[{\"topic\":\"\",\"outcome\":\"\",\"rationale\":\"\"}],"
+        "\"risks\":[\"...\"],"
+        "\"approvals\":[{\"type\":\"spend|decision|login|authorization\",\"title\":\"\","
+        "\"description\":\"\",\"amount\":0,\"options\":[],\"scopes\":[],\"service\":\"\"}]}。\n"
+        "硬规则：技术方案、架构、工具、排期、测试、文案、设计取舍由团队自行决定，不得放进 approvals。"
+        "只有花费、业务拍板、扫码登录、授权才允许出现在 approvals。"
+        "messages 选 3-6 条，覆盖关键角色；每条必须具体到这个任务，不要空话。"
+    )
+
+
+def _apply_mission_discussion(mission_id, data, provider_id):
+    if not MISSION_STORE or not missions:
+        return
+    with MISSION_STORE.lock:
+        _apply_mission_discussion_locked(mission_id, data, provider_id)
+
+
+def _apply_mission_discussion_locked(mission_id, data, provider_id):
+    mission = MISSION_STORE.find_mission(mission_id)
+    if not mission:
+        return
+    members = mission.get("members", [])
+    by_id = {m["id"]: m for m in members}
+    by_role = {}
+    for member in members:
+        by_role.setdefault(member.get("role"), member)
+    applied = 0
+    for item in (data.get("messages") or [])[:8]:
+        if not isinstance(item, dict):
+            continue
+        agent_id = str(item.get("agentId") or "")
+        if agent_id not in by_id:
+            role = str(item.get("role") or "")
+            member = by_role.get(role)
+            agent_id = member["id"] if member else (members[0]["id"] if members else "")
+        if not agent_id:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        proposal = item.get("proposal") if isinstance(item.get("proposal"), dict) else None
+        try:
+            MISSION_STORE.add_agent_message(
+                mission, agent_id, text,
+                "proposal" if proposal else "text",
+                {"proposal": proposal} if proposal else {},
+            )
+            applied += 1
+        except Exception:
+            continue
+    for item in (data.get("decisions") or [])[:4]:
+        if not isinstance(item, dict):
+            continue
+        topic = str(item.get("topic") or "").strip()
+        outcome = str(item.get("outcome") or "").strip()
+        if topic and outcome:
+            MISSION_STORE.add_decision(
+                mission, topic, outcome, str(item.get("rationale") or ""),
+                decided_by="ai-team",
+            )
+    risks = [str(r).strip() for r in (data.get("risks") or []) if str(r).strip()]
+    for item in (data.get("approvals") or [])[:4]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            MISSION_STORE.create_approval(mission, item)
+        except Exception:
+            continue
+    if risks:
+        MISSION_STORE._system_message(mission, "risk", "AI 讨论识别的风险：\n" +
+                                      "\n".join("- " + r for r in risks))
+    MISSION_STORE.set_discussion(
+        mission_id, status="done", provider=provider_id, finishedAt=now_iso(),
+        error="", messages=applied,
+    )
+
+
+def _run_mission_discussion(mission_id, preferred=""):
+    if not MISSION_STORE or not missions:
+        return
+    mission = MISSION_STORE.find_mission(mission_id)
+    if not mission:
+        return
+    candidates = mission_provider_candidates(preferred)
+    if not candidates:
+        MISSION_STORE.set_discussion(
+            mission_id, status="unavailable", provider="",
+            error="no reachable model service", finishedAt=now_iso(),
+        )
+        try:
+            MISSION_STORE._system_message(
+                mission, "system",
+                "没有可用的模型服务，AI 讨论未启动；规则计划、任务分配和群聊仍然有效。"
+                "启动本地模型网关或配置模型 API 后，可在任务面板点击「AI 讨论」。",
+            )
+        except Exception:
+            pass
+        return
+    prompt = _mission_discussion_prompt(mission)
+    system = (
+        "你是 Agent Office 的任务协调器。团队成员是不同职能的 AI 员工。"
+        "你只输出 JSON。不要编造外部事实；不要请求老板处理技术问题。"
+        "讨论要有具体取舍、依赖、风险和下一步。"
+    )
+    errors = []
+    for provider_id in candidates:
+        MISSION_STORE.set_discussion(mission_id, status="running", provider=provider_id,
+                                     startedAt=now_iso(), error="")
+        try:
+            result = provider_chat(provider_id, prompt, system, max_tokens=1800)
+            parsed = _parse_model_json(result.get("text"))
+            if not parsed:
+                # Keep the model's discussion, but do not invent structured decisions.
+                MISSION_STORE.add_agent_message(
+                    mission, mission["members"][0]["id"],
+                    str(result.get("text") or "")[:6000], "text",
+                    {"aiDiscussion": True, "format": "text"},
+                )
+                MISSION_STORE.set_discussion(
+                    mission_id, status="partial", provider=provider_id,
+                    finishedAt=now_iso(), error="model returned non-JSON discussion",
+                )
+                return
+            _apply_mission_discussion(mission_id, parsed, provider_id)
+            return
+        except Exception as exc:
+            errors.append(provider_id + ": " + str(exc)[:180])
+            continue
+    MISSION_STORE.set_discussion(
+        mission_id, status="error", finishedAt=now_iso(),
+        error="; ".join(errors)[:800] or "all providers failed",
+    )
+    try:
+        MISSION_STORE._system_message(
+            mission, "system",
+            "AI 讨论未能完成：" + (errors[0] if errors else "provider unavailable") +
+            "。规则计划、任务分配和群聊不受影响，可稍后重试。",
+        )
+    except Exception:
+        pass
+
+
+def start_mission_discussion(mission_id, preferred=""):
+    if not MISSION_STORE:
+        raise ValueError("mission store is not available")
+    mission = MISSION_STORE.find_mission(mission_id)
+    if not mission:
+        raise ValueError("mission not found")
+    current = (mission.get("discussion") or {}).get("status")
+    if current == "running":
+        return mission.get("discussion")
+    MISSION_STORE.set_discussion(
+        mission_id, status="queued", provider=preferred, startedAt=now_iso(),
+        finishedAt="", error="",
+    )
+    thread = threading.Thread(
+        target=_run_mission_discussion, args=(mission_id, preferred), daemon=True
+    )
+    thread.start()
+    return mission.get("discussion")
+
+
+def _tesseract_vision(path):
+    tool = shutil.which("tesseract")
+    if not tool:
+        return ""
+    for lang in ("chi_sim+eng", "eng"):
+        try:
+            result = subprocess.run(
+                [tool, str(path), "stdout", "-l", lang],
+                capture_output=True, text=True, timeout=45,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()[:16000]
+    return ""
+
+
+def _macos_vision(path):
+    tool = shutil.which("swift")
+    script = ROOT / "ocr_vision.swift"
+    if not tool or not script.exists():
+        return ""
+    try:
+        result = subprocess.run(
+            [tool, str(script), str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()[:16000]
+    return ""
+
+
+def provider_vision(provider_id, image_path, mime, prompt=""):
+    settings = provider_settings(provider_id)
+    if not settings:
+        raise ProviderCallError("unknown provider")
+    if not settings.get("configured"):
+        raise ProviderNotConfigured("provider is not configured")
+    data = Path(image_path).read_bytes()
+    if len(data) > 12 * 1024 * 1024:
+        raise ProviderCallError("image is larger than 12MB")
+    encoded = base64.b64encode(data).decode("ascii")
+    mime = str(mime or "image/png")
+    text_prompt = prompt or (
+        "请识别图片中的全部文字，并按结构总结关键信息、数字、日期和待办。"
+        "如果是截图，请保留界面层级和按钮文字。只输出识别结果。"
+    )
+    base = settings["baseUrl"].rstrip("/")
+    protocol = settings["protocol"]
+    key = settings["apiKey"]
+    model = settings["model"]
+    if protocol == "anthropic":
+        payload = {
+            "model": model, "max_tokens": 1200,
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                                             "media_type": mime, "data": encoded}},
+                {"type": "text", "text": text_prompt},
+            ]}],
+        }
+        result = _post_json(_provider_endpoint(base, "/messages"), payload, {
+            "x-api-key": key, "anthropic-version": "2023-06-01",
+        })
+        text = _text_from_content(result.get("content"))
+    elif protocol == "gemini":
+        payload = {"contents": [{"role": "user", "parts": [
+            {"inlineData": {"mimeType": mime, "data": encoded}},
+            {"text": text_prompt},
+        ]}], "generationConfig": {"maxOutputTokens": 1200}}
+        url = base + "/models/" + quote(model, safe="") + ":generateContent"
+        result = _post_json(url, payload, {"x-goog-api-key": key})
+        parts = (((result.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+        text = "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
+    else:
+        payload = {
+            "model": model, "max_tokens": 1200,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": text_prompt},
+                {"type": "image_url", "image_url": {"url": "data:" + mime + ";base64," + encoded}},
+            ]}],
+        }
+        headers = {"Authorization": "Bearer " + key} if key else {}
+        result = _post_json(_provider_endpoint(base, "/chat/completions"), payload, headers)
+        choices = result.get("choices") or []
+        message = (choices[0].get("message") or {}) if choices else {}
+        text = _text_from_content(message.get("content")) or str(message.get("reasoning_content") or "")
+    text = str(text or "").strip()
+    if not text:
+        raise ProviderCallError("vision provider returned an empty response")
+    return {"text": text, "provider": provider_id, "model": model}
+
+
+def _mission_task_prompt(mission, task):
+    report_format = (mission.get("charter") or {}).get("reportFormat") or (
+        "已完成 / 下一步 / 风险 / 解决方案 / 证据")
+    return (
+        "你是 Agent Office 的「" + str(task.get("assigneeName") or task.get("role")) + "」。\n"
+        "任务：" + str(task.get("title")) + "\n"
+        "说明：" + str(task.get("brief") or "")[:1200] + "\n"
+        "验收：" + str(task.get("acceptance") or "")[:800] + "\n"
+        "任务目标：" + str(mission.get("description") or "")[:1200] + "\n"
+        "任务规则：" + "；".join(mission.get("rules") or []) + "\n"
+        "汇报格式：" + report_format + "\n\n"
+        "只输出 JSON，不要 Markdown：{\"summary\":\"\",\"done\":[\"\"],"
+        "\"next\":[\"\"],\"risks\":[\"\"],\"solution\":\"\",\"evidence\":[\"\"],"
+        "\"deliverable\":\"可直接交付的文本内容\","
+        "\"needsBoss\":[]}。\n"
+        "needsBoss 只允许 spend/decision/login/authorization；技术阻塞必须给出解决方案，"
+        "不得把技术问题交给老板。deliverable 要有实际内容，不要只写“已完成”。"
+    )
+
+
+def run_mission_task(mission_id, task_id, preferred=""):
+    if not MISSION_STORE or not missions:
+        raise missions.MissionError("mission store is not available", "no_missions", 503)
+    mission = MISSION_STORE.find_mission(mission_id)
+    _, task = MISSION_STORE.find_task(task_id)
+    if not mission or not task or task.get("missionId") != mission_id:
+        raise missions.MissionError("task not found", "not_found", 404)
+    candidates = mission_provider_candidates(preferred)
+    if not candidates:
+        raise missions.MissionError(
+            "no reachable model service; start a local gateway or configure a model API",
+            "no_provider", 409)
+    prompt = _mission_task_prompt(mission, task)
+    system = (
+        "你是 Agent Office 的任务执行 Agent。输出具体、可验收、可追溯。"
+        "你的技术方案必须由自己解决；只有花费、业务拍板、扫码登录、授权可以请求老板。"
+        "只输出 JSON。"
+    )
+    errors = []
+    parsed = None
+    provider_id = ""
+    for pid in candidates:
+        try:
+            result = provider_chat(pid, prompt, system, max_tokens=1600)
+            data = _parse_model_json(result.get("text"))
+            if not data:
+                errors.append(pid + ": non-JSON response")
+                continue
+            report = MISSION_STORE.validate_report(data)
+            parsed = (data, report)
+            provider_id = pid
+            break
+        except Exception as exc:
+            errors.append(pid + ": " + str(exc)[:160])
+            continue
+    if not parsed:
+        raise missions.MissionError(
+            "AI execution failed: " + ("; ".join(errors)[:500] or "no provider"),
+            "ai_failed", 502)
+    data, report = parsed
+    deliverable = str(data.get("deliverable") or report.get("summary") or "").strip()[:20000]
+    MISSION_STORE.upload_dir.mkdir(parents=True, exist_ok=True)
+    artifact = None
+    if deliverable:
+        path = MISSION_STORE.upload_dir / (secrets.token_hex(10) + ".md")
+        path.write_text(deliverable, "utf-8")
+        artifact = MISSION_STORE.add_artifact({
+            "name": task.get("title", "deliverable") + ".md",
+            "mime": "text/markdown", "size": len(deliverable.encode("utf-8")),
+            "kind": "document", "path": str(path),
+            "missionId": mission_id, "conversationId": mission.get("conversationId"),
+            "uploadedBy": task.get("assigneeId"), "extractedText": deliverable,
+            "extraction": "text",
+        })
+    with MISSION_STORE.lock:
+        message = MISSION_STORE.post_message(mission.get("conversationId"), {
+            "senderId": task.get("assigneeId"),
+            "senderType": "agent",
+            "type": "report",
+            "text": report.get("summary"),
+            "report": report,
+            "taskId": task_id,
+            "attachmentIds": [artifact["id"]] if artifact else [],
+        })
+    return {"task": MISSION_STORE.public_task(task, mission),
+            "message": message, "artifact": artifact, "provider": provider_id}
 
 
 def issue_update_tokens(latest_version: str) -> dict:
@@ -1636,8 +2134,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", self.allowed_origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers",
-                         "Content-Type, X-Update-Token, X-Filename")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, X-Update-Token, X-Filename, X-Mime, X-Mission-Id, "
+            "X-Conversation-Id, X-Uploaded-By",
+        )
         self.send_header("Cache-Control", "no-store")
 
     def send_json(self, data, status=200):
@@ -1655,6 +2156,20 @@ class Handler(BaseHTTPRequestHandler):
         self.cors()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_bytes(self, body, content_type="application/octet-stream",
+                   filename="", inline=False):
+        self.send_response(200)
+        self.cors()
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        disposition = "inline" if inline else "attachment"
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", filename or "file")[:120]
+        self.send_header("Content-Disposition",
+                         disposition + '; filename="' + safe_name + '"')
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1743,6 +2258,207 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": True, "job": job,
                         "fileName": filename}, 202)
 
+    def handle_file_upload(self):
+        if not MISSION_STORE:
+            self.send_json({"error": "mission store is not available"}, 503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        limit = 25 * 1024 * 1024
+        if length <= 0:
+            self.send_json({"error": "empty file", "code": "empty_file"}, 400)
+            return
+        if length > limit:
+            self.send_json({"error": "file is larger than 25MB", "code": "too_large"}, 413)
+            return
+        filename = os.path.basename(
+            unquote(self.headers.get("X-Filename") or "upload.bin").replace("\\", "/")
+        )[:200] or "upload.bin"
+        mime = unquote(self.headers.get("X-Mime") or "") or (
+            mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        )
+        mission_id = unquote(self.headers.get("X-Mission-Id") or "")
+        conversation_id = unquote(self.headers.get("X-Conversation-Id") or "")
+        uploaded_by = unquote(self.headers.get("X-Uploaded-By") or "boss")
+        if mission_id and not MISSION_STORE.find_mission(mission_id):
+            self.send_json({"error": "mission not found"}, 404)
+            return
+        if conversation_id and not MISSION_STORE.find_conversation(conversation_id):
+            self.send_json({"error": "conversation not found"}, 404)
+            return
+        MISSION_STORE.upload_dir.mkdir(parents=True, exist_ok=True)
+        extension = Path(filename).suffix.lower()[:12]
+        if not re.match(r"^\.[A-Za-z0-9]+$", extension or ""):
+            extension = ".bin"
+        path = MISSION_STORE.upload_dir / (secrets.token_hex(10) + extension)
+        remaining = length
+        try:
+            with open(path, "wb") as handle:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("upload ended early")
+                    handle.write(chunk)
+                    remaining -= len(chunk)
+        except Exception as exc:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            self.send_json({"error": "upload failed: %s" % exc, "code": "upload_failed"}, 400)
+            return
+        image_mimes = ("image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp")
+        kind = "image" if mime in image_mimes or extension in (
+            ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"
+        ) else "document"
+        extracted, extraction = ("", "none")
+        if kind != "image":
+            extracted, extraction = missions.extract_text(path, mime, filename)
+        try:
+            with MISSION_STORE.lock:
+                artifact = MISSION_STORE.add_artifact({
+                    "name": filename, "mime": mime, "size": length, "kind": kind,
+                    "path": str(path), "missionId": mission_id,
+                    "conversationId": conversation_id, "uploadedBy": uploaded_by,
+                    "extractedText": extracted, "extraction": extraction,
+                })
+        except Exception as exc:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            self.send_json({"error": str(exc)}, 500)
+            return
+        self.send_json({"ok": True, "artifact": artifact})
+
+    def handle_vision(self, artifact_id, body):
+        if not MISSION_STORE:
+            self.send_json({"error": "mission store is not available"}, 503)
+            return
+        artifact = MISSION_STORE.find_artifact(artifact_id)
+        if not artifact:
+            self.send_json({"error": "artifact not found"}, 404)
+            return
+        if artifact.get("kind") != "image":
+            self.send_json({"error": "artifact is not an image"}, 400)
+            return
+        path = Path(artifact.get("path") or "")
+        if not path.exists():
+            self.send_json({"error": "image file is missing"}, 410)
+            return
+        errors = []
+        text = ""
+        provider = ""
+        preferred = str(body.get("providerId") or "")
+        for provider_id in mission_provider_candidates(preferred):
+            try:
+                result = provider_vision(provider_id, path, artifact.get("mime"))
+                text = result["text"]
+                provider = provider_id
+                break
+            except Exception as exc:
+                errors.append(provider_id + ": " + str(exc)[:160])
+        extraction = "vision" if text else "none"
+        if not text:
+            text = _tesseract_vision(path)
+            if text:
+                extraction = "tesseract"
+                provider = "tesseract"
+        if not text:
+            text = _macos_vision(path)
+            if text:
+                extraction = "macos-vision"
+                provider = "macos-vision"
+        if not text:
+            self.send_json({
+                "error": "no vision provider is available; configure a model API or install tesseract",
+                "code": "vision_unavailable",
+                "detail": "; ".join(errors)[:500],
+            }, 409)
+            return
+        with MISSION_STORE.lock:
+            artifact = MISSION_STORE.update_artifact(
+                artifact_id, extractedText=text, extraction=extraction,
+                visionSummary=text, visionProvider=provider,
+            )
+        self.send_json({"ok": True, "artifact": artifact, "provider": provider})
+
+    def handle_mission_action(self, path, body):
+        if not MISSION_STORE:
+            self.send_json({"error": "mission store is not available",
+                            "code": "no_missions"}, 503)
+            return
+        try:
+            if path == "/missions":
+                directory = mission_agent_directory()
+                with MISSION_STORE.lock:
+                    mission = MISSION_STORE.create_mission(body, directory)
+                    if mission.get("autoDiscuss"):
+                        start_mission_discussion(mission["id"], str(body.get("providerId") or ""))
+                    mission = MISSION_STORE.get_mission(mission["id"])
+                self.send_json({"ok": True, "mission": mission,
+                                "agents": directory}, 201)
+                return
+            if path.startswith("/missions/") and path.endswith("/discuss"):
+                mission_id = path.split("/")[2]
+                start_mission_discussion(mission_id, str(body.get("providerId") or ""))
+                mission = MISSION_STORE.get_mission(mission_id)
+                self.send_json({"ok": True, "mission": mission}, 202)
+                return
+            if path.startswith("/missions/") and path.endswith("/run"):
+                parts = path.split("/")
+                if len(parts) == 6 and parts[3] == "tasks":
+                    result = run_mission_task(
+                        parts[2], parts[4], str(body.get("providerId") or ""))
+                    self.send_json({"ok": True, **result})
+                    return
+            if path == "/conversations":
+                with MISSION_STORE.lock:
+                    conversation = MISSION_STORE.create_conversation(
+                        body, mission_agent_directory())
+                self.send_json({"ok": True, "conversation": conversation}, 201)
+                return
+            if path.startswith("/conversations/") and path.endswith("/messages"):
+                conversation_id = path.split("/")[2]
+                with MISSION_STORE.lock:
+                    message = MISSION_STORE.post_message(conversation_id, body)
+                self.send_json({"ok": True, "message": message}, 201)
+                return
+            if path == "/approvals":
+                mission_id = str(body.get("missionId") or "")
+                mission = MISSION_STORE.find_mission(mission_id)
+                if not mission:
+                    self.send_json({"error": "mission not found"}, 404)
+                    return
+                with MISSION_STORE.lock:
+                    approval = MISSION_STORE.create_approval(mission, body)
+                self.send_json({"ok": True, "approval": approval}, 201)
+                return
+            if path.startswith("/approvals/") and path.endswith("/resolve"):
+                approval_id = path.split("/")[2]
+                with MISSION_STORE.lock:
+                    approval = MISSION_STORE.resolve_approval(
+                        approval_id,
+                        str(body.get("decision") or ""),
+                        str(body.get("note") or ""),
+                        str(body.get("optionId") or ""),
+                    )
+                self.send_json({"ok": True, "approval": approval})
+                return
+            if path.startswith("/files/") and path.endswith("/vision"):
+                self.handle_vision(path.split("/")[2], body)
+                return
+        except missions.MissionError as exc:
+            self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+            return
+        except Exception as exc:
+            self.send_json({"error": "mission operation failed: %s" % exc,
+                            "code": "mission_failed"}, 500)
+            return
+        self.send_json({"error": "not found"}, 404)
+
     def handle_update_action(self, path, body):
         if not updater:
             self.send_json({"error": "updater module is not installed",
@@ -1781,6 +2497,42 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(exc), "code": "update_busy"}, 409)
             return
         self.send_json({"ok": True, "job": job}, 202)
+
+    def stream_mission_messages(self, qs):
+        if not MISSION_STORE:
+            self.send_json({"error": "mission store is not available"}, 503)
+            return
+        try:
+            since = int((qs.get("since") or [self.headers.get("Last-Event-ID") or "0"])[0])
+        except ValueError:
+            since = 0
+        try:
+            self.send_response(200)
+            self.cors()
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            self.wfile.write(b"retry: 2000\n\nevent: ready\ndata: {}\n\n")
+            self.wfile.flush()
+            last_ping = time.time()
+            while True:
+                rows = MISSION_STORE.messages_since(since)
+                for message in rows:
+                    since = max(since, int(message.get("seq") or since))
+                    payload = json.dumps(message, ensure_ascii=False)
+                    frame = ("id: %s\nevent: message\ndata: %s\n\n"
+                             % (since, payload)).encode("utf-8")
+                    self.wfile.write(frame)
+                    self.wfile.flush()
+                if time.time() - last_ping >= 15:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                    last_ping = time.time()
+                time.sleep(0.8)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def stream_messages(self, qs):
         try:
@@ -1857,6 +2609,95 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(issue_manual_token())
             return
+        if path == "/missions/stream":
+            self.stream_mission_messages(qs)
+            return
+        if path in ("/missions", "/missions/overview", "/missions/agents",
+                    "/conversations", "/approvals", "/mission-tasks",
+                    "/files") or path.startswith(("/missions/", "/conversations/", "/files/")):
+            if not MISSION_STORE:
+                self.send_json({"error": "mission store is not available",
+                                "code": "no_missions"}, 503)
+                return
+            if path == "/missions/agents":
+                self.send_json({"agents": mission_agent_directory()})
+                return
+            if path == "/missions":
+                self.send_json({"missions": MISSION_STORE.list_missions()})
+                return
+            if path == "/missions/overview":
+                payload = MISSION_STORE.snapshot()
+                payload["agents"] = mission_agent_directory()
+                self.send_json(payload)
+                return
+            if path == "/conversations":
+                mission_id = (qs.get("missionId") or [""])[0]
+                kind = (qs.get("kind") or [""])[0]
+                self.send_json({"conversations":
+                                MISSION_STORE.list_conversations(mission_id, kind)})
+                return
+            if path == "/approvals":
+                status = (qs.get("status") or [""])[0]
+                self.send_json({"approvals": MISSION_STORE.list_approvals(status)})
+                return
+            if path == "/mission-tasks":
+                agent_id = (qs.get("agentId") or [""])[0]
+                self.send_json({"tasks": MISSION_STORE.list_tasks_for_agent(agent_id)})
+                return
+            if path == "/files":
+                mission_id = (qs.get("missionId") or [""])[0]
+                conversation_id = (qs.get("conversationId") or [""])[0]
+                self.send_json({"artifacts": MISSION_STORE.list_artifacts(
+                    mission_id, conversation_id)})
+                return
+            if path.startswith("/missions/") and path.count("/") == 2:
+                mission = MISSION_STORE.get_mission(path.split("/")[2])
+                if not mission:
+                    self.send_json({"error": "mission not found"}, 404)
+                    return
+                self.send_json({"mission": mission})
+                return
+            if path.startswith("/conversations/") and path.endswith("/messages"):
+                parts = path.split("/")
+                if len(parts) == 4:
+                    try:
+                        since = int((qs.get("since") or ["0"])[0])
+                    except ValueError:
+                        since = 0
+                    try:
+                        messages = MISSION_STORE.list_messages(parts[2], since)
+                    except missions.MissionError as exc:
+                        self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                        return
+                    self.send_json({"messages": messages,
+                                    "lastSeq": max([m["seq"] for m in messages] or [since])})
+                    return
+            if path.startswith("/conversations/") and path.count("/") == 2:
+                conversation = MISSION_STORE.get_conversation(path.split("/")[2])
+                if not conversation:
+                    self.send_json({"error": "conversation not found"}, 404)
+                    return
+                self.send_json({"conversation": conversation})
+                return
+            if path.startswith("/files/") and path.endswith("/raw"):
+                parts = path.split("/")
+                if len(parts) == 4:
+                    artifact = MISSION_STORE.find_artifact(parts[2])
+                    if not artifact or not Path(artifact.get("path") or "").exists():
+                        self.send_json({"error": "artifact not found"}, 404)
+                        return
+                    raw = Path(artifact["path"]).read_bytes()
+                    mime = artifact.get("mime") or "application/octet-stream"
+                    self.send_bytes(raw, mime, artifact.get("name") or "file",
+                                    inline=artifact.get("kind") == "image")
+                    return
+            if path.startswith("/files/") and path.count("/") == 2:
+                artifact = MISSION_STORE.find_artifact(path.split("/")[2])
+                if not artifact:
+                    self.send_json({"error": "artifact not found"}, 404)
+                    return
+                self.send_json({"artifact": MISSION_STORE.public_artifact(artifact)})
+                return
         with LOCK:
             if path == "/health":
                 self.send_json({
@@ -1874,6 +2715,11 @@ class Handler(BaseHTTPRequestHandler):
                     "company": bool(STATE.get("company")),
                     "rooms": len((STATE.get("company") or {}).get("rooms", [])),
                     "messages": len(STATE.get("messages", [])),
+                    "missions": (len(MISSION_STORE.data.get("missions", []))
+                                 if MISSION_STORE else 0),
+                    "pendingApprovals": (sum(1 for a in MISSION_STORE.data.get("approvals", [])
+                                             if a.get("status") == "pending")
+                                         if MISSION_STORE else 0),
                     "demo": bool(STATE.get("demo")),
                     "time": now_iso(),
                 })
@@ -1961,7 +2807,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -1974,10 +2820,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/update/manual":
             self.handle_manual_update()
             return
+        if path == "/files":
+            self.handle_file_upload()
+            return
         try:
             body = self.read_json()
         except Exception as exc:
             self.send_json({"error": str(exc)}, 400)
+            return
+        if path.startswith(("/missions", "/conversations", "/approvals", "/files/")):
+            self.handle_mission_action(path, body)
             return
         if path.startswith("/providers/"):
             self.handle_provider_post(path, body)
@@ -2278,6 +3130,23 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"error": str(exc)}, 400)
             return
+        if path.startswith("/mission-tasks/") and path.count("/") == 2:
+            if not MISSION_STORE:
+                self.send_json({"error": "mission store is not available"}, 503)
+                return
+            task_id = path.split("/")[2]
+            try:
+                with MISSION_STORE.lock:
+                    task = MISSION_STORE.update_task(
+                        task_id, body, str(body.get("agentId") or ""))
+                    mission, _ = MISSION_STORE.find_task(task_id)
+                    mission_view = (MISSION_STORE.get_mission(mission["id"])
+                                    if mission else None)
+            except missions.MissionError as exc:
+                self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                return
+            self.send_json({"ok": True, "task": task, "mission": mission_view})
+            return
         with LOCK:
             if path.startswith("/assignments/") and path.count("/") == 2:
                 assignment_id = path.split("/")[2]
@@ -2307,6 +3176,26 @@ class Handler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path.startswith("/missions/") and path.count("/") == 2:
+            if not MISSION_STORE:
+                self.send_json({"error": "mission store is not available"}, 503)
+                return
+            with MISSION_STORE.lock:
+                ok = MISSION_STORE.delete_mission(path.split("/")[2])
+            self.send_json({"ok": bool(ok)}, 200 if ok else 404)
+            return
+        if path.startswith("/conversations/") and path.count("/") == 2:
+            if not MISSION_STORE:
+                self.send_json({"error": "mission store is not available"}, 503)
+                return
+            try:
+                with MISSION_STORE.lock:
+                    ok = MISSION_STORE.delete_conversation(path.split("/")[2])
+            except missions.MissionError as exc:
+                self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                return
+            self.send_json({"ok": bool(ok)}, 200 if ok else 404)
+            return
         with LOCK:
             if path == "/company":
                 company = STATE.get("company")

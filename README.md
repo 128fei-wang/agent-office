@@ -1,13 +1,13 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供可追责的工作账本、审计、Trace Lab、Evals、人工审批、外部 Agent 配对、任务委派、实时群聊、一人公司模板、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、自动组队/拆解/分配、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -59,8 +59,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Audit](docs/screenshots/audit.jpg) | ![External Agent](docs/screenshots/external-agents.jpg) |
 | **Day mode** | **Mobile** |
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
-| **One-person company** | **Group chat + isolation** |
-| ![Company OS](docs/screenshots/company-os.jpg) | ![Delegation](docs/screenshots/delegation.jpg) |
+| **Mission Control** | **One-person company** |
+| ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -80,6 +80,9 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **外部 Agent 接入**：本地 bridge 支持一次性连接码、注册、心跳、事件上报；外部 agent 的 action / skill / tool / file / token / cost 会进入 ledger、Live Feed、Trace Lab 和 OTLP，Team 面板显示 ONLINE / OFFLINE。
 - **任务委派与回写**：在任务抽屉里把待办任务派给外部 Agent；外部 Agent 通过 `GET /assignments` 领取、`PATCH /assignments/<id>` 回写进度/完成/失败，任务板、审计和 Trace 同步更新。
 - **白天 / 夜间**：顶部太阳/月亮按钮或按 `D` 切换主题；白天模式使用暖色纸张面板和日光洗墙，夜间保持指挥中心配色。主题写入 localStorage。
+- **任务工作台**：新建任务即写章程、自动组队和拆解、按技能分配、建任务群；群聊/私聊、文档/图片上传、图片识别、结构化汇报、团队决策和老板审批在同一个工作台完成。
+- **只有四类事项找老板**：花费、拍板、扫码登录、授权。技术方案、架构、工具、排期、测试和设计取舍由 Agent 讨论解决；把技术问题甩给老板会被 bridge 拒绝。
+- **不空岗、不等待**：每个成员都有主任务或真实待命巡检；阻塞汇报必须带解决方案/替代路径；任务记录分配理由和覆盖率。
 - **一人公司工作台**：一键生成 8 个 AI 员工、11 个依赖任务、4 个部门频道和每个任务的隔离房间；任务自动派发，依赖完成后自动解锁下一个任务。
 - **实时群聊**：bridge 提供 SSE 消息流；创始人、角色 Agent 和系统事件进入各自频道。任务房间要求 `assignmentId + executionId`，防止同一个 Agent 把不同任务的汇报发错群。
 - **中英文切换**：顶部 `EN / 中` 或 `?lang=en`；主界面、任务状态、群聊、公司模板和生成内容都支持两种语言。
@@ -253,6 +256,14 @@ curl -X POST http://127.0.0.1:8787/events \
 - `POST /update/apply` / `POST /update/rollback`
 - `GET /update/manual/token`
 - `POST /update/manual`（原始 tar.gz/tgz/zip/tar 包，80MB 上限）
+- `GET /missions` / `GET /missions/overview` / `GET /missions/agents`
+- `POST /missions` / `GET /missions/<id>` / `DELETE /missions/<id>`
+- `POST /missions/<id>/discuss` / `POST /missions/<id>/tasks/<taskId>/run`
+- `GET /mission-tasks?agentId=` / `PATCH /mission-tasks/<id>`
+- `GET /conversations` / `POST /conversations` / `GET /conversations/<id>/messages` / `POST /conversations/<id>/messages`
+- `GET /approvals` / `POST /approvals` / `POST /approvals/<id>/resolve`
+- `POST /files` / `GET /files/<id>` / `GET /files/<id>/raw` / `POST /files/<id>/vision`
+- `GET /missions/stream?since=N`
 - `GET /assignments` / `GET /assignments?agentId=...`
 - `POST /assignments`
 - `PATCH /assignments/<id>`
@@ -312,6 +323,21 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - `?lang=en` / `?lang=zh` 可直接打开对应语言。
 - 公司模板的角色、任务、任务说明会按生成语言写入；界面标签可随时切换。
 - 仿真叙事和任务正文属于内容层，保留原始语言。
+
+## 任务工作台
+
+打开顶部 **`任务`**，或访问 `?missions=1`。
+
+- **新建任务**：填写描述、验收标准、优先级、截止日期、预算，上传文档/图片。
+- **自动组队与拆解**：按技能选人、生成依赖任务、记录分配理由；每个成员都有主任务或真实待命巡检，避免空岗。
+- **任务群 / 群聊 / 私聊**：任务自动建群；也可以单独建群或和任一 Agent 私聊。
+- **文件与图片**：支持文本、Markdown、CSV、JSON、HTML、DOCX、XLSX、PDF 和图片；图片可按需调用视觉模型或 `tesseract` 识别。
+- **规则前置**：任务章程、验收、老板门禁和汇报格式写入任务群；技术问题必须团队解决，不能原样甩给老板。
+- **老板审批**：花费、拍板、扫码登录、授权四类进入审批箱；审批前不执行，审批一次性生效。
+- **结构化汇报**：已完成 / 下一步 / 风险 / 解决方案 / 证据；缺少解决方案或把技术问题列入老板门禁会被拒绝。
+- **Agent 讨论/执行**：配置模型服务后可在同一条任务线程里讨论并让虚拟角色执行任务、产出交付物；外部 Agent 可用 `/mission-tasks` 协议领取和回写。
+
+完整规则、API 和外部 Agent 协议见 [docs/MISSIONS.md](docs/MISSIONS.md)。
 
 ## 自行升级
 
@@ -431,6 +457,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 | 接入外部 Agent | TEAM 面板底部 `⇢ 接入外部 Agent`，走本地 bridge |
 | 委托任务 | 打开待办任务 → 选择外部 Agent → 派发任务 |
 | 白天 / 夜间 | 顶部主题按钮，或按 `D` |
+| 任务工作台 | 顶部 `任务`，或 `?missions=1` |
 | 一人公司 / 群聊 | 顶部 `一人公司`，或按 `C` |
 | 中英文 | 顶部 `EN / 中`，或 `?lang=en` |
 | 工具 / 升级 | 顶部 `工具`，或按 `U`，或 `?update=1` |
@@ -460,6 +487,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 ?external=1                  直接打开外部 Agent 接入面板
 ?theme=day                   直接打开白天主题
 ?company=1                   直接打开一人公司工作台
+?missions=1                  直接打开任务工作台
 ?update=1                    直接打开「工具与升级」
 ?lang=en                     英文界面
 ```
@@ -481,6 +509,7 @@ agent-office/
 │   ├── external.js     外部 Agent 连接、配对、任务委派、心跳轮询、重命名
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
 │   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
+│   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -500,21 +529,27 @@ agent-office/
 ├── dev-i18n.html       自检中英文切换和持久化
 ├── dev-update.html     自检工具入口、自动升级、确认、进度、重启和完成态
 ├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
+├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
 ├── theme.css           白天主题、Trace Lab 明色皮肤、移动端样式
 ├── company.css         一人公司工作台 / 群聊 / 语言样式
 ├── update.css          工具与升级面板样式
-├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 心跳 / 升级）
+├── missions.css        任务工作台 / 群聊 / 私聊 / 审批样式
+├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
+├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
+├── ocr_vision.swift    macOS Vision 本地图片识别兜底
 ├── updater.py          检查、下载、手动包、备份、更新、校验、回滚
 ├── update.sh           命令行升级入口（含 --manual）
 ├── providers.example.json  模型 API 配置模板（密钥不提交）
 ├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
 ├── tests/test_updater.py 更新器单元测试
+├── tests/test_missions.py 任务规划、汇报、审批和文件提取测试
 ├── docs/PROVIDERS.md   模型 API 配置与故障排查
 ├── docs/TASK_DELEGATION.md 外部任务委派协议与状态机
 ├── docs/COMPANY_OS.md  一人公司模板、群聊、任务隔离
+├── docs/MISSIONS.md    任务工作台、自动分配、审批、文件与 Agent 协议
 ├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
 ```
@@ -663,7 +698,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-update-manual.html` 会验证本地升级包选择、文件上传、token/文件名请求头、进度和完成态。
 
-bridge 自身的 18 个集成测试和更新器的 14 个单元测试不依赖浏览器：
+`dev-missions.html` 会验证任务创建、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
+
+bridge 自身的 20 个集成测试、更新器的 14 个单元测试和任务工作台的 7 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -679,7 +716,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.4.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.5.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -693,6 +730,9 @@ python3 -m unittest discover -s tests -v
 - 一人公司的任务自动派发，但真实完成仍需要绑定角色并连接执行 Agent；模型 API Agent 只做单次调用，不参与任务房间。
 - SSE 是 localhost 实时流，没有鉴权；公司数据保存在 `~/.agent-office/bridge-state.json`。
 - 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
+- 任务工作台的 AI 讨论/AI 执行需要可用的模型服务；本地 WorkBuddy/Ollama 未启动时会保留规则计划并明确提示。PDF 文本提取需要 `pdftotext`；图片识别优先使用视觉模型，macOS 可用系统 Vision 兜底，其他平台可安装 `tesseract`。
+- 扫码登录只提供老板审批门禁和二维码/链接附件，不实现各第三方服务自己的 OAuth 流程；审批端点是本机本地信任模型，不是多租户鉴权系统。
+- 任务工作台把数据存在 `~/.agent-office/missions.json`；大型部署应迁移到 SQLite/Postgres。
 - 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。
 - 压缩包更新不会删除上游已移除的旧文件；这些文件不影响运行，可手动清理。
 - 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。

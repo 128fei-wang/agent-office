@@ -1,4 +1,6 @@
 bridge-state.json
+missions.json
+uploads/
 __pycache__/
 .DS_Store
 *.pyc
