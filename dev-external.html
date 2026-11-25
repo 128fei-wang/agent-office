@@ -108,6 +108,9 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     await wait(2800);
     await ext.refresh();
     check('claimed agent appears',ext.agents.some(a=>a.id===added.id));
+    const claimed=ext.agentById(added.id);
+    check('claimed agent auto logo',!!claimed&&!!claimed.logoText&&!!claimed.brand,claimed&&claimed.logoText);
+    check('claimed agent logo rendered',!!$('[data-external="'+added.id+'"] .ext-glyph.brand-mark'));
     check('pair no longer pending',ext.pendingPairs().length===0);
     check('greeting event ingested',engine.world.ledger.some(e=>e.external&&e.kind==='hello'&&e.agentId===added.id));
     check('external team card',!!$('[data-external="'+added.id+'"]'));
@@ -132,6 +135,8 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     await wait(1200);
     const demoAgent=ext.agents.find(a=>a.demo);
     check('demo agent appears',!!demoAgent&&demoAgent.status==='online');
+    check('known brand logo detected',!!demoAgent&&demoAgent.brand==='Claude',demoAgent&&(demoAgent.brand+'/'+demoAgent.logoText));
+    check('external logo in list',Array.from(d.querySelectorAll('#extAgentList .ext-logo, .ext-list .ext-logo')).length>0);
     if(demoAgent){
       for(let i=0;i<2;i++){
         await fetch(ext.bridgeUrl+'/events',{method:'POST',headers:{'Content-Type':'application/json'},

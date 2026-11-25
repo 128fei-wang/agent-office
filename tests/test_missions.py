@@ -60,6 +60,55 @@ class MissionTest(unittest.TestCase):
         self.assertEqual(messages[0]["type"], "mission-created")
         self.assertIn("老板门禁", messages[0]["text"])
 
+    def test_recommendation_estimates_and_logos(self):
+        external = missions.normalize_agent({
+            "id": "ext-codex", "name": "Codex Worker", "runtime": "codex",
+            "skills": ["repo-map", "edit", "test"], "color": "#7cb7ff",
+            "online": True,
+        }, "external")
+        self.assertEqual(external["brand"], "Codex")
+        self.assertEqual(external["logoText"], "CX")
+        workbuddy = missions.normalize_agent({
+            "id": "ext-wb", "name": "小研 · WorkBuddy", "runtime": "workbuddy",
+        }, "external")
+        self.assertEqual(workbuddy["brand"], "WorkBuddy")
+        self.assertEqual(workbuddy["logoText"], "WB")
+        unknown = missions.normalize_agent({
+            "id": "ext-zed", "name": "Zed Worker", "runtime": "http",
+        }, "external")
+        self.assertEqual(unknown["brand"], "External agent")
+        self.assertEqual(unknown["logoText"], "ZW")
+        directory = self.directory + [external]
+        result = self.store.recommend(directory, {
+            "description": "Build and test a landing page with code and QA.",
+            "acceptance": "Tests pass.",
+        })
+        self.assertGreaterEqual(len(result["tasks"]), 4)
+        self.assertTrue(result["suggestedMemberIds"])
+        self.assertTrue(result["preferredExecutors"])
+        self.assertTrue(any(a.get("logoText") for a in result["tasks"][0]["recommended"]))
+        self.assertTrue(all("estimate" in task for task in result["tasks"]))
+
+    def test_estimates_actuals_and_preferred_executor(self):
+        mission = self.make(preferredExecutors={"requirements": "ext-test"})
+        requirements = next(t for t in mission["tasks"] if t["key"] == "requirements")
+        self.assertEqual(requirements["assigneeId"], "ext-test")
+        self.assertTrue(requirements["estimate"]["minutes"] > 0)
+        self.assertTrue(requirements["estimate"]["tokens"] > 0)
+        self.store.submit_task_report(requirements["id"], {
+            "usage": {"provider": "test", "model": "mock",
+                      "tokensIn": 100, "tokensOut": 50, "durationMs": 1200},
+            "report": {"summary": "done", "done": ["x"], "next": ["y"],
+                       "risks": ["z"], "solution": "fallback", "evidence": ["e"]},
+        })
+        _, task = self.store.find_task(requirements["id"])
+        self.assertEqual(task["actual"]["tokens"], 150)
+        self.assertEqual(task["actual"]["durationMs"], 1200)
+        public = self.store.get_mission(mission["id"])
+        self.assertGreaterEqual(public["evaluation"]["actualTokens"], 150)
+        self.assertEqual(public["evaluation"]["actualDurationMs"], 1200)
+        self.assertTrue(public["evaluation"]["agents"])
+
     def test_budget_creates_spend_approval(self):
         mission = self.make(budget=250)
         approvals = [a for a in self.store.list_approvals("pending")

@@ -642,6 +642,12 @@ html[data-theme="day"] .ext-add { color: #0b7e72; }
 html[data-theme="day"] .ext-list-wrap { background: #fbf7ef; border-color: #e2d4c2; }
 html[data-theme="day"] .ext-list-head b { background: #eee3d4; color: #53666f; }
 html[data-theme="day"] .ext-item { border-bottom-color: #e6d9c8; }
+html[data-theme="day"] .ext-logo,
+html[data-theme="day"] .external-card .ext-glyph,
+html[data-theme="day"] .ext-drawer-logo {
+  background: #fffaf2;
+  border-color: #d8c8b4;
+}
 html[data-theme="day"] .ext-item-copy b { color: #2f4049; }
 html[data-theme="day"] .ext-item-copy em { color: #7d8b92; }
 html[data-theme="day"] .ext-item-actions button { background: #f4ecdf; border-color: #d8c8b4; color: #53666f; }

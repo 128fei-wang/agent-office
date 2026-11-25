@@ -634,7 +634,8 @@ def mission_agent_directory():
         if not row.get("id") or row["id"] in seen:
             continue
         seen.add(row["id"])
-        unique.append(row)
+        source = row.get("source") or "role"
+        unique.append(missions.normalize_agent(row, source))
     return unique
 
 
@@ -729,14 +730,14 @@ def _mission_discussion_prompt(mission):
     )
 
 
-def _apply_mission_discussion(mission_id, data, provider_id):
+def _apply_mission_discussion(mission_id, data, provider_id, usage=None):
     if not MISSION_STORE or not missions:
         return
     with MISSION_STORE.lock:
-        _apply_mission_discussion_locked(mission_id, data, provider_id)
+        _apply_mission_discussion_locked(mission_id, data, provider_id, usage)
 
 
-def _apply_mission_discussion_locked(mission_id, data, provider_id):
+def _apply_mission_discussion_locked(mission_id, data, provider_id, usage=None):
     mission = MISSION_STORE.find_mission(mission_id)
     if not mission:
         return
@@ -792,7 +793,7 @@ def _apply_mission_discussion_locked(mission_id, data, provider_id):
                                       "\n".join("- " + r for r in risks))
     MISSION_STORE.set_discussion(
         mission_id, status="done", provider=provider_id, finishedAt=now_iso(),
-        error="", messages=applied,
+        error="", messages=applied, usage=usage or {},
     )
 
 
@@ -827,8 +828,17 @@ def _run_mission_discussion(mission_id, preferred=""):
     for provider_id in candidates:
         MISSION_STORE.set_discussion(mission_id, status="running", provider=provider_id,
                                      startedAt=now_iso(), error="")
+        started_at = time.time()
         try:
             result = provider_chat(provider_id, prompt, system, max_tokens=1800)
+            usage = {
+                "provider": provider_id,
+                "model": result.get("model") or "",
+                "tokensIn": int(result.get("tokensIn") or 0),
+                "tokensOut": int(result.get("tokensOut") or 0),
+                "durationMs": int(round((time.time() - started_at) * 1000)),
+                "source": "ai-discussion",
+            }
             parsed = _parse_model_json(result.get("text"))
             if not parsed:
                 # Keep the model's discussion, but do not invent structured decisions.
@@ -840,9 +850,10 @@ def _run_mission_discussion(mission_id, preferred=""):
                 MISSION_STORE.set_discussion(
                     mission_id, status="partial", provider=provider_id,
                     finishedAt=now_iso(), error="model returned non-JSON discussion",
+                    usage=usage,
                 )
                 return
-            _apply_mission_discussion(mission_id, parsed, provider_id)
+            _apply_mission_discussion(mission_id, parsed, provider_id, usage)
             return
         except Exception as exc:
             errors.append(provider_id + ": " + str(exc)[:180])
@@ -1016,6 +1027,8 @@ def run_mission_task(mission_id, task_id, preferred=""):
     errors = []
     parsed = None
     provider_id = ""
+    usage = {}
+    started_at = time.time()
     for pid in candidates:
         try:
             result = provider_chat(pid, prompt, system, max_tokens=1600)
@@ -1026,6 +1039,14 @@ def run_mission_task(mission_id, task_id, preferred=""):
             report = MISSION_STORE.validate_report(data)
             parsed = (data, report)
             provider_id = pid
+            usage = {
+                "provider": pid,
+                "model": result.get("model") or "",
+                "tokensIn": int(result.get("tokensIn") or 0),
+                "tokensOut": int(result.get("tokensOut") or 0),
+                "durationMs": int(round((time.time() - started_at) * 1000)),
+                "source": "ai-run",
+            }
             break
         except Exception as exc:
             errors.append(pid + ": " + str(exc)[:160])
@@ -1058,9 +1079,11 @@ def run_mission_task(mission_id, task_id, preferred=""):
             "report": report,
             "taskId": task_id,
             "attachmentIds": [artifact["id"]] if artifact else [],
+            "usage": usage,
         })
     return {"task": MISSION_STORE.public_task(task, mission),
-            "message": message, "artifact": artifact, "provider": provider_id}
+            "message": message, "artifact": artifact, "provider": provider_id,
+            "usage": usage}
 
 
 def issue_update_tokens(latest_version: str) -> dict:
@@ -1221,6 +1244,10 @@ def public_agent(agent: dict) -> dict:
     out["status"] = "online" if online(agent) else "offline"
     out["eventCount"] = sum(1 for e in STATE["events"] if e.get("agentId") == agent.get("id"))
     out.pop("lastSeenTs", None)
+    if missions:
+        logo = missions.logo_info(out, "external")
+        out.update(logo)
+        out["logoSource"] = "auto"
     return out
 
 
@@ -2391,6 +2418,12 @@ class Handler(BaseHTTPRequestHandler):
                             "code": "no_missions"}, 503)
             return
         try:
+            if path == "/missions/recommend":
+                directory = mission_agent_directory()
+                with MISSION_STORE.lock:
+                    result = MISSION_STORE.recommend(directory, body)
+                self.send_json({"ok": True, **result})
+                return
             if path == "/missions":
                 directory = mission_agent_directory()
                 with MISSION_STORE.lock:

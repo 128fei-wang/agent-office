@@ -894,9 +894,12 @@
       }
       this.listEl.innerHTML = agents.map((a) => {
         const online = a.status === "online";
-        const detail = [a.runtime || "external", a.model, (a.eventCount || 0) + " events",
+        const detail = [a.brand, a.runtime || "external", a.model, (a.eventCount || 0) + " events",
           a.demo ? "DEMO" : "", a.managed ? "API" : ""].filter(Boolean).join(" · ");
-        return '<div class="ext-item"><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
+        const mark = a.logoText || "⇢";
+        return '<div class="ext-item"><span class="ext-logo" style="--c:' +
+          esc(a.logoColor || "#b58cff") + '" title="' + esc(a.brand || "External agent") + '">' +
+          esc(mark) + '</span><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
           '<div class="ext-item-copy"><b>' + esc(a.name) + '</b><em>' + esc(detail) + "</em></div>" +
           '<div class="ext-item-actions"><button type="button" data-ext-rename="' + esc(a.id) +
           '" title="重命名">✎</button><button type="button" data-ext-remove="' + esc(a.id) +

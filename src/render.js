@@ -918,9 +918,11 @@
           ext.length + "</b></div>";
         ext.forEach((a) => {
           const online = a.status === "online";
+          const mark = a.logoText || "⇢";
           html += '<button class="team-card external-card" data-external="' + a.id +
-            '" title="' + esc(a.note || a.endpoint || "外部 agent") + '">' +
-            '<span class="ext-glyph">⇢</span>' +
+            '" title="' + esc((a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent")) + '">' +
+            '<span class="ext-glyph' + (a.logoText ? " brand-mark" : "") +
+            '" style="--c:' + esc(a.logoColor || "#b58cff") + '">' + esc(mark) + '</span>' +
             '<span class="team-main"><span class="team-line"><b>' + esc(a.name) +
             '</b><em class="role-pill ext">EXT</em></span>' +
             '<span class="team-state"><i class="state-dot ' + (online ? "online" : "offline") +
@@ -1886,12 +1888,16 @@
       }
       return '<div class="drawer-head">' +
         '<button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>' +
-        '<div class="drawer-kicker">EXTERNAL AGENT · ' + esc(agent.runtime || "external") + "</div>" +
-        '<h2>' + esc(agent.name) + "</h2>" +
+        '<div class="drawer-kicker">EXTERNAL AGENT · ' +
+        esc((agent.brand ? agent.brand + " · " : "") + (agent.runtime || "external")) + "</div>" +
+        '<h2>' + (agent.logoText ? '<span class="ext-drawer-logo" style="--c:' +
+          esc(agent.logoColor || "#b58cff") + '">' + esc(agent.logoText) + "</span>" : "") +
+        esc(agent.name) + "</h2>" +
         '<p class="drawer-desc">' + esc(agent.note || "外部 agent 通过本地 bridge 接入。") + "</p>" +
         '<div class="drawer-chips"><span class="status-chip ' + (online ? "done" : "blocked") + '">' +
         (online ? "ONLINE" : "OFFLINE") + "</span>" +
         '<span class="role-chip" style="--role:#b58cff">EXTERNAL</span>' +
+        (agent.brand ? '<span class="prio-chip">' + esc(agent.brand) + "</span>" : "") +
         '<span class="prio-chip">' + esc(agent.runtime || "external") + "</span>" +
         (agent.provider ? '<span class="prio-chip">' + esc(agent.provider) + " · " + esc(agent.model || "api") + "</span>" : "") +
         '<button type="button" class="drawer-rename" data-rename-external="' + agent.id +

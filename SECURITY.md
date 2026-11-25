@@ -34,6 +34,8 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - Boss approval endpoints are local-only and have no separate user authentication. They inherit the bridge's loopback Host/Origin trust model and must not be exposed publicly.
 - QR login approvals accept an agent-supplied QR/link attachment; Agent Office does not store provider passwords or implement third-party OAuth. Do not put secrets in QR codes or chat messages.
 - Mission state is stored in `~/.agent-office/missions.json`; it is local, unencrypted JSON and not multi-tenant.
+- Agent brand/logo detection is a local string match over name and runtime. It does not fetch remote logos, call vendor APIs or send agent metadata anywhere.
+- Recommendation is advisory and runs on the local bridge; it uses only local skills, role, online state, load and estimates. A user-selected or preferred executor is still validated against the selected member list before assignment.
 - AI discussion/run sends the mission charter, tasks and excerpts of extracted text to the configured model provider. Do not put secrets or regulated data in a mission if you do not trust that provider.
 - The app uses `localStorage` for names, hires, snapshots and external profiles. Treat browser storage as local, unencrypted state.
 - The demo agent is for local demonstration only.

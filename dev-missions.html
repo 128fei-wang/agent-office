@@ -39,7 +39,48 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     form.elements.title.value=title;
     form.elements.description.value='为自检创建一条真实任务，包含文档和图片附件、任务规则、自动分配和审批。';
     form.elements.acceptance.value='任务群创建成功，所有成员有任务，附件可读取，审批可处理。';
+    form.elements.description.dispatchEvent(new w.Event('input',{bubbles:true}));
+    let picks=[];
+    for(let i=0;i<8;i++){
+      await wait(400);
+      picks=Array.from(d.querySelectorAll('[data-team-agent]'));
+      if(picks.length>=6)break;
+    }
+    check('agent picker rendered',picks.length>=6,'agents='+picks.length);
+    check('auto team preselected',Array.from(d.querySelectorAll('[data-team-agent]:checked')).length>=4);
+    check('recommended agent badge',!!d.querySelector('.mission-agent-pick.recommended'));
+    check('agent logo marks',Array.from(d.querySelectorAll('.mission-agent-pick .mission-avatar')).filter(el=>el.textContent.trim()).length>=6);
+    check('recommendation plan rendered',(d.querySelectorAll('.mission-plan-row').length||0)>=4);
+    const firstPick=d.querySelector('[data-team-agent]:checked');
+    let pickId='';
+    if(firstPick){
+      pickId=firstPick.getAttribute('data-team-agent');
+      firstPick.click();
+      await wait(120);
+      check('free agent unselect',view.selectedAgents.indexOf(pickId)<0);
+      const rePick=d.querySelector('[data-team-agent="'+pickId+'"]');
+      if(rePick){rePick.click();await wait(120);}
+      check('free agent reselect',view.selectedAgents.indexOf(pickId)>=0);
+    }
+    const execSelect=d.querySelector('[data-task-executor]');
+    check('per-task executor selector',!!execSelect);
+    let chosenKey='',chosenAgent='';
+    if(execSelect){
+      chosenKey=execSelect.getAttribute('data-task-executor');
+      const alternate=Array.from(execSelect.options).find(o=>o.value!==execSelect.value&&o.value!==pickId) ||
+        Array.from(execSelect.options).find(o=>o.value!==execSelect.value);
+      if(alternate){
+        execSelect.value=alternate.value;
+        execSelect.dispatchEvent(new w.Event('change',{bubbles:true}));
+        await wait(120);
+        chosenAgent=alternate.value;
+        check('per-task executor override',view.taskExecutors[chosenKey]===alternate.value);
+      }
+    }
     form.elements.autoDiscuss.checked=false;
+    await wait(1200);
+    if(chosenKey)check('executor survives recommendation refresh',view.taskExecutors[chosenKey]===chosenAgent,
+      chosenKey+'='+view.taskExecutors[chosenKey]+'/'+chosenAgent);
     const dt=new w.DataTransfer();
     dt.items.add(new w.File(['# 任务背景\n这是自检文档内容。\n'], 'brief.md', {type:'text/markdown'}));
     const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nNwAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
@@ -57,8 +98,18 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     if(!mission){finish();return;}
     check('group conversation created',!!mission.conversationId);
     check('auto tasks generated',(mission.tasks||[]).length>=4,'tasks='+(mission.tasks||[]).length);
+    if(chosenKey&&chosenAgent){
+      const chosenTask=(mission.tasks||[]).find(t=>t.key===chosenKey);
+      check('per-task executor honored',!!chosenTask&&chosenTask.assigneeId===chosenAgent,
+        chosenTask&&(chosenTask.key+'='+chosenTask.assigneeId+'/'+chosenAgent));
+    }
     check('no idle coverage',mission.coverage&&mission.coverage.noIdle===true,JSON.stringify(mission.coverage));
     check('members assigned',(mission.members||[]).every(m=>(mission.tasks||[]).some(t=>t.assigneeId===m.id)));
+    check('task estimates generated',(mission.tasks||[]).every(t=>t.estimate&&t.estimate.minutes>0&&t.estimate.tokens>0));
+    check('mission evaluation generated',!!mission.evaluation&&mission.evaluation.estimatedTokens>0);
+    check('member logos generated',(mission.members||[]).every(m=>!!m.logoText));
+    view.detailTab='eval';view.render();await wait(200);
+    check('evaluation tab renders',/预计/.test($('.mission-detail-body').textContent)&&/Token/i.test($('.mission-detail-body').textContent));
     check('rules present',(mission.rules||[]).length>=5);
     check('document attachment stored',(mission.artifacts||[]).some(a=>a.name==='brief.md'&&/自检文档内容/.test(a.extractedText||'')));
     check('image attachment stored',(mission.artifacts||[]).some(a=>a.kind==='image'));

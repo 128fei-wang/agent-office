@@ -215,6 +215,17 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(data["bootId"])
 
     def test_mission_workspace_flow(self):
+        status, recommendation = self.request("/missions/recommend", "POST", {
+            "title": "Recommendation",
+            "description": "Build a tested landing page with copy, design, code and QA.",
+            "acceptance": "Recommendation includes concrete executors.",
+        })
+        self.assertEqual(status, 200, recommendation)
+        self.assertTrue(recommendation["tasks"])
+        self.assertTrue(recommendation["suggestedMemberIds"])
+        self.assertTrue(recommendation["preferredExecutors"])
+        self.assertTrue(all(t["estimate"]["tokens"] > 0 for t in recommendation["tasks"]))
+
         status, data = self.request("/missions", "POST", {
             "title": "Bridge mission test",
             "description": "Build a tested landing page with copy, design, code and QA.",
@@ -318,9 +329,12 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["artifact"]["extractedText"])
         self.assertIn("Mock deliverable", result["artifact"]["extractedText"])
         self.assertTrue(result["provider"])
+        self.assertGreater(result["usage"]["tokensIn"], 0)
+        self.assertGreater(result["task"]["actual"]["tokens"], 0)
         messages = self.request(
             "/conversations/%s/messages" % mission["conversationId"])[1]["messages"]
-        self.assertTrue(any(m["type"] == "report" for m in messages))
+        self.assertTrue(any(m["type"] == "report" and m.get("usage", {}).get("tokensIn", 0) > 0
+                            for m in messages))
         self.request("/missions/%s" % mission["id"], "DELETE")
 
     def test_update_check_status_and_bad_token(self):

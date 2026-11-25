@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.6.0] - 2026-11-25
+
+### Added
+- **Free team selection and per-task executors** in the mission form: choose any available agents, and override the executing agent for each recommended task. Recommended choices stay visible and one manual edit preserves the rest of the team.
+- **Agent recommendation engine**: `/missions/recommend` ranks agents by skill overlap, role match, online state and current workload, returns a top-3 list per task, a suggested team, a recommended executor per task and a human-readable match reason.
+- **Automatic concrete assignment**: recommended executors are sent as `preferredExecutors`; the bridge assigns each task to that concrete agent (or the best available member), and records the assignment reason and estimate.
+- **Automatic agent brand logos**: Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI are detected from an agent's name/runtime; other external agents get deterministic initials. Logos appear in team cards, the external agent list/drawer, mission members, chat reports and the recommendation picker.
+- **Time and token estimates**: per-task estimates based on role baseline, description complexity, skill match and current load, with a confidence level and match percentage.
+- **Actual usage evaluation**: actual minutes, model duration, token input/output, per-task variance, per-agent workload and deadline risk in a new **Eval / 评估** tab. AI discussion and AI task-run usage is stored on the mission, the report message and the task.
+- **Per-task executor preview**: changing the executing agent updates the time/token estimate before the task is created.
+
+### Changed
+- Version bumped to 1.6.0.
+- External agent API responses include auto-detected `brand`, `logoText`, `logoColor` and `logoSource`; the mission agent directory does the same for every source.
+- Mission evaluation now includes discussion overhead, actual model duration and per-agent usage.
+- Report cards show an inline token/latency badge; Team cards and the external drawer use brand marks instead of a generic arrow.
+- Browser self-checks now cover recommendation cards, free team selection, per-task executor overrides, logo rendering, estimates and the Eval tab.
+- Tests cover recommendation output, logo detection, estimates, actuals, preferred executors, AI usage and bridge recommendation responses.
+
 ## [1.5.0] - 2026-11-25
 
 ### Added

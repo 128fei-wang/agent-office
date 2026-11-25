@@ -6,8 +6,11 @@ Mission Control is the task workspace on top of Agent Office:
 - open a task group, ad-hoc group or one-to-one DM;
 - upload documents, spreadsheets, PDFs and images;
 - optionally recognize image text with a vision model or `tesseract`;
-- auto-select a team, decompose the task and assign every member by skill;
+- freely select a team, see recommended agents, override the executor per task
+  and assign every task to a concrete agent;
 - keep every agent covered with a primary or standby task;
+- show auto-detected brand logos for known external agents;
+- estimate time and tokens and compare them with actual usage;
 - require structured reports with a solution;
 - route only four kinds of decisions to the boss;
 - keep decisions, approvals, files and reports in one auditable thread.
@@ -15,6 +18,10 @@ Mission Control is the task workspace on top of Agent Office:
 Open **任务 / TASKS** in the top bar or use `?missions=1`.
 
 ![Mission Control](screenshots/missions.jpg)
+
+![Agent recommendation and per-task executors](screenshots/missions-team.jpg)
+
+![Usage evaluation](screenshots/missions-eval.jpg)
 
 ## Task charter
 
@@ -61,7 +68,7 @@ Approval rules:
   stored in chat;
 - a rejected approval blocks the linked task until a new route is proposed.
 
-## Automatic team and assignment
+## Team selection, recommendations and assignment
 
 The bridge builds a directory from:
 
@@ -69,22 +76,92 @@ The bridge builds a directory from:
 2. built-in AI roles otherwise;
 3. connected external agents (`Codex`, `WorkBuddy`, etc.).
 
-Team selection prefers the roles needed by the task (product, design, engineer,
-QA, growth, chief) and adds copy/video or external workers when relevant.
-Assignment is deterministic:
+### Free selection
+
+The new-task form shows every available agent with a logo/brand mark, skills,
+match score and estimated time/tokens. All selected agents can be toggled
+individually. **Auto team** starts with the recommended team; editing a single
+task executor turns auto-team off so the rest of the choices are preserved.
+Each recommendation row has a per-task executor selector, so the user can keep
+the suggested agent or choose another selected member. The resulting
+`preferredExecutors` map is sent with the mission and honored by the bridge.
+
+### Recommendation score
+
+`POST /missions/recommend` ranks candidates for every generated task:
 
 ```text
 skill overlap × 10
 + role match × 8
 + external worker bonus
++ online external bonus (engineer/QA weighted)
 − current load × 4
 ```
 
-Each task records its `assignmentReason`. After primary assignment, any member
-with zero work receives a useful standby task: risk review, evidence check,
-acceptance matrix, dependency watch or environment preflight. "No idle" means
-**no agent is left without a concrete, useful next action** — not that agents
-send fake activity.
+The response contains the plan tasks, top-3 agents per task with match
+percentages, reasons and estimates, a suggested team (max 8), and the preferred
+executor for each task. Recommendations are advisory: the team and every task
+executor remain editable.
+
+### Concrete assignment
+
+Every generated task is assigned to a concrete member at creation time. If a
+valid `preferredExecutors` entry exists, that agent wins; otherwise the highest
+score among the selected members wins. Each task records its
+`assignmentReason`. After primary assignment, any member with zero work receives
+a useful standby task: risk review, evidence check, acceptance matrix,
+dependency watch or environment preflight. "No idle" means **no agent is left
+without a concrete, useful next action** — not that agents send fake activity.
+
+## Logos and estimates
+
+Known external brands — Codex, Claude/Anthropic, WorkBuddy/混元, Gemini/Google,
+DeepSeek, Doubao/豆包, Kimi/Moonshot, Qwen/通义, Ollama, OpenAI/GPT — are detected
+from the agent name and runtime, without calling an external service. Unknown
+external agents get deterministic initials from their display name; built-in
+roles use `CH / PR / CO / DE / EN / QA / GR / VI`. The same fields
+(`brand`, `logoText`, `logoColor`) appear in the mission picker, member list,
+chat reports, team roster, external agent list and drawer.
+
+Each task stores:
+
+```json
+{
+  "estimate": {
+    "minutes": 109,
+    "tokens": 14561,
+    "confidence": "high",
+    "match": 94,
+    "basis": "role base × complexity × skill match × load"
+  },
+  "actual": {
+    "minutes": 3,
+    "tokens": 4820,
+    "durationMs": 187000,
+    "startedAt": "2026-11-25T09:00:00Z",
+    "finishedAt": "2026-11-25T09:03:07Z"
+  },
+  "usages": [
+    {"provider": "deepseek", "model": "...", "tokensIn": 4000,
+     "tokensOut": 820, "durationMs": 187000, "source": "ai-run"}
+  ]
+}
+```
+
+Estimates use role baselines, description length, priority, attachment count,
+skill coverage and current load. Actuals come from AI provider usage and from
+reports submitted by local or external agents. A report can include:
+
+```json
+{"usage": {"provider": "codex", "model": "gpt-5",
+           "tokensIn": 1200, "tokensOut": 400, "durationMs": 95000}}
+```
+
+The **Eval / 评估** tab shows estimated vs actual minutes/tokens overall and per
+task, variance, elapsed time, confidence, deadline risk, per-agent usage and AI
+discussion overhead. AI discussion and AI run usage is stored on the mission and
+the report message; report cards show an inline token/latency badge. This is a
+consumption evaluation, not vendor billing.
 
 ## Task states
 
@@ -190,6 +267,7 @@ uploaded document redirect an agent's policy.
 GET    /missions
 GET    /missions/overview
 GET    /missions/agents
+POST   /missions/recommend
 POST   /missions
 GET    /missions/<id>
 DELETE /missions/<id>
@@ -241,9 +319,20 @@ curl -X PATCH http://127.0.0.1:8787/mission-tasks/<task-id> \
       "solution": "added a local fallback endpoint and retry",
       "evidence": ["tests/12-passed"],
       "needsBoss": []
+    },
+    "usage": {
+      "provider": "codex",
+      "model": "gpt-5",
+      "tokensIn": 1200,
+      "tokensOut": 400,
+      "durationMs": 95000
     }
   }'
 ```
+
+`usage` is optional but recommended: it updates the task's actual tokens,
+model duration and the Eval tab. Reports without usage still count wall-clock
+time from task start to review.
 
 ## Data and security
 
@@ -293,6 +382,11 @@ projects supplied workflow and UX patterns.
   does not implement each service's OAuth flow.
 - Approvals are local and unauthenticated; this is not a multi-tenant approvals
   service.
+- Estimates are heuristics (role baseline × complexity × skill match × load),
+  not a trained forecast; they are not vendor pricing. Historical calibration
+  is on the roadmap.
+- Brand logos are local name/runtime matches. They are not vendor trademark
+  assets and no remote logo service is called.
 - Standby tasks are real, bounded checks, not simulated busywork.
 - Mission data lives in a JSON document; large deployments should move to
   SQLite/Postgres.

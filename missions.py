@@ -13,6 +13,7 @@ mission member must have primary or standby coverage.
 """
 from __future__ import annotations
 
+import datetime
 import html
 import json
 import os
@@ -29,6 +30,56 @@ BOSS_GATES = ("spend", "decision", "login", "authorization")
 REPORT_FIELDS = ("summary", "done", "next", "risks", "solution")
 TASK_STATUSES = ("queued", "assigned", "in_progress", "review", "blocked", "done")
 MAX_TEXT = 12000
+
+ROLE_EFFORT = {
+    "chief": (20, 2500),
+    "product": (45, 6000),
+    "copy": (35, 4000),
+    "design": (60, 7500),
+    "engineer": (120, 16000),
+    "qa": (45, 5000),
+    "growth": (40, 5000),
+    "video": (60, 6500),
+    "operator": (60, 7000),
+}
+
+BRAND_PATTERNS = [
+    (r"codex", "Codex", "CX", "#d7f7e6"),
+    (r"claude|anthropic", "Claude", "C", "#e8a07e"),
+    (r"workbuddy|work buddy|混元|hunyuan|hy3", "WorkBuddy", "WB", "#ffb45e"),
+    (r"gemini|google", "Gemini", "✦", "#b9a6ff"),
+    (r"deepseek", "DeepSeek", "DS", "#7fa7ff"),
+    (r"doubao|豆包|volcengine|ark", "Doubao", "豆", "#7fb4ff"),
+    (r"kimi|moonshot", "Kimi", "K", "#9b9cff"),
+    (r"qwen|通义|dashscope", "Qwen", "Q", "#b18cff"),
+    (r"ollama", "Ollama", "OL", "#74d6a3"),
+    (r"openai|gpt", "OpenAI", "AI", "#74d6a3"),
+]
+
+
+def logo_info(row, source="role"):
+    name = str(row.get("name") or row.get("titleEn") or row.get("titleZh") or "")
+    runtime = str(row.get("runtime") or row.get("provider") or "")
+    role = str(row.get("role") or "").replace("msn-", "").replace("opc-", "")
+    haystack = (name + " " + runtime).lower()
+    if source == "external":
+        for pattern, brand, mark, color in BRAND_PATTERNS:
+            if re.search(pattern, haystack):
+                return {"brand": brand, "logoText": mark, "logoColor": color}
+        letters = "".join(part[0] for part in re.split(r"[\s·._-]+", name) if part)[:2]
+        return {"brand": "External agent", "logoText": letters.upper() or "EX",
+                "logoColor": row.get("color") or "#7cb7ff"}
+    labels = {
+        "chief": "CH", "product": "PR", "copy": "CO", "design": "DE",
+        "engineer": "EN", "qa": "QA", "growth": "GR", "video": "VI",
+        "operator": "OP",
+    }
+    return {
+        "brand": str(row.get("titleEn") or row.get("brand") or role or "Agent"),
+        "logoText": labels.get(role, (role[:2] or "AI").upper()),
+        "logoColor": row.get("color") or "#7cb7ff",
+    }
+
 
 BUILTIN_AGENTS = [
     {"id": "msn-chief", "role": "chief", "titleZh": "总协调", "titleEn": "Chief of Staff",
@@ -86,6 +137,7 @@ def normalize_agent(row, source="role"):
     role = str(row.get("role") or row.get("id") or "").replace("msn-", "").replace("opc-", "")
     title_zh = str(row.get("titleZh") or row.get("title") or row.get("name") or role)
     title_en = str(row.get("titleEn") or row.get("title") or row.get("name") or role)
+    logo = logo_info(row, source)
     return {
         "id": str(row.get("id") or _mid("agent")),
         "name": str(row.get("name") or title_en),
@@ -96,6 +148,9 @@ def normalize_agent(row, source="role"):
         "color": str(row.get("color") or "#7cb7ff"),
         "source": source,
         "virtual": bool(row.get("virtual", source in ("role", "company"))),
+        "runtime": str(row.get("runtime") or row.get("provider") or ""),
+        "online": bool(row.get("online", False)),
+        **logo,
     }
 
 
@@ -118,6 +173,84 @@ def score_agent(agent, task, load):
         score += 1
     score -= load * 4
     return score
+
+
+def estimate_task(task, mission, agent, load=0):
+    role = str(task.get("role") or agent.get("role") or "operator")
+    base_minutes, base_tokens = ROLE_EFFORT.get(role, ROLE_EFFORT["operator"])
+    required = set(task.get("requiredSkills") or [])
+    skills = set(agent.get("skills") or []) if agent else set()
+    coverage = (len(required & skills) / len(required)) if required else 0.5
+    complexity = 1.0
+    complexity += min(0.8, len(str(mission.get("description") or "")) / 5000.0)
+    complexity += min(0.4, len(mission.get("artifactIds") or []) * 0.08)
+    if str(mission.get("priority") or "").upper() == "P0":
+        complexity += 0.2
+    skill_factor = 1.25 - (0.35 * coverage)
+    load_factor = 1.0 + (0.12 * max(0, int(load or 0) - 1))
+    minutes = max(8, round(base_minutes * complexity * skill_factor * load_factor))
+    tokens = max(800, round(base_tokens * complexity * skill_factor * load_factor))
+    confidence = "high" if coverage >= 0.66 and load <= 1 else (
+        "medium" if coverage >= 0.33 or load <= 2 else "low")
+    return {
+        "minutes": minutes,
+        "tokens": tokens,
+        "confidence": confidence,
+        "match": round(coverage * 100),
+        "basis": "role base × task complexity × skill match × current load",
+    }
+
+
+def _task_actual_default():
+    return {"minutes": 0, "tokens": 0, "durationMs": 0, "startedAt": "", "finishedAt": ""}
+
+
+def _minutes_between(start, end=None):
+    if not start:
+        return 0
+    try:
+        a = datetime.datetime.strptime(start, "%Y-%m-%dT%H:%M:%SZ")
+        b = (datetime.datetime.utcnow() if end is None
+             else datetime.datetime.strptime(end, "%Y-%m-%dT%H:%M:%SZ"))
+        return max(0, int(round((b - a).total_seconds() / 60.0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _mark_task_actual(task, status):
+    actual = task.setdefault("actual", _task_actual_default())
+    now = now_iso()
+    if status in ("in_progress", "review", "done") and not actual.get("startedAt"):
+        actual["startedAt"] = now
+    if status == "done":
+        actual["finishedAt"] = now
+        actual["minutes"] = _minutes_between(actual.get("startedAt"), now)
+    elif status == "review":
+        actual["minutes"] = _minutes_between(actual.get("startedAt"), now)
+
+
+def _record_task_usage(task, usage):
+    if not isinstance(usage, dict):
+        return
+    try:
+        tokens_in = max(0, int(usage.get("tokensIn") or usage.get("inputTokens") or 0))
+        tokens_out = max(0, int(usage.get("tokensOut") or usage.get("outputTokens") or 0))
+    except (TypeError, ValueError):
+        tokens_in = tokens_out = 0
+    item = {
+        "provider": _text(usage.get("provider"), 80),
+        "model": _text(usage.get("model"), 120),
+        "tokensIn": tokens_in,
+        "tokensOut": tokens_out,
+        "durationMs": max(0, int(usage.get("durationMs") or 0)),
+        "source": _text(usage.get("source") or "agent", 40),
+        "at": now_iso(),
+    }
+    task.setdefault("usages", []).append(item)
+    actual = task.setdefault("actual", _task_actual_default())
+    actual["tokens"] = sum(int(u.get("tokensIn") or 0) + int(u.get("tokensOut") or 0)
+                           for u in task["usages"])
+    actual["durationMs"] = sum(int(u.get("durationMs") or 0) for u in task["usages"])
 
 
 def choose_agents(directory, requested, description):
@@ -258,6 +391,74 @@ class MissionStore:
         out["overdue"] = False
         return out
 
+    def mission_evaluation(self, mission):
+        tasks = mission.get("tasks", [])
+        estimated_minutes = sum(int((t.get("estimate") or {}).get("minutes") or 0) for t in tasks)
+        estimated_tokens = sum(int((t.get("estimate") or {}).get("tokens") or 0) for t in tasks)
+        actual_minutes = sum(int((t.get("actual") or {}).get("minutes") or 0) for t in tasks)
+        actual_duration_ms = sum(int((t.get("actual") or {}).get("durationMs") or 0) for t in tasks)
+        actual_tokens = sum(int((t.get("actual") or {}).get("tokens") or 0) for t in tasks)
+        remaining_minutes = sum(int((t.get("estimate") or {}).get("minutes") or 0)
+                                for t in tasks if t.get("status") != "done")
+        confidences = [(t.get("estimate") or {}).get("confidence") for t in tasks]
+        confidence = ("low" if "low" in confidences else
+                      "medium" if "medium" in confidences else "high")
+        discussion = mission.get("discussion") or {}
+        discussion_usage = discussion.get("usage") if isinstance(discussion.get("usage"), dict) else {}
+        discussion_tokens = (int(discussion_usage.get("tokensIn") or 0) +
+                             int(discussion_usage.get("tokensOut") or 0))
+        discussion_minutes = int(round((int(discussion_usage.get("durationMs") or 0)) / 60000.0))
+        deadline = str(mission.get("deadline") or "")
+        deadline_risk = "none"
+        deadline_days = None
+        if deadline:
+            try:
+                due = datetime.date.fromisoformat(deadline)
+                deadline_days = (due - datetime.date.today()).days
+                if any(t.get("status") != "done" for t in tasks):
+                    if deadline_days < 0:
+                        deadline_risk = "overdue"
+                    elif remaining_minutes > max(1, deadline_days) * 480:
+                        deadline_risk = "at_risk"
+                    else:
+                        deadline_risk = "ok"
+            except ValueError:
+                deadline_days = None
+        elapsed_minutes = _minutes_between(mission.get("createdAt"))
+        agents = []
+        for member in mission.get("members", []):
+            mine = [t for t in tasks if t.get("assigneeId") == member.get("id")]
+            agents.append({
+                "id": member.get("id"),
+                "name": member.get("titleZh") or member.get("name"),
+                "logoText": member.get("logoText"),
+                "logoColor": member.get("logoColor"),
+                "brand": member.get("brand"),
+                "tasks": len(mine),
+                "open": sum(1 for t in mine if t.get("status") != "done"),
+                "estimatedMinutes": sum(int((t.get("estimate") or {}).get("minutes") or 0) for t in mine),
+                "actualMinutes": sum(int((t.get("actual") or {}).get("minutes") or 0) for t in mine),
+                "actualDurationMs": sum(int((t.get("actual") or {}).get("durationMs") or 0) for t in mine),
+                "estimatedTokens": sum(int((t.get("estimate") or {}).get("tokens") or 0) for t in mine),
+                "actualTokens": sum(int((t.get("actual") or {}).get("tokens") or 0) for t in mine),
+            })
+        return {
+            "estimatedMinutes": estimated_minutes,
+            "estimatedTokens": estimated_tokens,
+            "actualMinutes": actual_minutes,
+            "actualDurationMs": actual_duration_ms,
+            "actualTokens": actual_tokens,
+            "remainingMinutes": remaining_minutes,
+            "elapsedMinutes": elapsed_minutes,
+            "discussionTokens": discussion_tokens,
+            "discussionMinutes": discussion_minutes,
+            "confidence": confidence,
+            "deadline": deadline,
+            "deadlineDays": deadline_days,
+            "deadlineRisk": deadline_risk,
+            "agents": agents,
+        }
+
     def public_mission(self, mission, summary=False):
         if not mission:
             return None
@@ -300,6 +501,7 @@ class MissionStore:
                 "approvals": len(pending),
             },
             "decisions": mission.get("decisions", []),
+            "evaluation": self.mission_evaluation(mission),
             "autoDiscuss": bool(mission.get("autoDiscuss")),
             "discussion": mission.get("discussion", {}),
             "approvals": [self.public_approval(a) for a in approvals][-20:],
@@ -419,6 +621,8 @@ class MissionStore:
             "discussion": {"status": "pending" if body.get("autoDiscuss", True) else "off",
                            "startedAt": "", "finishedAt": "", "provider": "", "error": ""},
         }
+        preferred = body.get("preferredExecutors")
+        mission["preferredExecutors"] = preferred if isinstance(preferred, dict) else {}
         mission["tasks"] = self._plan_tasks(mission)
         self._assign_tasks(mission)
         self._ensure_no_idle(mission)
@@ -449,6 +653,77 @@ class MissionStore:
         self._save()
         return self.public_mission(mission)
 
+    def recommend(self, directory, body):
+        description = _text(body.get("description"), 6000)
+        if len(description) < 8:
+            description = "通用交付任务：需求、设计、实现、验收和发布。"
+        acceptance = _text(body.get("acceptance"), 4000)
+        temp = {
+            "description": description,
+            "acceptance": acceptance,
+            "priority": str(body.get("priority") or "P1"),
+            "artifactIds": _list(body.get("artifactIds")),
+            "members": directory,
+            "id": "recommendation",
+        }
+        tasks = self._plan_tasks(temp)
+        load = {}
+        for mission in self.data["missions"]:
+            if mission.get("status") == "done":
+                continue
+            for task in mission.get("tasks", []):
+                if task.get("status") != "done":
+                    load[task.get("assigneeId")] = load.get(task.get("assigneeId"), 0) + 1
+        output = []
+        suggested = []
+        preferred = {}
+        for task in tasks:
+            ranked = []
+            for agent in directory:
+                score = score_agent(agent, task, load.get(agent.get("id"), 0))
+                if agent.get("source") == "external" and agent.get("online"):
+                    score += 18 if task.get("role") in ("engineer", "qa") else 5
+                estimate = estimate_task(task, temp, agent, load.get(agent.get("id"), 0))
+                overlap = sorted(set(agent.get("skills") or []) & set(task.get("requiredSkills") or []))
+                match = min(100, max(5, round(
+                    45 + (len(overlap) / max(1, len(task.get("requiredSkills") or []))) * 40
+                    + (12 if agent.get("role") == task.get("role") else 0)
+                    - min(10, load.get(agent.get("id"), 0) * 2)
+                )))
+                reason = "技能：" + ("、".join(overlap) if overlap else "角色匹配")
+                if agent.get("source") == "external" and agent.get("online"):
+                    reason += "；在线外部执行器"
+                reason += "；当前负载 " + str(load.get(agent.get("id"), 0))
+                ranked.append({
+                    **agent, "score": score, "match": match,
+                    "reason": reason, "estimate": estimate,
+                })
+            ranked.sort(key=lambda a: (a["score"], a["match"]), reverse=True)
+            top = ranked[:3]
+            output.append({
+                "key": task["key"],
+                "title": task["title"],
+                "role": task["role"],
+                "estimate": estimate_task(task, temp, top[0] if top else None,
+                                          load.get(top[0]["id"], 0) if top else 0),
+                "recommended": top,
+            })
+            if top:
+                preferred[task["key"]] = top[0]["id"]
+                if top[0]["id"] not in suggested:
+                    suggested.append(top[0]["id"])
+        chief = next((a for a in directory if a.get("role") == "chief"), None)
+        if chief and chief["id"] not in suggested and len(suggested) < 8:
+            suggested.append(chief["id"])
+        suggested = suggested[:8]
+        preferred = {key: value for key, value in preferred.items() if value in suggested}
+        return {
+            "tasks": output,
+            "suggestedMemberIds": suggested,
+            "preferredExecutors": preferred,
+            "notes": "推荐基于技能匹配、角色、在线状态和当前负载；可自由调整，系统仍会保证每个人有任务或待命巡检。",
+        }
+
     def _plan_tasks(self, mission):
         members = mission["members"]
         text = (mission.get("description") or "").lower()
@@ -471,6 +746,9 @@ class MissionStore:
                 "status": "queued",
                 "priority": mission["priority"],
                 "report": None,
+                "estimate": None,
+                "actual": _task_actual_default(),
+                "usages": [],
                 "createdAt": now_iso(),
                 "updatedAt": now_iso(),
             })
@@ -516,9 +794,13 @@ class MissionStore:
 
     def _assign_tasks(self, mission):
         load = {}
+        preferred = mission.get("preferredExecutors") or {}
+        by_id = {a["id"]: a for a in mission["members"]}
         for task in mission["tasks"]:
             candidates = mission["members"]
-            best = max(candidates, key=lambda a: score_agent(a, task, load.get(a.get("id"), 0)))
+            preferred_agent = by_id.get(preferred.get(task.get("key")))
+            best = preferred_agent or max(
+                candidates, key=lambda a: score_agent(a, task, load.get(a.get("id"), 0)))
             task["assigneeId"] = best["id"]
             task["assigneeName"] = best.get("titleZh") or best.get("name")
             overlap = sorted(set(best.get("skills") or []) & set(task.get("requiredSkills") or []))
@@ -526,6 +808,7 @@ class MissionStore:
                 "技能匹配 " + ("、".join(overlap) if overlap else "角色匹配")
                 + "；当前负载 " + str(load.get(best["id"], 0))
             )
+            task["estimate"] = estimate_task(task, mission, best, load.get(best["id"], 0))
             load[best["id"]] = load.get(best["id"], 0) + 1
 
     def _standby_spec(self, agent):
@@ -576,10 +859,14 @@ class MissionStore:
                 "status": "assigned",
                 "priority": "P2",
                 "report": None,
+                "estimate": None,
+                "actual": _task_actual_default(),
+                "usages": [],
                 "source": "standby",
                 "createdAt": now_iso(),
                 "updatedAt": now_iso(),
             }
+            task["estimate"] = estimate_task(task, mission, agent, load.get(agent.get("id"), 0))
             mission["tasks"].append(task)
             load[agent.get("id")] = 1
 
@@ -766,6 +1053,12 @@ class MissionStore:
         task["report"] = report
         task["status"] = status
         task["updatedAt"] = now_iso()
+        _mark_task_actual(task, status)
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        if not usage and isinstance(report.get("usage"), dict):
+            usage = report["usage"]
+        if usage:
+            _record_task_usage(task, usage)
         mission["status"] = "review" if status == "review" else mission.get("status")
         mission["updatedAt"] = now_iso()
         if status == "done":
@@ -803,6 +1096,7 @@ class MissionStore:
             raise MissionError("unknown task status", "bad_status", 400)
         if status:
             task["status"] = status
+            _mark_task_actual(task, status)
         if body.get("assigneeId"):
             member = next((m for m in mission["members"] if m["id"] == body["assigneeId"]), None)
             if not member:
@@ -898,6 +1192,7 @@ class MissionStore:
             "text": _text(data.get("text"), 8000),
             "meta": data.get("meta") if isinstance(data.get("meta"), dict) else {},
             "attachmentIds": _list(data.get("attachmentIds")),
+            "usage": data.get("usage") if isinstance(data.get("usage"), dict) else {},
             "createdAt": now_iso(),
         }
         self.data["messages"].append(message)
@@ -936,11 +1231,13 @@ class MissionStore:
         for artifact_id in attachment_ids:
             if not self.find_artifact(artifact_id):
                 raise MissionError("unknown attachment: " + artifact_id, "bad_attachment", 400)
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         message = self._append_message(conversation, {
             "senderId": sender_id, "senderName": sender_name, "senderType": sender_type,
             "type": message_type, "text": text,
             "meta": {"report": report} if report else (body.get("meta") or {}),
             "attachmentIds": attachment_ids,
+            "usage": usage,
         })
         mission = self.find_mission(conversation.get("missionId"))
         if mission and message_type == "report":
@@ -951,6 +1248,9 @@ class MissionStore:
                     task["report"] = report
                     task["status"] = "review"
                     task["updatedAt"] = now_iso()
+                    _mark_task_actual(task, "review")
+                    if usage:
+                        _record_task_usage(task, usage)
                     mission["status"] = "review"
                     mission["updatedAt"] = now_iso()
                     message["meta"]["taskId"] = task_id

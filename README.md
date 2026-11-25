@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、自动组队/拆解/分配、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、智能组队/推荐/逐任务分配、品牌 Logo 识别、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -61,6 +61,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
 | **Mission Control** | **One-person company** |
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
+| **Agent recommendation & per-task executors** | **Usage evaluation** |
+| ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -329,6 +331,8 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 打开顶部 **`任务`**，或访问 `?missions=1`。
 
 - **新建任务**：填写描述、验收标准、优先级、截止日期、预算，上传文档/图片。
+- **自由选人 + 智能推荐**：候选人卡片显示技能、匹配度和预计耗时/token；可自由勾选成员，也可按任务逐个指定执行 Agent。系统会按技能、角色、在线状态和当前负载给出 Top 3 推荐，并自动把任务落到具体执行者。
+- **品牌 Logo 识别**：Codex、Claude、WorkBuddy、Gemini、DeepSeek、豆包、Kimi、Qwen、Ollama、OpenAI 等外部 Agent 会根据名称/运行时自动识别品牌标记；未知 Agent 使用稳定缩写，团队卡、外部面板、任务群和推荐卡同步显示。
 - **自动组队与拆解**：按技能选人、生成依赖任务、记录分配理由；每个成员都有主任务或真实待命巡检，避免空岗。
 - **任务群 / 群聊 / 私聊**：任务自动建群；也可以单独建群或和任一 Agent 私聊。
 - **文件与图片**：支持文本、Markdown、CSV、JSON、HTML、DOCX、XLSX、PDF 和图片；图片可按需调用视觉模型或 `tesseract` 识别。
@@ -336,6 +340,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **老板审批**：花费、拍板、扫码登录、授权四类进入审批箱；审批前不执行，审批一次性生效。
 - **结构化汇报**：已完成 / 下一步 / 风险 / 解决方案 / 证据；缺少解决方案或把技术问题列入老板门禁会被拒绝。
 - **Agent 讨论/执行**：配置模型服务后可在同一条任务线程里讨论并让虚拟角色执行任务、产出交付物；外部 Agent 可用 `/mission-tasks` 协议领取和回写。
+- **消耗评估**：每个任务有预计/实际耗时、预计/实际 token、Agent 负载和截止风险；Eval 面板显示任务差异、Agent 消耗和 AI 讨论开销，汇报卡片直接显示本次 token 与延迟。
 
 完整规则、API 和外部 Agent 协议见 [docs/MISSIONS.md](docs/MISSIONS.md)。
 
@@ -698,9 +703,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-update-manual.html` 会验证本地升级包选择、文件上传、token/文件名请求头、进度和完成态。
 
-`dev-missions.html` 会验证任务创建、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
+`dev-missions.html` 会验证任务创建、自由选人、推荐卡片、逐任务执行 Agent、品牌 Logo、预计/实际消耗、Eval 面板、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
 
-bridge 自身的 20 个集成测试、更新器的 14 个单元测试和任务工作台的 7 个单元测试不依赖浏览器：
+bridge 自身的 20 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -716,7 +721,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.5.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.6.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -731,6 +736,8 @@ python3 -m unittest discover -s tests -v
 - SSE 是 localhost 实时流，没有鉴权；公司数据保存在 `~/.agent-office/bridge-state.json`。
 - 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
 - 任务工作台的 AI 讨论/AI 执行需要可用的模型服务；本地 WorkBuddy/Ollama 未启动时会保留规则计划并明确提示。PDF 文本提取需要 `pdftotext`；图片识别优先使用视觉模型，macOS 可用系统 Vision 兜底，其他平台可安装 `tesseract`。
+- 时间/token 是估算与消耗统计，不是厂商账单；估算基于角色基线、复杂度、技能匹配和负载，暂未按历史偏差自动校准。实际 token 取决于模型返回或外部 Agent 汇报。
+- 品牌 Logo 是本地名称/运行时匹配，不下载商标图片；未知 Agent 使用名称缩写。
 - 扫码登录只提供老板审批门禁和二维码/链接附件，不实现各第三方服务自己的 OAuth 流程；审批端点是本机本地信任模型，不是多租户鉴权系统。
 - 任务工作台把数据存在 `~/.agent-office/missions.json`；大型部署应迁移到 SQLite/Postgres。
 - 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。

@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, automatic team selection and assignment, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, smart team recommendations and per-task executors, automatic brand logos, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -61,6 +61,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Day mode](docs/screenshots/day-mode.jpg) | ![Mobile](docs/screenshots/mobile-day.jpg) |
 | **Mission Control** | **One-person company** |
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
+| **Agent recommendation & per-task executors** | **Usage evaluation** |
+| ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 
 ## Traceability and audit
 
@@ -328,13 +330,16 @@ API and boundaries.
 Open **TASKS** in the top bar or use `?missions=1`.
 
 - **New task** — description, acceptance, priority, deadline, budget and document/image attachments.
-- **Auto team and plan** — skill-based selection, dependency-aware tasks and a recorded reason for every assignment; each member gets a primary or useful standby task, so nobody idles.
+- **Free team selection + recommendations** — candidate cards show skills, match score and estimated time/tokens. Pick any members, or override the executing agent per task. Recommendations rank by skills, role, online state and current load, return a top-3 per task, and default every task to a concrete executor.
+- **Automatic brand logos** — Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI are detected from the agent name/runtime; unknown agents get stable initials. Logos appear in team cards, the external list/drawer, mission members, reports and the picker.
+- **Auto plan** — dependency-aware tasks and a recorded reason for every assignment; each member gets a primary or useful standby task, so nobody idles.
 - **Task group / group chat / DM** — each mission opens its own group; ad-hoc groups and one-to-one DMs are available too.
 - **Files and images** — text, Markdown, CSV, JSON, HTML, DOCX, XLSX, PDF and images; optional vision/tesseract OCR.
 - **Rules first** — the charter, acceptance criteria, boss gates and report format are posted into the group. Technical issues must be solved by the team, not forwarded to the boss.
 - **Boss gates** — only spend, final business calls, QR login and authorization enter the boss inbox; work waits for approval and approvals are one-time.
 - **Structured reports** — done / next / risks / solution / evidence. A missing solution, or a technical issue listed as a boss gate, is rejected.
 - **AI discussion/run** — with a configured model service, the team can discuss and virtual role agents can produce deliverables in the same task thread. External agents use the `/mission-tasks` protocol.
+- **Time/token evaluation** — estimated vs actual minutes and tokens, model latency, per-task variance, per-agent usage, discussion overhead and deadline risk in the **Eval** tab; report cards show the run's token/latency badge.
 
 See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker protocol.
 
@@ -446,9 +451,9 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-i18n.html` — English/Chinese toggle, persistence and reload.
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
-- `dev-missions.html` — task creation, auto team/plan, no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
+- `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
 
-Run the 20 bridge integration tests, 14 updater unit tests, 7 mission unit tests and repository checks with:
+Run the 20 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -482,6 +487,8 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - SSE is a localhost stream without authentication; company data lives in `~/.agent-office/bridge-state.json`.
 - Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
 - Mission AI discussion/AI run needs a reachable model service. When local WorkBuddy/Ollama is not running, the rule plan remains and the UI says so. PDF extraction needs `pdftotext`; image OCR uses a vision model, macOS Vision as a local fallback, or `tesseract` on other platforms.
+- Time/token values are estimates and consumption telemetry, not vendor billing. Estimates use local heuristics (role baseline, complexity, skill match, load) and do not yet learn from historical variance. Actual tokens depend on what a provider or external agent reports.
+- Brand logos are local name/runtime matches, not downloaded trademark assets; unknown agents get initials.
 - QR login is a boss approval gate for an agent-supplied QR/link; Agent Office does not implement each provider's OAuth flow. Approvals are a local trust model, not multi-tenant authentication.
 - Mission data lives in `~/.agent-office/missions.json`; large deployments should move to SQLite/Postgres.
 - Self-update never installs in the background. Automatic update needs the official GitHub Release; manual update needs a local archive newer than the running version. Both need the bridge and restart it. Versions 1.2.0 and older need one manual upgrade to 1.3.0+ before the in-app tools panel exists.

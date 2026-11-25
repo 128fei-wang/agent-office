@@ -89,9 +89,9 @@ flowchart LR
 | `src/external.js` | pairing codes, task delegation, bridge polling, external event ingest, rename dialog |
 | `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
-| `src/missions.js` | mission workspace, charter, groups/DMs, files/OCR, approvals, AI discussion/run |
+| `src/missions.js` | mission workspace, charter, free team selection, recommendation cards, per-task executors, groups/DMs, files/OCR, approvals, AI discussion/run, usage eval |
 | `src/update.js` | tools panel, automatic/manual update, confirmation, progress, restart detection, rollback |
-| `missions.py` | mission plan, assignment, no-idle coverage, chat, artifact metadata, report and approval rules |
+| `missions.py` | mission plan, recommendation scoring, brand logos, estimates, preferred-executor assignment, no-idle coverage, chat, artifact metadata, report/approval rules, usage evaluation |
 | `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
 | `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files and updates |
@@ -106,9 +106,11 @@ flowchart LR
 5. External events arrive from `bridge.py`; `external.js` polls and calls `engine.ingestExternalEvent()`, so they join the same ledger and Trace Lab.
 6. Assignments are polled separately; `engine.applyExternalAssignment()` mirrors progress/completion into the task board and finalizes unverified checks as risk/missed.
 7. `engine.otlp()` projects the same events into OTLP/GenAI-style span JSON.
-8. Mission Control creates a charter, selects a team, plans dependency-aware tasks and assigns every member; groups/DMs, reports and approvals are stored by `missions.py`.
-9. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
-10. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
+8. Mission Control creates a charter, recommends and selects a team, plans dependency-aware tasks and assigns every task to a concrete member. `POST /missions/recommend` scores skills, role, online state and current load; `preferredExecutors` from the form override the default for individual tasks.
+9. Every task carries estimates and actual usage (minutes, model duration, tokens); AI discussion and AI run usage is stored on the mission and report messages, and `mission_evaluation()` aggregates it for the Eval tab.
+10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Mission members and external API responses expose the same fields.
+11. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
+12. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence
 

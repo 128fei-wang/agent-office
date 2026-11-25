@@ -45,6 +45,24 @@
     return (value / (1024 * 1024)).toFixed(1) + " MB";
   }
 
+  function fmtDuration(minutes, durationMs) {
+    const value = Math.max(0, Math.round(Number(minutes) || 0));
+    const ms = Math.max(0, Number(durationMs) || 0);
+    if (!value && ms) {
+      const seconds = ms / 1000;
+      return seconds < 60 ? seconds.toFixed(seconds < 10 ? 1 : 0) + "s" :
+        Math.round(seconds / 60) + "m";
+    }
+    if (value < 60) return value + "m";
+    return Math.floor(value / 60) + "h " + (value % 60) + "m";
+  }
+
+  function fmtTokens(tokens) {
+    const value = Math.max(0, Math.round(Number(tokens) || 0));
+    if (value < 1000) return String(value);
+    return (value / 1000).toFixed(value < 10000 ? 1 : 0) + "k";
+  }
+
   function initials(name) {
     const text = String(name || "?").trim();
     return text ? text.slice(0, 1).toUpperCase() : "?";
@@ -80,6 +98,13 @@
       this.formFiles = [];
       this.formBusy = false;
       this.uploading = false;
+      this.recommendation = null;
+      this.recommendBusy = false;
+      this.recommendTimer = null;
+      this.autoTeam = true;
+      this.selectedAgents = [];
+      this.teamTouched = false;
+      this.taskExecutors = {};
       this.artifactFocus = null;
       this.artifactBusy = false;
       this.mobileDetail = false;
@@ -165,6 +190,10 @@
         const run = event.target.closest("[data-ai-task]");
         if (run) { self.runTask(run.getAttribute("data-ai-task"), run); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
+        if (event.target.closest("[data-mission-recommend]")) {
+          self.refreshRecommendation(false);
+          return;
+        }
         const formClose = event.target.closest("[data-mission-form-close]");
         if (formClose) { self.formMode = ""; self.formFiles = []; self.render(); return; }
         const drop = event.target.closest("[data-pending-file-remove]");
@@ -191,6 +220,13 @@
       this.root.addEventListener("input", function (event) {
         if (event.target.id === "missionDraft") self.draft = event.target.value;
         if (event.target.id === "missionSearch") self.search = event.target.value;
+        if (self.formMode === "mission" &&
+            ["title", "description", "acceptance", "priority"].indexOf(event.target.name) >= 0) {
+          window.clearTimeout(self.recommendTimer);
+          self.recommendTimer = window.setTimeout(function () {
+            self.refreshRecommendation(false);
+          }, 800);
+        }
       });
       this.root.addEventListener("change", function (event) {
         if (event.target.id === "missionFileInput") {
@@ -206,6 +242,43 @@
                 ' <button type="button" data-form-file-remove="' + index + '">×</button></span>';
             }).join("");
           }
+        }
+        if (event.target.id === "missionAutoTeam") {
+          self.autoTeam = event.target.checked;
+          if (self.autoTeam && self.recommendation) {
+            self.selectedAgents = (self.recommendation.suggestedMemberIds || []).slice();
+            self.syncTaskExecutors();
+            self.renderTeamPickerOnly();
+          }
+        }
+        if (event.target.matches && event.target.matches("[data-task-executor]")) {
+          const key = event.target.getAttribute("data-task-executor");
+          self.taskExecutors[key] = event.target.value;
+          const task = ((self.recommendation && self.recommendation.tasks) || [])
+            .find((row) => row.key === key);
+          const agent = task && (task.recommended || [])
+            .find((row) => row.id === event.target.value);
+          if (agent && agent.estimate) {
+            const cell = event.target.closest(".mission-plan-row");
+            const estimate = cell && cell.querySelector("em");
+            if (estimate) estimate.textContent = "~" + agent.estimate.minutes + "m · ~" +
+              Math.round(agent.estimate.tokens / 100) / 10 + "k tokens";
+          }
+          self.autoTeam = false;
+          const auto = self.root.querySelector("#missionAutoTeam");
+          if (auto) auto.checked = false;
+        }
+        if (event.target.matches && event.target.matches("[data-team-agent]")) {
+          const id = event.target.getAttribute("data-team-agent");
+          const index = self.selectedAgents.indexOf(id);
+          if (event.target.checked && index < 0) self.selectedAgents.push(id);
+          if (!event.target.checked && index >= 0) self.selectedAgents.splice(index, 1);
+          self.teamTouched = true;
+          if (!event.target.checked) self.autoTeam = false;
+          self.syncTaskExecutors();
+          const auto = self.root.querySelector("#missionAutoTeam");
+          if (auto) auto.checked = self.autoTeam;
+          self.renderTeamPickerOnly();
         }
       });
       document.addEventListener("keydown", function (event) {
@@ -501,7 +574,25 @@
 
     agentById(id) {
       return (this.data.agents || []).find((a) => a.id === id) ||
-        ((this.mission && this.mission.members) || []).find((a) => a.id === id) || null;
+        ((this.mission && this.mission.members) || []).find((a) => a.id === id) ||
+        ((this.conversation && this.conversation.members) || []).find((a) => a.id === id) || null;
+    }
+
+    agentAvatar(agent, extraClass) {
+      const name = agent ? this.agentName(agent) : "?";
+      const text = (agent && agent.logoText) || initials(name);
+      const color = (agent && (agent.logoColor || agent.color)) || "#7cb7ff";
+      const title = (agent && agent.brand) ? agent.brand : name;
+      return '<span class="mission-avatar ' + (extraClass || '') +
+        '" style="--c:' + esc(color) + '" title="' + esc(title) + '">' +
+        esc(text) + '</span>';
+    }
+
+    messageAvatar(message) {
+      if (message.senderType === "boss") {
+        return '<span class="mission-avatar boss" style="--c:#55d6c2" title="Boss">B</span>';
+      }
+      return this.agentAvatar(this.agentById(message.senderId), "message-logo");
     }
 
     agentName(agent) {
@@ -607,8 +698,7 @@
         const unread = self.unreadFor(conversation);
         return '<button class="mission-conv' + (active ? ' active' : '') + '" type="button" data-mission-conv="' +
           esc(conversation.id) + '" data-conv-kind="' + esc(conversation.kind) + '">' +
-          '<span class="mission-avatar" style="--c:' + esc((member && member.color) || '#7cb7ff') + '">' +
-          esc(initials(conversation.kind === "direct" ? (member && self.agentName(member)) : conversation.title)) + '</span>' +
+          self.agentAvatar(member, "conv-logo") +
           '<span class="mission-conv-copy"><b>' + esc(conversation.title) + '</b><em>' +
           esc((conversation.lastMessage && conversation.lastMessage.text) || self.t("missionNoMessages")) +
           '</em></span>' + (unread ? '<span class="mission-unread"></span>' : '') + '</button>';
@@ -697,6 +787,7 @@
       const tabs = this.mission ? [
         ["overview", this.t("missionOverview")],
         ["tasks", this.t("missionTabTasks")],
+        ["eval", this.t("missionEval")],
         ["rules", this.t("missionRules")],
         ["approvals", this.t("missionApprovals")],
         ["files", this.t("missionFiles")],
@@ -716,6 +807,7 @@
     detailBody() {
       if (this.detailTab === "overview") return this.overviewTab();
       if (this.detailTab === "tasks") return this.tasksTab();
+      if (this.detailTab === "eval") return this.evalTab();
       if (this.detailTab === "rules") return this.rulesTab();
       if (this.detailTab === "approvals") return this.approvalsTab();
       if (this.detailTab === "files") return this.filesTab();
@@ -776,6 +868,13 @@
         (task.deps && task.deps.length ? '<span>' + esc(this.t("missionDeps")) + '：' +
           esc(task.deps.join(" · ")) + '</span>' : '') +
         (task.assignmentReason ? '<span>' + esc(task.assignmentReason) + '</span>' : '') +
+        (task.estimate ? '<span>' + esc(this.t("missionEstimate")) + '：~' +
+          fmtDuration(task.estimate.minutes) + ' · ~' + fmtTokens(task.estimate.tokens) +
+          ' tokens</span>' : '') +
+        (task.actual && (task.actual.minutes || task.actual.tokens || task.actual.durationMs) ?
+          '<span>' + esc(this.t("missionActual")) + '：' +
+          fmtDuration(task.actual.minutes, task.actual.durationMs) + ' · ' +
+          fmtTokens(task.actual.tokens) + ' tokens</span>' : '') +
         (approval ? '<span class="mission-gate">' + esc(this.approvalType(approval.type)) + ' · ' +
           esc(approval.status) + '</span>' : '') + '</div>' +
         (task.report ? '<div class="mission-report compact"><b>' + esc(this.t("missionReport")) + '</b><p>' +
@@ -788,6 +887,66 @@
           esc(this.t("missionAiTask")) + '</button>' : '') +
         '<button type="button" data-copy-protocol="' + esc(task.id) + '">' +
         esc(this.t("missionCopyProtocol")) + '</button></div></details>';
+    }
+
+    evalTab() {
+      const m = this.mission;
+      if (!m) return "";
+      const ev = m.evaluation || {};
+      const tasks = m.tasks || [];
+      const tokenPct = ev.estimatedTokens ? Math.min(100, Math.round((ev.actualTokens / ev.estimatedTokens) * 100)) : 0;
+      const timePct = ev.estimatedMinutes ? Math.min(100, Math.round((ev.actualMinutes / ev.estimatedMinutes) * 100)) : 0;
+      const risk = ev.deadlineRisk || "none";
+      const riskLabel = risk === "overdue" ? this.t("missionRiskOverdue") :
+        risk === "at_risk" ? this.t("missionRiskAtRisk") :
+        risk === "ok" ? this.t("missionRiskOk") : this.t("missionRiskNone");
+      const rows = tasks.map((task) => {
+        const est = task.estimate || {};
+        const actual = task.actual || {};
+        const delta = (actual.tokens || 0) - (est.tokens || 0);
+        return '<div class="mission-eval-row"><span class="mission-eval-status ' + this.taskClass(task.status) +
+          '"></span><div><b>' + esc(task.title) + '</b><em>' + esc(task.assigneeName || "") + '</em></div>' +
+          '<span>' + fmtDuration(est.minutes) + ' / ' +
+          fmtDuration(actual.minutes, actual.durationMs) + '</span>' +
+          '<span>' + fmtTokens(est.tokens) + ' / ' + fmtTokens(actual.tokens) + '</span>' +
+          '<em class="' + (delta > 0 ? 'over' : 'under') + '">' + (delta >= 0 ? '+' : '') +
+          fmtTokens(delta) + '</em></div>';
+      }).join("");
+      const agents = (ev.agents || []).map((agent) =>
+        '<div class="mission-agent-cost">' + (agent.logoText ? '<span class="mission-avatar" style="--c:' +
+          esc(agent.logoColor || "#7cb7ff") + '">' + esc(agent.logoText) + '</span>' : '') +
+          '<b>' + esc(agent.name) + '</b><span>' + agent.tasks + ' ' + esc(this.t("missionTasksLower")) +
+          '</span><span>' + fmtDuration(agent.estimatedMinutes) + ' / ' +
+          fmtDuration(agent.actualMinutes, agent.actualDurationMs) +
+          '</span><span>' + fmtTokens(agent.estimatedTokens) + ' / ' + fmtTokens(agent.actualTokens) + '</span></div>'
+      ).join("");
+      return '<div class="mission-panel mission-eval">' +
+        '<div class="mission-eval-grid">' +
+        '<div><span>' + esc(this.t("missionEstTime")) + '</span><b>' + fmtDuration(ev.estimatedMinutes) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionActualTime")) + '</span><b>' +
+        fmtDuration(ev.actualMinutes, ev.actualDurationMs) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionEstTokens")) + '</span><b>' + fmtTokens(ev.estimatedTokens) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionActualTokens")) + '</span><b>' + fmtTokens(ev.actualTokens) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionElapsed")) + '</span><b>' + fmtDuration(ev.elapsedMinutes) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionConfidence")) + '</span><b>' + esc(ev.confidence || "medium") + '</b></div>' +
+        '</div>' +
+        '<div class="mission-eval-bar"><div><span>' + esc(this.t("missionTimeUsage")) + ' ' + timePct + '%</span>' +
+        '<i><b style="width:' + timePct + '%"></b></i></div>' +
+        '<div><span>' + esc(this.t("missionTokenUsage")) + ' ' + tokenPct + '%</span>' +
+        '<i><b style="width:' + tokenPct + '%"></b></i></div></div>' +
+        ((ev.discussionTokens || ev.discussionMinutes) ?
+          '<p class="mission-note">' + esc(this.t("missionDiscussionUsage")) + '：' +
+          fmtDuration(ev.discussionMinutes) + ' · ' + fmtTokens(ev.discussionTokens) +
+          ' tokens</p>' : '') +
+        '<div class="mission-eval-risk ' + esc(risk) + '"><b>' + esc(this.t("missionDeadlineRisk")) + '：' +
+        esc(riskLabel) + '</b><span>' + esc(ev.deadline || this.t("missionNoDeadline")) +
+        (ev.deadlineDays !== null && ev.deadlineDays !== undefined ? ' · ' + ev.deadlineDays + 'd' : '') + '</span></div>' +
+        '<h4>' + esc(this.t("missionTaskEval")) + '</h4>' +
+        '<div class="mission-eval-head"><span></span><span>' + esc(this.t("missionTask")) + '</span><span>' +
+        esc(this.t("missionTimeEstimate")) + '</span><span>' + esc(this.t("missionTokenEstimate")) +
+        '</span><span>Δ</span></div>' + (rows || '<div class="mission-empty small">—</div>') +
+        '<h4>' + esc(this.t("missionAgentCost")) + '</h4>' + (agents || '<div class="mission-empty small">—</div>') +
+        '<p class="mission-note">' + esc(this.t("missionEvalHint")) + '</p></div>';
     }
 
     rulesTab() {
@@ -834,8 +993,7 @@
       return '<div class="mission-panel mission-members">' + members.map((member) => {
         const mine = tasks.filter((t) => t.assigneeId === member.id);
         const open = mine.filter((t) => t.status !== "done").length;
-        return '<div class="mission-member"><span class="mission-avatar" style="--c:' +
-          esc(member.color || '#7cb7ff') + '">' + esc(initials(this.agentName(member))) + '</span>' +
+        return '<div class="mission-member">' + this.agentAvatar(member) +
           '<div><b>' + esc(this.agentName(member)) + '</b><span>' +
           esc((member.skills || []).slice(0, 3).join(" · ")) + '</span><em>' +
           open + ' ' + esc(this.t("missionOpenTasks")) + ' · ' +
@@ -869,8 +1027,7 @@
           esc(message.text || "") + '</pre></div>';
       }
       return '<div class="mission-message kind-' + esc(kind) + '">' +
-        '<div class="mission-message-avatar" style="--c:' +
-        esc(this.agentColor(message.senderId)) + '">' + esc(initials(message.senderName)) + '</div>' +
+        this.messageAvatar(message).replace("mission-avatar", "mission-message-avatar") +
         '<div class="mission-bubble"><div class="mission-message-top"><b>' +
         esc(message.senderName || this.t("missionAgent")) + '</b><span>' +
         esc(fmtTime(message.createdAt)) + '</span></div>' +
@@ -880,15 +1037,20 @@
 
     reportHTML(message) {
       const report = message.meta.report;
+      const usage = message.usage || {};
+      const usageTokens = Number(usage.tokensIn || 0) + Number(usage.tokensOut || 0);
       const rows = [
         ["missionDone", report.done],
         ["missionNext", report.next],
         ["missionRisks", report.risks]
       ];
-      return '<div class="mission-message kind-agent report-message"><div class="mission-message-avatar" style="--c:' +
-        esc(this.agentColor(message.senderId)) + '">' + esc(initials(message.senderName)) + '</div>' +
+      return '<div class="mission-message kind-agent report-message">' +
+        this.messageAvatar(message).replace("mission-avatar", "mission-message-avatar") +
         '<div class="mission-report"><div class="mission-report-head"><b>' + esc(message.senderName) +
         ' · ' + esc(this.t("missionReport")) + '</b><span>' + esc(fmtTime(message.createdAt)) + '</span></div>' +
+        (usageTokens || usage.durationMs ? '<div class="mission-usage-chip">TOKENS ' +
+          esc(usage.tokensIn || 0) + ' in · ' + esc(usage.tokensOut || 0) + ' out · ' +
+          fmtDuration(0, usage.durationMs) + '</div>' : '') +
         '<p class="mission-report-summary">' + esc(report.summary) + '</p>' +
         rows.map((row) => '<div class="mission-report-row"><span>' + esc(this.t(row[0])) +
           '</span><div>' + (row[1] || []).map((item) => '<em>' + esc(item) + '</em>').join("") + '</div></div>').join('') +
@@ -904,8 +1066,8 @@
 
     proposalHTML(message) {
       const p = (message.meta && message.meta.proposal) || {};
-      return '<div class="mission-message kind-agent proposal-message"><div class="mission-message-avatar" style="--c:' +
-        esc(this.agentColor(message.senderId)) + '">' + esc(initials(message.senderName)) + '</div>' +
+      return '<div class="mission-message kind-agent proposal-message">' +
+        this.messageAvatar(message).replace("mission-avatar", "mission-message-avatar") +
         '<div class="mission-proposal"><div class="mission-report-head"><b>' + esc(message.senderName) +
         ' · ' + esc(this.t("missionProposal")) + '</b><span>' + esc(fmtTime(message.createdAt)) + '</span></div>' +
         '<p>' + esc(message.text) + '</p>' +
@@ -1046,6 +1208,8 @@
           '<select name="priority"><option>P0</option><option selected>P1</option><option>P2</option></select></label>' +
           '<label>' + esc(this.t("missionBudget")) + '<input name="budget" type="number" min="0" step="1" placeholder="0" /></label>' +
           '<label>' + esc(this.t("missionDeadline")) + '<input name="deadline" type="date" /></label></div>' +
+          '<div class="mission-team-section" id="missionTeamPicker">' +
+          this.renderTeamPickerHTML() + '</div>' +
           '<label>' + esc(this.t("missionFiles")) + '<input id="missionCreateFiles" type="file" multiple />' +
           '<div id="missionCreateFilesList" class="mission-form-files">' +
           this.formFiles.map(function (file, index) {
@@ -1101,9 +1265,164 @@
       this.formMode = mode;
       this.formFiles = [];
       this.formBusy = false;
+      this.recommendation = null;
+      this.selectedAgents = [];
+      this.teamTouched = false;
+      this.taskExecutors = {};
+      this.autoTeam = true;
+      this.recommendBusy = false;
       this.render();
+      if (mode === "mission") {
+        window.setTimeout(() => this.refreshRecommendation(true), 80);
+      }
       const input = this.root.querySelector('#missionCreateForm input[name="title"], #missionCreateForm input[name="memberId"]');
       if (input) input.focus();
+    }
+
+    syncTaskExecutors() {
+      if (!this.recommendation) return;
+      const allowed = new Set(this.selectedAgents.length ?
+        this.selectedAgents : (this.data.agents || []).map((a) => a.id));
+      const next = {};
+      (this.recommendation.tasks || []).forEach((task) => {
+        let current = this.taskExecutors[task.key];
+        if (!allowed.has(current)) {
+          const fallback = (task.recommended || []).find((a) => allowed.has(a.id)) ||
+            (task.recommended || [])[0];
+          current = fallback ? fallback.id : "";
+        }
+        if (current) next[task.key] = current;
+      });
+      this.taskExecutors = next;
+    }
+
+    recommendedAgentInfo(agentId) {
+      if (!this.recommendation) return null;
+      let best = null;
+      (this.recommendation.tasks || []).forEach(function (task) {
+        (task.recommended || []).forEach(function (agent) {
+          if (agent.id !== agentId) return;
+          if (!best || (agent.match || 0) > (best.match || 0)) {
+            best = { ...agent, taskTitle: task.title, taskKey: task.key };
+          }
+        });
+      });
+      return best;
+    }
+
+    renderTeamPickerHTML() {
+      if (this.recommendBusy && !this.recommendation) {
+        return '<div class="mission-team-loading">' + esc(this.t("missionRecommendLoading")) + '</div>';
+      }
+      if (!this.recommendation) {
+        return '<div class="mission-empty small">' + esc(this.t("missionRecommendEmpty")) + '</div>';
+      }
+      const selected = new Set(this.selectedAgents || []);
+      const recommendedIds = new Set(this.recommendation.suggestedMemberIds || []);
+      const selfInfo = (id) => this.recommendedAgentInfo(id);
+      const agents = (this.data.agents || []).slice().sort(function (a, b) {
+        const ai = selfInfo(a.id), bi = selfInfo(b.id);
+        const ar = recommendedIds.has(a.id) ? 1 : 0;
+        const br = recommendedIds.has(b.id) ? 1 : 0;
+        if (ar !== br) return br - ar;
+        return (bi ? bi.match : 0) - (ai ? ai.match : 0);
+      });
+      const cards = agents.map((agent) => {
+        const info = this.recommendedAgentInfo(agent.id);
+        const checked = selected.has(agent.id);
+        return '<label class="mission-agent-pick' + (checked ? ' selected' : '') +
+          (recommendedIds.has(agent.id) ? ' recommended' : '') + '">' +
+          '<input type="checkbox" data-team-agent="' + esc(agent.id) + '"' +
+          (checked ? ' checked' : '') + ' />' +
+          this.agentAvatar(agent) +
+          '<span class="mission-agent-pick-copy"><b>' + esc(this.agentName(agent)) +
+          (recommendedIds.has(agent.id) ? '<em>' + esc(this.t("missionRecommended")) + '</em>' : '') +
+          '</b><span>' + esc((agent.skills || []).slice(0, 3).join(" · ")) + '</span>' +
+          (info ? '<small>' + esc(info.reason || "") + '</small>' : '') + '</span>' +
+          '<span class="mission-agent-pick-score">' + (info ? (info.match || 0) + '%' : "") +
+          (info && info.estimate ? '<em>~' + info.estimate.minutes + 'm · ~' +
+            Math.round(info.estimate.tokens / 100) / 10 + 'k</em>' : '') + '</span></label>';
+      }).join("");
+      const allowed = this.selectedAgents.length ?
+        this.selectedAgents : (this.data.agents || []).map((a) => a.id);
+      const allowedSet = new Set(allowed);
+      const pool = (this.data.agents || []).filter((a) => allowedSet.has(a.id));
+      const plan = (this.recommendation.tasks || []).map((task) => {
+        const top = (task.recommended || [])[0];
+        const current = this.taskExecutors[task.key] || (top && top.id) || "";
+        const chosen = (task.recommended || []).find((agent) => agent.id === current) || top;
+        const estimate = (chosen && chosen.estimate) || task.estimate;
+        const rankedIds = new Set();
+        const optionsAgents = [];
+        (task.recommended || []).forEach((agent) => {
+          const match = pool.find((row) => row.id === agent.id);
+          if (match) { rankedIds.add(agent.id); optionsAgents.push({ ...match, match: agent.match }); }
+        });
+        pool.forEach((agent) => {
+          if (!rankedIds.has(agent.id)) optionsAgents.push(agent);
+        });
+        const options = optionsAgents.map((agent) => '<option value="' + esc(agent.id) + '"' +
+          (agent.id === current ? " selected" : "") + '>' + esc(this.agentName(agent)) +
+          (agent.match ? " · " + agent.match + "%" : "") +
+          (top && agent.id === top.id ? " ★" : "") + '</option>').join("");
+        return '<div class="mission-plan-row"><span>' + esc(task.title) + '</span>' +
+          (options ? '<select class="mission-task-executor" data-task-executor="' + esc(task.key) +
+            '" title="' + esc(this.t("missionExecutor")) + '">' + options + '</select>' :
+            '<b>' + esc(this.t("missionUnassigned")) + '</b>') +
+          '<em>' + (estimate ? '~' + estimate.minutes + 'm · ~' +
+            Math.round(estimate.tokens / 100) / 10 + 'k tokens' : '') + '</em></div>';
+      }).join("");
+      return '<div class="mission-team-head"><b>' + esc(this.t("missionTeam")) + '</b>' +
+        '<label class="mission-check"><input id="missionAutoTeam" type="checkbox"' +
+        (this.autoTeam ? ' checked' : '') + ' /> ' + esc(this.t("missionAutoTeam")) + '</label>' +
+        '<button class="mission-mini" type="button" data-mission-recommend>' +
+        esc(this.t("missionRecommendAgain")) + '</button></div>' +
+        '<div class="mission-agent-grid">' + cards + '</div>' +
+        '<div class="mission-plan"><div class="mission-plan-head">' + esc(this.t("missionPlan")) + '</div>' +
+        plan + '</div>' +
+        '<p class="mission-note">' + esc(this.recommendation.notes || this.t("missionRecommendHint")) + '</p>';
+    }
+
+    renderTeamPickerOnly() {
+      const el = this.root.querySelector("#missionTeamPicker");
+      if (el) el.innerHTML = this.renderTeamPickerHTML();
+    }
+
+    async refreshRecommendation(initial) {
+      if (this.formMode !== "mission" || this.recommendBusy) return;
+      const form = this.root.querySelector("#missionCreateForm");
+      if (!form) return;
+      const data = new FormData(form);
+      this.recommendBusy = true;
+      if (!this.recommendation || initial) {
+        const el = this.root.querySelector("#missionTeamPicker");
+        if (el) el.innerHTML = '<div class="mission-team-loading">' +
+          esc(this.t("missionRecommendLoading")) + '</div>';
+      }
+      try {
+        const result = await this.api("/missions/recommend", {
+          method: "POST",
+          body: JSON.stringify({
+            title: String(data.get("title") || ""),
+            description: String(data.get("description") || ""),
+            acceptance: String(data.get("acceptance") || ""),
+            priority: String(data.get("priority") || "P1")
+          })
+        }, 12000);
+        this.recommendation = result;
+        if (this.autoTeam || !this.selectedAgents.length) {
+          this.selectedAgents = (result.suggestedMemberIds || []).slice();
+        } else {
+          const existing = new Set((this.data.agents || []).map((a) => a.id));
+          this.selectedAgents = this.selectedAgents.filter((id) => existing.has(id));
+        }
+        this.syncTaskExecutors();
+      } catch (err) {
+        this.recommendation = null;
+      } finally {
+        this.recommendBusy = false;
+        this.renderTeamPickerOnly();
+      }
     }
 
     async submitForm(form) {
@@ -1117,6 +1436,48 @@
       }
       try {
         if (this.formMode === "mission") {
+          let team = Array.from(form.querySelectorAll("[data-team-agent]:checked"))
+            .map((input) => input.getAttribute("data-team-agent"));
+          if (!team.length && !this.teamTouched) {
+            if (!this.recommendation) {
+              try {
+                this.recommendation = await this.api("/missions/recommend", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    title: String(data.get("title") || ""),
+                    description: String(data.get("description") || ""),
+                    acceptance: String(data.get("acceptance") || ""),
+                    priority: String(data.get("priority") || "P1")
+                  })
+                }, 12000);
+              } catch (err) {
+                this.recommendation = null;
+              }
+            }
+            if (this.recommendation) {
+              this.selectedAgents = (this.recommendation.suggestedMemberIds || []).slice();
+              this.autoTeam = true;
+              this.renderTeamPickerOnly();
+              team = this.selectedAgents.slice();
+            }
+          }
+          if (!team.length) {
+            this.toast(this.t("missionChooseMembers"));
+            this.formBusy = false;
+            if (submit) { submit.disabled = false; submit.textContent = this.t("missionCreate"); }
+            return;
+          }
+          const preferred = {};
+          Object.keys(this.taskExecutors || {}).forEach((key) => {
+            const agentId = this.taskExecutors[key];
+            if (team.indexOf(agentId) >= 0) preferred[key] = agentId;
+          });
+          if (this.recommendation && this.recommendation.preferredExecutors) {
+            Object.keys(this.recommendation.preferredExecutors).forEach((key) => {
+              const agentId = this.recommendation.preferredExecutors[key];
+              if (!preferred[key] && team.indexOf(agentId) >= 0) preferred[key] = agentId;
+            });
+          }
           const payload = {
             title: String(data.get("title") || "").trim(),
             description: String(data.get("description") || "").trim(),
@@ -1124,7 +1485,9 @@
             priority: String(data.get("priority") || "P1"),
             budget: Number(data.get("budget") || 0),
             autoDiscuss: data.get("autoDiscuss") === "on",
-            language: AO.lang
+            language: AO.lang,
+            memberIds: team,
+            preferredExecutors: preferred
           };
           if (!payload.title || payload.description.length < 8) {
             this.toast(this.t("missionFormInvalid"));
