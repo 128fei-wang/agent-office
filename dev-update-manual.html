@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8" /><title>Manual updater self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body>
+<h1>MANUAL UPDATE SELF-CHECK</h1>
+<pre id="out">running…</pre>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&update=0&noUpdateReload=1&theme=day&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2400));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s);
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const fake={bootId:'boot-old',version:'1.4.0',statusCalls:0,upload:null};
+    const realFetch=w.fetch.bind(w);
+    function json(data,status){
+      return Promise.resolve(new w.Response(JSON.stringify(data),{
+        status:status||200,headers:{'Content-Type':'application/json'}
+      }));
+    }
+    w.fetch=function(input,init){
+      const url=typeof input==='string'?input:(input&&input.url)||'';
+      if(url.indexOf('/update/check')>=0){
+        return json({currentVersion:'1.4.0',latestVersion:'1.4.0',updateAvailable:false,
+          release:{tag:'v1.4.0',version:'1.4.0',name:'Agent Office v1.4.0',notes:'',
+            url:'https://example.test/v1.4.0',publishedAt:'2026-11-25T00:00:00Z'},
+          deployment:{mode:'archive',isGit:false,dirty:false,branch:'',canApply:false,reason:'no_update'},
+          backup:null,checkedAt:'2026-11-25T06:00:00Z',token:'x',rollbackToken:'y',repo:'test'});
+      }
+      if(url.indexOf('/update/manual/token')>=0){
+        return json({token:'manual-token',expiresAt:9999999999});
+      }
+      if(url.indexOf('/update/manual')>=0){
+        const headers=init&&init.headers||{};
+        fake.upload={token:headers['X-Update-Token'],filename:headers['X-Filename'],
+          size:init&&init.body&&init.body.size};
+        fake.bootId='boot-new';fake.version='9.9.9';fake.statusCalls=0;
+        return json({ok:true,fileName:'release.zip',job:{status:'running',stage:'preparing',
+          percent:2,message:'manual',toVersion:''}},202);
+      }
+      if(url.indexOf('/update/status')>=0){
+        fake.statusCalls++;
+        if(fake.statusCalls===1)return json({status:'running',stage:'extracting',percent:55,
+          message:'extracting',toVersion:'',fromVersion:'1.4.0',bootId:'boot-old'});
+        return json({status:'restarting',stage:'restarting',percent:100,
+          message:'restarting',toVersion:'9.9.9',fromVersion:'1.4.0',bootId:'boot-old'});
+      }
+      if(url.indexOf('/health')>=0){
+        return json({ok:true,version:fake.version,bootId:fake.bootId});
+      }
+      return realFetch(input,init);
+    };
+    $('#updateBtn').click();
+    await wait(500);
+    const shell=()=>$('#updateModal').textContent;
+    check('tools modal opens',!$('#updateModal').hidden);
+    check('manual section visible',/手动升级/.test(shell())&&!!$('#updateFile'));
+    const input=$('#updateFile');
+    const dt=new w.DataTransfer();
+    dt.items.add(new w.File(['fake release archive'],'release.zip',{type:'application/zip'}));
+    input.files=dt.files;
+    input.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await wait(120);
+    check('file selected',/release\.zip/.test(shell()));
+    const manual=$('[data-update-action="manual"]');
+    check('manual enabled',!!manual&&!manual.disabled);
+    if(!manual){finish();return;}
+    manual.click();
+    await wait(120);
+    const confirm=$('[data-update-action="confirm-manual"]');
+    check('manual confirm shown',!!confirm&&/确认手动升级/.test(shell()));
+    if(!confirm){finish();return;}
+    confirm.click();
+    await wait(500);
+    check('manual token used',!!fake.upload&&fake.upload.token==='manual-token',fake.upload&&fake.upload.token);
+    check('filename sent',!!fake.upload&&decodeURIComponent(fake.upload.filename)==='release.zip',fake.upload&&fake.upload.filename);
+    for(let i=0;i<15&&!/升级完成/.test(shell());i++) await wait(350);
+    check('manual job completed',/升级完成/.test(shell()),shell().slice(-100));
+    check('manual error absent',!/升级失败/.test(shell()));
+    d.querySelector('[data-update-close]').click();
+    await wait(100);
+    check('modal closes',$('#updateModal').hidden);
+    finish();
+  }
+})();
+</script>
+</body></html>

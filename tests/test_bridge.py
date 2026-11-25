@@ -215,6 +215,13 @@ class BridgeTest(unittest.TestCase):
         status, job = self.request("/update/status")
         self.assertEqual(job["status"], "idle")
 
+        status, manual = self.request("/update/manual/token")
+        self.assertEqual(status, 200)
+        self.assertTrue(manual["token"])
+        status, error = self.request("/update/manual", "POST", {"probe": True})
+        self.assertEqual(status, 403)
+        self.assertEqual(error["code"], "bad_token")
+
     def test_pair_claim_is_one_time_and_greets(self):
         pair = self.make_pair()
         self.assertEqual(len(pair["code"]), 8)

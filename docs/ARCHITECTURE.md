@@ -13,7 +13,7 @@ flowchart LR
     H[hiring.js<br/>local hires + hot desks]
     X[external.js<br/>pairing, delegation, bridge polling]
     C[company.js<br/>one-person template, rooms, chat, isolation]
-    U[update.js<br/>update center + rollback]
+    U[update.js<br/>tools panel + auto/manual update + rollback]
     I[i18n.js<br/>zh/en dictionary + toggle]
     L[(localStorage<br/>names / hires / snapshot / profiles)]
     D --> E
@@ -38,13 +38,13 @@ flowchart LR
     V[heartbeat / events / assignments / messages]
     O[SSE /stream + rooms + company]
     M[demo agent]
-    N[updater.py<br/>GitHub release → backup → apply → restart]
+    N[updater.py<br/>GitHub / local archive → backup → apply → restart]
     S[(~/.agent-office/bridge-state.json)]
     B[(~/.agent-office/backups)]
   end
 
   X <-->|/health /agents /pairs /events| Bridge
-  U <-->|/update/check /update/apply /update/status| Bridge
+  U <-->|/update/check /update/apply /update/manual /update/status| Bridge
   N --> B
   P --> A
   V --> A
@@ -65,7 +65,7 @@ flowchart LR
 
 | Command | Coverage |
 | --- | --- |
-| `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection, updater version/archive/rollback/git guards |
+| `python3 -m unittest discover -s tests -v` | pairing, assignments, provider catalog, OpenAI/Gemini/Anthropic adapters, origin/host rejection, updater version/archive/manual/rollback/git guards |
 | `bash scripts/check.sh` | Python syntax, required files, optional JS syntax |
 | `dev-*.html` | simulation, audit, Trace Lab, hiring, external pairing, delegation, theme/mobile, company/chat/isolation, i18n, self-update |
 
@@ -82,8 +82,8 @@ flowchart LR
 | `src/external.js` | pairing codes, task delegation, bridge polling, external event ingest, rename dialog |
 | `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
-| `src/update.js` | update check, confirmation, progress, restart detection, rollback |
-| `updater.py` | release check, backup, git/archive apply, verification, rollback, CLI |
+| `src/update.js` | tools panel, automatic/manual update, confirmation, progress, restart detection, rollback |
+| `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
 | `bridge.py` | localhost API for pairing, agents, heartbeats, events and updates |
 | `trace.css` / `hiring.css` / `external.css` / `update.css` | feature-specific styling |
 
@@ -96,7 +96,7 @@ flowchart LR
 5. External events arrive from `bridge.py`; `external.js` polls and calls `engine.ingestExternalEvent()`, so they join the same ledger and Trace Lab.
 6. Assignments are polled separately; `engine.applyExternalAssignment()` mirrors progress/completion into the task board and finalizes unverified checks as risk/missed.
 7. `engine.otlp()` projects the same events into OTLP/GenAI-style span JSON.
-8. The update center asks `updater.py` for the latest GitHub release; applying backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
+8. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence
 
@@ -115,7 +115,8 @@ flowchart LR
 - Language: `agent-office.lang.v1`, `?lang=en|zh`
 - Update backups: `~/.agent-office/backups/<timestamp>/` (five kept)
 - Last update result: `~/.agent-office/last-update.json`
-- Update progress: `GET /update/status`; apply/rollback use one-time 10-minute tokens and restart the bridge
+- Update progress: `GET /update/status`; apply/manual/rollback use one-time 10-minute tokens and restart the bridge
+- Manual upload: raw archive to `POST /update/manual` with an 80MB cap; the same backup/verify/restart path is used
 
 ## Constraints
 
@@ -123,4 +124,4 @@ flowchart LR
 - The simulation is deterministic given a seed; external events are the exception.
 - Synthetic trace telemetry is intentionally labeled `SIM`/`EST.`; real external events use their supplied fields.
 - External task delegation is pull-based and self-reported; the bridge does not push webhooks or run the external worker.
-- Self-update only reads the official GitHub release. It requires the local bridge, backs up first, and never installs without a user action.
+- Self-update reads the official GitHub release or a user-supplied local archive. It requires the local bridge, backs up first, and never installs without a user action. Manual archives must be newer than the running version.

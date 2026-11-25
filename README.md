@@ -83,7 +83,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **一人公司工作台**：一键生成 8 个 AI 员工、11 个依赖任务、4 个部门频道和每个任务的隔离房间；任务自动派发，依赖完成后自动解锁下一个任务。
 - **实时群聊**：bridge 提供 SSE 消息流；创始人、角色 Agent 和系统事件进入各自频道。任务房间要求 `assignmentId + executionId`，防止同一个 Agent 把不同任务的汇报发错群。
 - **中英文切换**：顶部 `EN / 中` 或 `?lang=en`；主界面、任务状态、群聊、公司模板和生成内容都支持两种语言。
-- **自行升级**：顶部 `升级` / `U` 检查官方 GitHub Release；先备份到 `~/.agent-office/backups`，再更新、校验、重启 bridge 并刷新页面。支持失败自动恢复、一键回滚和 `./update.sh` 命令行升级。
+- **工具与自行升级**：顶部 `工具` / `U` 打开升级中心；可检查官方 GitHub Release，也可选择本地 `.tar.gz` / `.zip` 升级包手动安装。先备份到 `~/.agent-office/backups`，再更新、校验、重启 bridge 并刷新页面；支持失败自动恢复、一键回滚和 `./update.sh` 命令行。
 - **常用模型 API**：外部 Agent 弹窗内置豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama；配置一次 bridge 密钥即可「接入」并「试跑」，真实 token/延迟进入 Trace。
 - **重命名**：本地 agent 在 Inspector / 完整档案里点 ✎；外部 agent 在外部档案里点「重命名」。本地名字写入 localStorage，外部名字同步到 bridge。
 - **进度快照**：`AUDIT` 底部可「保存进度 / 恢复进度」，把当前 world（任务、agent、ledger、会议、历史）存到浏览器 localStorage。刷新后手动恢复，适合演示中途保存现场。
@@ -251,6 +251,8 @@ curl -X POST http://127.0.0.1:8787/events \
 - `GET /events?since=N`
 - `GET /update/check` / `GET /update/status`
 - `POST /update/apply` / `POST /update/rollback`
+- `GET /update/manual/token`
+- `POST /update/manual`（原始 tar.gz/tgz/zip/tar 包，80MB 上限）
 - `GET /assignments` / `GET /assignments?agentId=...`
 - `POST /assignments`
 - `PATCH /assignments/<id>`
@@ -313,13 +315,19 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 ## 自行升级
 
-- 顶部 **`升级`**，或按 `U`，打开升级中心。
-- 点击 **检查更新**：bridge 读取官方 GitHub Release，与本地 `VERSION` 比较。
-- 有新版本时显示版本、发布日期和更新内容；点击 **立即升级** 并确认。
-- 升级前自动备份当前应用；更新后校验 `VERSION`、必要文件和 Python 语法，再重启 bridge，页面自动刷新。
-- Git 部署使用干净的 `git pull --ff-only`；有未提交修改时拒绝覆盖。非 Git 部署下载官方 release 压缩包并做路径/符号链接/大小校验。
-- 最近一次可回滚备份（版本不同于当前）可在升级中心 **回滚**；数据目录 `~/.agent-office` 不会被更新覆盖。
-- 命令行：`./update.sh --check`、`--apply`、`--rollback`、`--status`。
+- 顶部 **`工具`**，或按 `U`，打开「工具与升级」。
+- **自动升级**：点击 **检查更新**，bridge 读取官方 GitHub Release 并与本地 `VERSION` 比较；有新版本时显示发布日期和更新内容，确认后自动备份、更新、校验、重启 bridge。
+- **手动升级**：在同一个面板选择本地的 `.tar.gz`、`.tgz`、`.zip` 或 `.tar` 包。适合离线或自动检查失败时使用；只接受比当前版本更高的包。压缩包会拒绝路径穿越、符号链接、加密包、超大文件和缺少必要文件的包。
+- Git 部署使用干净的 `git pull --ff-only`；有未提交修改时拒绝覆盖。
+- 最近一次可回滚备份（版本不同于当前）可在同一面板 **回滚**；数据目录 `~/.agent-office` 不会被更新覆盖。
+- 面板底部提供命令行和备份路径：
+
+```bash
+./update.sh --check
+./update.sh --apply
+./update.sh --manual release.tar.gz
+./update.sh --rollback
+```
 
 安全模型、API、失败处理和首次从 1.2.0 手动升级到 1.3.0 的说明见 [docs/UPGRADING.md](docs/UPGRADING.md)。
 
@@ -425,7 +433,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 | 白天 / 夜间 | 顶部主题按钮，或按 `D` |
 | 一人公司 / 群聊 | 顶部 `一人公司`，或按 `C` |
 | 中英文 | 顶部 `EN / 中`，或 `?lang=en` |
-| 自行升级 | 顶部 `升级`，或按 `U`，或 `?update=1` |
+| 工具 / 升级 | 顶部 `工具`，或按 `U`，或 `?update=1` |
 | 重命名 | Inspector / 完整档案里的 ✎；外部 agent 在外部档案里重命名 |
 | 审计 tab / `A` | 打开/关闭 `AUDIT` 面板 |
 | AUDIT 保存/恢复 | 手动保存或恢复当前模拟进度（localStorage） |
@@ -452,7 +460,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 ?external=1                  直接打开外部 Agent 接入面板
 ?theme=day                   直接打开白天主题
 ?company=1                   直接打开一人公司工作台
-?update=1                    直接打开升级中心
+?update=1                    直接打开「工具与升级」
 ?lang=en                     英文界面
 ```
 
@@ -472,7 +480,7 @@ agent-office/
 │   ├── i18n.js         中英文词典、语言切换
 │   ├── external.js     外部 Agent 连接、配对、任务委派、心跳轮询、重命名
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
-│   ├── update.js       升级中心、进度、重启检测、回滚
+│   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -490,16 +498,17 @@ agent-office/
 ├── dev-theme.html      自检白天/夜间、主题持久化、移动端布局
 ├── dev-company.html    自检一人公司、任务派发、群聊、隔离、自动解锁
 ├── dev-i18n.html       自检中英文切换和持久化
-├── dev-update.html     自检升级 UI、确认、进度、重启和完成态
+├── dev-update.html     自检工具入口、自动升级、确认、进度、重启和完成态
+├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
 ├── theme.css           白天主题、Trace Lab 明色皮肤、移动端样式
 ├── company.css         一人公司工作台 / 群聊 / 语言样式
-├── update.css          升级中心样式
+├── update.css          工具与升级面板样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 心跳 / 升级）
-├── updater.py          检查、下载、备份、更新、校验、回滚
-├── update.sh           命令行升级入口
+├── updater.py          检查、下载、手动包、备份、更新、校验、回滚
+├── update.sh           命令行升级入口（含 --manual）
 ├── providers.example.json  模型 API 配置模板（密钥不提交）
 ├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
 ├── tests/test_updater.py 更新器单元测试
@@ -650,9 +659,11 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-i18n.html` 会验证主界面/公司界面的英文切换、`?lang`、持久化和刷新恢复。
 
-`dev-update.html` 会验证升级按钮、检查结果、更新说明、备份、确认、进度、重启检测和完成态。
+`dev-update.html` 会验证工具入口、自动升级、手动升级区、文件选择、备份、确认、进度、重启检测和完成态。
 
-bridge 自身的 18 个集成测试和更新器的 11 个单元测试不依赖浏览器：
+`dev-update-manual.html` 会验证本地升级包选择、文件上传、token/文件名请求头、进度和完成态。
+
+bridge 自身的 18 个集成测试和更新器的 14 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -668,7 +679,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.3.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.4.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -682,7 +693,7 @@ python3 -m unittest discover -s tests -v
 - 一人公司的任务自动派发，但真实完成仍需要绑定角色并连接执行 Agent；模型 API Agent 只做单次调用，不参与任务房间。
 - SSE 是 localhost 实时流，没有鉴权；公司数据保存在 `~/.agent-office/bridge-state.json`。
 - 中英文切换覆盖 UI、状态、任务模板和公司内容；仿真的叙事台词保留原始语言。
-- 自行升级只读取官方 GitHub Release，不会后台自动安装；更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次才能使用内置升级中心。
+- 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。
 - 压缩包更新不会删除上游已移除的旧文件；这些文件不影响运行，可手动清理。
 - 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。
 - 模型 API 是单次调用适配器，不会自动完成模拟任务；`cost` 不按厂商价格计算，token 以返回的 usage 为准。

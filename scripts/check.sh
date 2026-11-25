@@ -28,7 +28,8 @@ required=(
   src/hiring.js src/external.js src/company.js src/update.js src/render.js src/main.js
   dev-check.html dev-paths.html dev-consistency.html dev-actions.html
   dev-fx.html dev-audit.html dev-tracelab.html dev-hiring.html dev-external.html
-  dev-delegation.html dev-theme.html dev-company.html dev-i18n.html dev-update.html
+  dev-delegation.html dev-theme.html dev-company.html dev-i18n.html
+  dev-update.html dev-update-manual.html
   tests/test_bridge.py tests/test_updater.py providers.example.json
   docs/ARCHITECTURE.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/UPGRADING.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md
 )

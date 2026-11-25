@@ -3,9 +3,9 @@
 Agent Office does **not** modify itself in the background. Updating is always
 explicit:
 
-1. the user checks the official GitHub release feed;
+1. the user checks the official GitHub release, or selects a local release archive;
 2. the current app is backed up;
-3. the update is downloaded or fast-forwarded;
+3. the update is downloaded, fast-forwarded, or read from the local archive;
 4. the new files are verified;
 5. the bridge restarts;
 6. the page reloads.
@@ -15,19 +15,35 @@ the same panel.
 
 > Users still on **1.2.0 or older** do not have the updater yet. Upgrade once
 > manually with `git pull` or a release download; after that, the in-app
-> updater is available.
+> updater is available. 1.3.0 adds automatic update; 1.4.0 adds the Tools
+> panel and local-archive manual update.
 
 ## In the app
 
-- Click **升级 / UPDATE** in the top bar, or press `U`.
+- Click **工具 / TOOLS** in the top bar, or press `U`.
 - Deep link: `http://127.0.0.1:5173/?update=1`
-- Click **检查更新 / Check for updates**.
+- **Automatic update**: click **检查更新 / Check for updates**.
 - `?update=0` disables the passive six-hour check; updates still work from the
   button or `./update.sh`.
 
 If a newer release exists, the panel shows the current/latest versions, release
 notes, update mode and backup status. **立即升级 / Update now** opens a
 confirmation step. The panel then reports progress and restarts the bridge.
+
+### Manual update
+
+Use **手动升级 / Manual update** in the same panel when GitHub is unavailable or
+you already downloaded a release archive.
+
+- Accepted files: `.tar.gz`, `.tgz`, `.zip`, `.tar`
+- Maximum upload: 80MB
+- The archive's `VERSION` must be newer than the running version
+- The archive is extracted into a temporary folder and validated before any
+  application file is written
+- The same backup, progress, restart and rollback path is used
+
+The official release archive is under GitHub **Releases → Source code
+(tar.gz / zip)**. Do not install an archive from an untrusted source.
 
 When the bridge is back, the page reloads automatically. If the restart times
 out, the panel says so; refresh manually or run `./start.sh`.
@@ -52,6 +68,7 @@ The same updater is available without the UI:
 ```bash
 ./update.sh --check          # show current/latest and deployment mode
 ./update.sh --apply          # confirm, back up, update (no automatic restart)
+./update.sh --manual FILE    # install a local release archive
 ./update.sh --rollback       # restore the newest different-version backup
 ./update.sh --status         # last result and recent backups
 ./update.sh --check --json   # machine-readable
@@ -73,23 +90,28 @@ The bridge calls the public GitHub Releases API for
 [`128fei-wang/agent-office`](https://github.com/128fei-wang/agent-office).
 No GitHub token is needed and no private data is sent.
 
-| Deployment | Update path |
+| Deployment | Automatic update path |
 | --- | --- |
 | Git checkout | `git fetch --tags --prune` then `git pull --ff-only` on the current branch |
 | ZIP / copied folder / no `.git` | Download the official release tarball and merge it over the app |
+| Manual archive | Extract the selected local tar/zip, verify it, merge it over the app |
 
 A git checkout with uncommitted changes is **blocked** instead of overwritten.
 Commit or back up those changes first. Detached HEAD checkouts are also
 blocked.
 
-Archive updates validate every tar member before extraction:
+Archive updates validate every tar/zip member before extraction:
 
 - no absolute paths or `..`;
 - no symlinks, hard links or device entries;
+- no encrypted zip entries;
 - bounded entry count and unpacked size;
 - required app files and a matching `VERSION`;
 - `bridge.py` and `updater.py` must compile;
-- the updated app's version must equal the release version.
+- the updated app's version must equal the archive version.
+
+Manual archives must be newer than the running version; downgrades use the
+rollback action instead.
 
 ## What is preserved
 
@@ -113,8 +135,10 @@ All endpoints are localhost-only and go through the bridge's Host/Origin gate.
 ```text
 GET  /update/check?refresh=1
 GET  /update/status
-POST /update/apply       {"token": "...", "version": "1.3.0"}
+GET  /update/manual/token
+POST /update/apply       {"token": "...", "version": "1.4.0"}
 POST /update/rollback    {"token": "..."}
+POST /update/manual      raw archive + X-Update-Token + X-Filename
 ```
 
 `/update/check` returns a one-time apply token and a separate rollback token,

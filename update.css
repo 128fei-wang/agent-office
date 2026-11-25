@@ -247,6 +247,69 @@
 .update-backup b { color: var(--text); font-family: var(--mono); }
 .update-backup em { margin-left: auto; color: var(--muted-2); font-style: normal; }
 
+.update-manual,
+.update-tools {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.update-manual h3,
+.update-tools h3 {
+  margin: 0 0 5px;
+  font-size: 10px;
+  color: var(--text);
+}
+.update-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+.update-file-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 8px;
+  cursor: pointer;
+}
+.update-file-pick:hover { border-color: var(--muted-2); }
+.update-file-pick input { display: none; }
+.update-file-name {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.update-inline-error {
+  margin: 7px 0 0;
+  color: var(--red);
+  font-size: 8px;
+}
+.update-tools code {
+  display: block;
+  margin-top: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: var(--panel-3);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 7px;
+  overflow-x: auto;
+}
+.update-tools .update-hint b { color: var(--text); font-weight: 500; }
+
 .update-loading,
 .update-progress-card {
   display: flex;
@@ -346,7 +409,7 @@
   .update-trigger { min-width: 34px; padding: 0 7px; }
   .update-trigger > span { display: none; }
   .update-trigger::before {
-    content: "⇧";
+    content: "⚙";
     font-size: 12px;
     line-height: 1;
   }

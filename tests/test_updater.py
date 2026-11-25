@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import threading
 import unittest
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -46,6 +47,20 @@ def make_archive(folder, version):
     archive = Path(folder) / ("agent-office-" + version + ".tar.gz")
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(source, arcname=source.name)
+    return archive
+
+
+def make_zip(folder, version):
+    source = Path(folder) / ("agent-office-" + version)
+    if source.exists():
+        shutil.rmtree(source)
+    source.mkdir(parents=True)
+    write_app(source, version)
+    archive = Path(folder) / ("agent-office-" + version + ".zip")
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in source.rglob("*"):
+            if item.is_file():
+                zf.write(item, arcname=str(Path(source.name) / item.relative_to(source)))
     return archive
 
 
@@ -167,6 +182,49 @@ class UpdaterTest(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_apply_manual_tar_and_zip(self):
+        tar_archive = make_archive(self.tmp / "manual-tar", "1.3.0")
+        result = updater.apply_archive(
+            tar_archive, app_root=self.app, backup_dir=self.backups,
+            state_dir=self.state,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "manual")
+        self.assertEqual((self.app / "VERSION").read_text().strip(), "1.3.0")
+
+        zip_archive = make_zip(self.tmp / "manual-zip", "1.4.0")
+        result = updater.apply_archive(
+            zip_archive, app_root=self.app, backup_dir=self.backups,
+            state_dir=self.state,
+        )
+        self.assertEqual((self.app / "VERSION").read_text().strip(), "1.4.0")
+        self.assertEqual(updater.rollback_candidate(self.backups, "1.4.0")["version"], "1.3.0")
+
+    def test_manual_rejects_same_or_older(self):
+        same = make_zip(self.tmp / "same", "1.2.0")
+        with self.assertRaises(updater.UpdateError) as raised:
+            updater.apply_archive(
+                same, app_root=self.app, backup_dir=self.backups, state_dir=self.state,
+            )
+        self.assertEqual(raised.exception.code, "not_newer")
+        self.assertEqual((self.app / "VERSION").read_text().strip(), "1.2.0")
+
+    def test_zip_rejects_traversal_and_symlink(self):
+        traversal = self.tmp / "traversal.zip"
+        with zipfile.ZipFile(traversal, "w") as zf:
+            zf.writestr("../outside.txt", "owned")
+        with self.assertRaises(updater.UpdateError):
+            updater._safe_extract(traversal, self.tmp / "unzip-traversal")
+        self.assertFalse((self.tmp / "outside.txt").exists())
+
+        link = self.tmp / "link.zip"
+        with zipfile.ZipFile(link, "w") as zf:
+            info = zipfile.ZipInfo("root/link")
+            info.external_attr = (0o120777 << 16)
+            zf.writestr(info, "/etc/passwd")
+        with self.assertRaises(updater.UpdateError):
+            updater._safe_extract(link, self.tmp / "unzip-link")
 
     def test_rollback_candidate_skips_current_version(self):
         first = updater.create_backup(self.app, self.backups, version="1.2.0")

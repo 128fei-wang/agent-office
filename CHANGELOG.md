@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-11-25
+
+### Added
+- Top-bar **Tools / 工具** entry with the update center, manual update and maintenance commands in one place.
+- Manual upgrade from a local `.tar.gz`, `.tgz`, `.zip` or `.tar` release archive; no GitHub check required.
+- Manual archive validation: version must be newer, traversal/symlink/encrypted/oversize entries are rejected, and the archive is verified before writing.
+- Bridge manual upload API: `GET /update/manual/token`, `POST /update/manual` (raw archive, 80MB cap, one-time token).
+- `./update.sh --manual <archive>` for terminal upgrades.
+- Tools panel shows copyable CLI commands and the backup folder.
+- Zip extraction safety and updater tests for manual tar/zip, same-version rejection and zip traversal/symlink attacks.
+
+### Changed
+- Version bumped to 1.4.0.
+- Update center title and button now read **Tools / 工具**; automatic and manual flows share the same backup, progress, restart and rollback path.
+- README, English README, upgrade guide, architecture and roadmap document manual upgrades.
+
 ## [1.3.0] - 2026-11-25
 
 ### Added

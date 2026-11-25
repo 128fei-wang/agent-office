@@ -35,7 +35,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] One-person company template, role slots, dependency tasks, auto-dispatch.
 - [x] Real-time group chat over SSE with room + assignment + execution isolation.
 - [x] Chinese/English UI and generated company content.
-- [x] Self-update: GitHub release check, backup, git/archive apply, verification, bridge restart, rollback and CLI.
+- [x] Self-update: GitHub release check, local archive install, backup, git/archive apply, verification, bridge restart, rollback and CLI.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.
 - [ ] i18n (zh-CN / en) beyond the README.
 - [ ] Packaging: Docker or a `start.sh` that waits for/reuses a healthy bridge.
@@ -46,7 +46,7 @@ This is an early open-source prototype, not a production observability or agent-
 - External agents only receive tasks through the pull-based assignment protocol; completion is self-reported and not locally reviewed.
 - The one-person company needs a real worker bound to each role for real completion; provider API agents are one-shot and excluded from task rooms.
 - SSE is localhost-only and unauthenticated.
-- Self-update reads only the official GitHub release; it does not install in the background and requires the local bridge to apply/restart. Versions before 1.3.0 need one manual upgrade.
+- Self-update never installs in the background. Automatic update reads the official GitHub release; manual update accepts a local archive newer than the running version. Both require the local bridge to apply/restart. Versions before 1.3.0 need one manual upgrade.
 - Model API calls are one-shot; no streaming, retries or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.

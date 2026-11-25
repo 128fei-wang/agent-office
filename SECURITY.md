@@ -23,9 +23,11 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - One-time pairing codes are single-use and expire after 30 minutes, but they are not a substitute for authentication. Do not post them publicly.
 - The frontend never receives an LLM provider API key. Real agent credentials belong in the external agent process or a local bridge, not in browser code.
 - External agent endpoints and notes are stored as metadata; the current bridge does not call those endpoints.
-- Self-update is user-initiated only. It reads the latest release from the official GitHub repository over TLS; there is no separate signature beyond TLS and the GitHub release pipeline. A compromised upstream release account is therefore a trust boundary.
-- `/update/apply` and `/update/rollback` require a one-time token returned by `/update/check` and expire after 10 minutes. The bridge still relies on its localhost Host/Origin gate; any local process that can call the bridge can request a token. Do not expose the bridge.
-- Before writing, the updater copies the app to `~/.agent-office/backups` (excluding state and provider files). Archive extraction rejects path traversal, symlinks, hard links, device entries and oversized inputs, and verifies required files plus Python syntax. Verification failure restores the backup.
+- Self-update is user-initiated only. Automatic update reads the latest release from the official GitHub repository over TLS; there is no separate signature beyond TLS and the GitHub release pipeline. A compromised upstream release account is therefore a trust boundary.
+- Manual update accepts a user-supplied `.tar.gz`/`.tgz`/`.zip`/`.tar` archive. The user is responsible for its source; use the official release page. Validation reduces archive attacks but is not a code signature.
+- `/update/apply`, `/update/rollback` and manual upload require one-time tokens and expire after 10 minutes. The bridge still relies on its localhost Host/Origin gate; any local process that can call the bridge can request a token. Do not expose the bridge.
+- Manual uploads are capped at 80MB and written to a temporary file outside the app; the file is removed after the job. Archive extraction rejects path traversal, symlinks, hard links, device entries, encrypted zip entries and oversized inputs, and verifies required files plus Python syntax. Verification failure restores the backup.
+- Before writing, the updater copies the app to `~/.agent-office/backups` (excluding state and provider files).
 - A Git checkout with local modifications is not overwritten.
 - The app uses `localStorage` for names, hires, snapshots and external profiles. Treat browser storage as local, unencrypted state.
 - The demo agent is for local demonstration only.

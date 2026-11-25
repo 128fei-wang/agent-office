@@ -16,6 +16,7 @@ import os
 import secrets
 import ssl
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -23,7 +24,7 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -579,6 +580,17 @@ def issue_update_tokens(latest_version: str) -> dict:
     return {"token": apply_token, "rollbackToken": rollback_token}
 
 
+def issue_manual_token() -> dict:
+    now = time.time()
+    token = secrets.token_urlsafe(24)
+    with UPDATE_TOKEN_LOCK:
+        for key in [k for k, v in UPDATE_TOKENS.items()
+                    if float(v.get("expiresAt") or 0) < now]:
+            UPDATE_TOKENS.pop(key, None)
+        UPDATE_TOKENS[token] = {"scope": "manual", "expiresAt": now + 600}
+    return {"token": token, "expiresAt": now + 600}
+
+
 def consume_update_token(token: str, scope: str) -> dict:
     if not token or not isinstance(token, str):
         raise ValueError("missing update token; run check again")
@@ -632,13 +644,16 @@ def _restart_bridge() -> None:
         )
 
 
-def _run_update_job(kind: str, target: str) -> None:
+def _run_update_job(kind: str, target: str, archive_path: str = "") -> None:
     def progress(stage, percent, message):
         _set_update_job(stage=stage, percent=int(percent), message=str(message or ""))
 
     try:
         if kind == "apply":
             result = updater.apply_update(target_version=target, progress=progress)
+            to_version = result.get("toVersion") or target
+        elif kind == "manual":
+            result = updater.apply_archive(archive_path, progress=progress)
             to_version = result.get("toVersion") or target
         else:
             result = updater.rollback_last(progress=progress)
@@ -671,9 +686,15 @@ def _run_update_job(kind: str, target: str) -> None:
             status="error", stage="error", code="update_failed",
             error="update failed: %s" % exc, finishedAt=now_iso(),
         )
+    finally:
+        if kind == "manual" and archive_path:
+            try:
+                os.unlink(archive_path)
+            except OSError:
+                pass
 
 
-def start_update_job(kind: str, target: str) -> dict:
+def start_update_job(kind: str, target: str, archive_path: str = "") -> dict:
     with UPDATE_JOB_LOCK:
         if UPDATE_JOB.get("status") in ("running", "restarting"):
             raise ValueError("an update is already running")
@@ -683,7 +704,9 @@ def start_update_job(kind: str, target: str) -> dict:
             "startedAt": now_iso(), "finishedAt": "", "result": None,
             "fromVersion": app_version(), "toVersion": target,
         })
-    thread = threading.Thread(target=_run_update_job, args=(kind, target), daemon=True)
+    thread = threading.Thread(
+        target=_run_update_job, args=(kind, target, archive_path), daemon=True
+    )
     thread.start()
     return update_public_status()
 
@@ -1613,7 +1636,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", self.allowed_origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers",
+                         "Content-Type, X-Update-Token, X-Filename")
         self.send_header("Cache-Control", "no-store")
 
     def send_json(self, data, status=200):
@@ -1647,6 +1671,77 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise ValueError("body must be an object")
         return data
+
+    def handle_manual_update(self):
+        if not updater:
+            self.send_json({"error": "updater module is not installed",
+                            "code": "no_updater"}, 503)
+            return
+        with UPDATE_JOB_LOCK:
+            busy = UPDATE_JOB.get("status") in ("running", "restarting")
+        if busy:
+            self.send_json({"error": "an update is already running",
+                            "code": "update_busy"}, 409)
+            return
+        try:
+            consume_update_token(self.headers.get("X-Update-Token"), "manual")
+        except ValueError as exc:
+            self.send_json({"error": str(exc), "code": "bad_token"}, 403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self.send_json({"error": "empty update archive", "code": "empty_archive"}, 400)
+            return
+        if length > updater.MAX_ARCHIVE:
+            self.send_json({"error": "update archive is too large",
+                            "code": "too_large"}, 413)
+            return
+        filename = unquote(self.headers.get("X-Filename") or "release.tar.gz")
+        filename = os.path.basename(filename.replace("\\", "/"))[:120] or "release.tar.gz"
+        lower = filename.lower()
+        if not lower.endswith((".tar.gz", ".tgz", ".zip", ".tar")):
+            self.send_json({"error": "archive must be .tar.gz, .tgz, .zip or .tar",
+                            "code": "bad_archive"}, 400)
+            return
+        suffix = ".zip" if lower.endswith(".zip") else (
+            ".tar.gz" if lower.endswith(".tar.gz") else (
+                ".tgz" if lower.endswith(".tgz") else ".tar"))
+        handle = tempfile.NamedTemporaryFile(
+            prefix="agent-office-upload-", suffix=suffix, delete=False
+        )
+        path = handle.name
+        remaining = length
+        try:
+            while remaining > 0:
+                chunk = self.rfile.read(min(64 * 1024, remaining))
+                if not chunk:
+                    raise ValueError("upload ended early")
+                handle.write(chunk)
+                remaining -= len(chunk)
+            handle.close()
+            job = start_update_job("manual", "", path)
+        except ValueError as exc:
+            handle.close()
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            self.send_json({"error": str(exc), "code": "bad_archive"}, 400)
+            return
+        except Exception as exc:
+            handle.close()
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            self.send_json({"error": "could not start manual update: %s" % exc,
+                            "code": "update_failed"}, 500)
+            return
+        self.send_json({"ok": True, "job": job,
+                        "fileName": filename}, 202)
 
     def handle_update_action(self, path, body):
         if not updater:
@@ -1755,6 +1850,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/update/status":
             self.send_json(update_public_status())
             return
+        if path == "/update/manual/token":
+            if not updater:
+                self.send_json({"error": "updater module is not installed",
+                                "code": "no_updater"}, 503)
+                return
+            self.send_json(issue_manual_token())
+            return
         with LOCK:
             if path == "/health":
                 self.send_json({
@@ -1859,7 +1961,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -1869,6 +1971,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path == "/update/manual":
+            self.handle_manual_update()
+            return
         try:
             body = self.read_json()
         except Exception as exc:

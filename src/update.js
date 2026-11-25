@@ -52,6 +52,8 @@
       this.confirm = "";
       this.token = "";
       this.rollbackToken = "";
+      this.manualFile = null;
+      this.manualError = "";
       this.pollTimer = null;
       this.pollBusy = false;
       this.pollFailures = 0;
@@ -89,11 +91,36 @@
           const action = button.getAttribute("data-update-action");
           if (action === "check") { self.confirm = ""; self.check(true, false); }
           else if (action === "apply") { self.confirm = "apply"; self.render(); }
+          else if (action === "manual") { self.confirm = "manual"; self.render(); }
           else if (action === "rollback") { self.confirm = "rollback"; self.render(); }
           else if (action === "cancel") { self.confirm = ""; self.render(); }
           else if (action === "confirm-apply") { self.runApply(); }
+          else if (action === "confirm-manual") { self.runManual(); }
           else if (action === "confirm-rollback") { self.runRollback(); }
           else if (action === "reload") { window.location.reload(); }
+        });
+        this.root.addEventListener("change", function (event) {
+          if (!event.target || event.target.id !== "updateFile") return;
+          const file = event.target.files && event.target.files[0];
+          self.manualFile = file || null;
+          self.manualError = "";
+          if (file && file.size > 80 * 1024 * 1024) {
+            self.manualFile = null;
+            self.manualError = self.t("manualTooLarge");
+          }
+          const label = self.root.querySelector("#updateFileLabel");
+          if (label) {
+            label.textContent = self.manualFile
+              ? self.manualFile.name + " · " + self.formatSize(self.manualFile.size)
+              : self.t("manualFileHint");
+          }
+          const apply = self.root.querySelector('[data-update-action="manual"]');
+          if (apply) apply.disabled = !self.manualFile;
+          const inline = self.root.querySelector("#updateManualError");
+          if (inline) {
+            inline.hidden = !self.manualError;
+            inline.textContent = self.manualError;
+          }
         });
       }
       document.addEventListener("agent-office:lang", function () {
@@ -149,12 +176,16 @@
       const controller = new AbortController();
       const timer = window.setTimeout(function () { controller.abort(); }, opts.timeout || 30000);
       try {
+        const raw = opts.raw === true;
         const response = await fetch(this.bridge() + path, {
           cache: "no-store",
           signal: controller.signal,
-          headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+          headers: {
+            "Content-Type": raw ? "application/octet-stream" : "application/json",
+            ...(opts.headers || {})
+          },
           method: opts.method || "GET",
-          body: opts.body ? JSON.stringify(opts.body) : undefined
+          body: opts.body === undefined ? undefined : (raw ? opts.body : JSON.stringify(opts.body))
         });
         const text = await response.text();
         let data = {};
@@ -247,6 +278,13 @@
       return value === key ? (stage || this.t("updateWorking")) : value;
     }
 
+    formatSize(bytes) {
+      const size = Number(bytes) || 0;
+      if (size < 1024) return size + " B";
+      if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB";
+      return (size / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
     formatDate(value) {
       if (!value) return "";
       const date = new Date(value);
@@ -291,20 +329,70 @@
     confirmBlock() {
       if (!this.confirm) return "";
       const applying = this.confirm === "apply";
+      const manual = this.confirm === "manual";
       const version = applying
         ? (this.data && this.data.latestVersion)
         : (this.data && this.data.backup && this.data.backup.version);
+      const file = this.manualFile ? this.manualFile.name : "";
+      let title;
+      let hint;
+      let action;
+      let label;
+      if (manual) {
+        title = this.t("manualConfirmTitle");
+        hint = this.t("manualConfirmHint", { file: file });
+        action = "confirm-manual";
+        label = this.t("manualConfirm");
+      } else if (applying) {
+        title = this.t("updateConfirmTitle");
+        hint = this.t("updateConfirmHint", { version: version || "" });
+        action = "confirm-apply";
+        label = this.t("updateConfirm");
+      } else {
+        title = this.t("updateRollbackConfirmTitle");
+        hint = this.t("updateRollbackConfirmHint", { version: version || "" });
+        action = "confirm-rollback";
+        label = this.t("updateRollbackConfirm");
+      }
       return '<div class="update-confirm">' +
-        '<b>' + esc(applying ? this.t("updateConfirmTitle") : this.t("updateRollbackConfirmTitle")) + '</b>' +
-        '<p>' + esc(applying
-          ? this.t("updateConfirmHint", { version: version || "" })
-          : this.t("updateRollbackConfirmHint", { version: version || "" })) + '</p>' +
+        '<b>' + esc(title) + '</b><p>' + esc(hint) + '</p>' +
         '<div class="update-actions">' +
-        '<button class="btn primary" type="button" data-update-action="' +
-        (applying ? "confirm-apply" : "confirm-rollback") + '">' +
-        esc(applying ? this.t("updateConfirm") : this.t("updateRollbackConfirm")) + '</button>' +
+        '<button class="btn primary" type="button" data-update-action="' + action + '">' +
+        esc(label) + '</button>' +
         '<button class="btn ghost" type="button" data-update-action="cancel">' +
         esc(this.t("cancel")) + '</button></div></div>';
+    }
+
+    manualBlock() {
+      const file = this.manualFile;
+      const label = file
+        ? file.name + " · " + this.formatSize(file.size)
+        : this.t("manualFileHint");
+      return '<div class="update-section update-manual">' +
+        '<h3>' + esc(this.t("manualTitle")) + '</h3>' +
+        '<p class="update-hint">' + esc(this.t("manualHint")) + '</p>' +
+        '<div class="update-file-row">' +
+        '<label class="update-file-pick"><input type="file" id="updateFile" ' +
+        'accept=".tar.gz,.tgz,.zip"><span>' + esc(this.t("manualChoose")) + '</span></label>' +
+        '<span class="update-file-name" id="updateFileLabel">' + esc(label) + '</span></div>' +
+        '<p class="update-inline-error" id="updateManualError"' +
+        (this.manualError ? '' : ' hidden') + '>' + esc(this.manualError) + '</p>' +
+        '<div class="update-actions"><button class="btn" type="button" ' +
+        'data-update-action="manual"' + (file ? '' : ' disabled') + '>' +
+        esc(this.t("manualApply")) + '</button></div>' +
+        '<p class="update-hint">' + esc(this.t("toolsManualHint")) + '</p></div>';
+    }
+
+    toolsBlock() {
+      return '<div class="update-section update-tools">' +
+        '<h3>' + esc(this.t("toolsCli")) + '</h3>' +
+        '<p class="update-hint">' + esc(this.t("toolsCliHint")) + '</p>' +
+        '<code>./update.sh --check</code>' +
+        '<code>./update.sh --apply</code>' +
+        '<code>./update.sh --manual release.tar.gz</code>' +
+        '<code>./update.sh --rollback</code>' +
+        '<p class="update-hint">' + esc(this.t("toolsBackup")) +
+        ': <b>~/.agent-office/backups</b></p></div>';
     }
 
     actionsBlock() {
@@ -393,6 +481,8 @@
         }
       }
       if (job) body += this.jobBlock();
+      if (!busy && !this.confirm) body += this.manualBlock();
+      if (!busy) body += this.toolsBlock();
       if (this.confirm) body += this.confirmBlock();
       if (!busy) body += this.actionsBlock();
 
@@ -405,7 +495,7 @@
       this.root.innerHTML =
         '<div class="update-backdrop" data-update-close></div>' +
         '<section class="update-card" role="dialog" aria-modal="true" aria-labelledby="updateTitle">' +
-        '<header class="update-head"><div><span class="update-kicker">SYSTEM / UPDATE</span>' +
+        '<header class="update-head"><div><span class="update-kicker">SYSTEM / TOOLS</span>' +
         '<h2 id="updateTitle">' + esc(this.t("updateTitle")) + '</h2></div>' +
         '<button class="update-close" type="button" data-update-close aria-label="' +
         esc(this.t("close")) + '">×</button></header>' +
@@ -439,6 +529,55 @@
           method: "POST",
           body: { token: token, version: this.data.latestVersion }
         });
+        this.job = response.job || this.job;
+        this.render();
+        this.startPoll();
+      } catch (err) {
+        this.job = { status: "error", error: this.errorText(err), code: err.code || "" };
+        this.render();
+      }
+    }
+
+    async runManual() {
+      const file = this.manualFile;
+      if (!file) {
+        this.manualError = this.t("manualNoFile");
+        this.confirm = "";
+        this.render();
+        return;
+      }
+      if (file.size > 80 * 1024 * 1024) {
+        this.manualError = this.t("manualTooLarge");
+        this.confirm = "";
+        this.render();
+        return;
+      }
+      this.confirm = "";
+      this.error = "";
+      this.manualError = "";
+      this.bootId = "";
+      try {
+        const health = await this.fetchJson("/health", { timeout: 5000 });
+        this.bootId = health.bootId || "";
+      } catch (err) {}
+      this.job = {
+        status: "running", stage: "preparing", percent: 2,
+        message: this.t("manualWorking"), toVersion: ""
+      };
+      this.render();
+      try {
+        const token = await this.fetchJson("/update/manual/token", { timeout: 8000 });
+        const response = await this.fetchJson("/update/manual", {
+          method: "POST",
+          raw: true,
+          body: file,
+          timeout: 120000,
+          headers: {
+            "X-Update-Token": token.token || "",
+            "X-Filename": encodeURIComponent(file.name)
+          }
+        });
+        this.manualFile = null;
         this.job = response.job || this.job;
         this.render();
         this.startPoll();

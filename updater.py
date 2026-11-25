@@ -32,6 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -421,7 +422,7 @@ def verify_app(root, expected_version, require_updater=True):
             _py_compile(root / name, root)
 
 
-def _safe_extract(archive, destination):
+def _safe_extract_tar(archive, destination):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
     total = 0
@@ -457,6 +458,55 @@ def _safe_extract(archive, destination):
     except tarfile.TarError as exc:
         raise UpdateError("could not read update archive: %s" % exc, "bad_archive", 502)
     return destination
+
+
+def _safe_extract_zip(archive, destination):
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    total = 0
+    infos = []
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            for info in zf.infolist():
+                name = info.filename.replace("\\", "/")
+                if not name or name in (".", "./"):
+                    continue
+                parts = [part for part in name.split("/") if part not in ("", ".")]
+                if not parts or ".." in parts:
+                    raise UpdateError("unsafe archive path: %s" % info.filename,
+                                      "bad_archive", 502)
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    raise UpdateError("archive contains a symlink: %s" % info.filename,
+                                      "bad_archive", 502)
+                if info.is_dir():
+                    infos.append(info)
+                    continue
+                if info.flag_bits & 0x1:
+                    raise UpdateError("encrypted archives are not supported",
+                                      "bad_archive", 502)
+                if len(infos) > 20000:
+                    raise UpdateError("archive has too many entries", "bad_archive", 502)
+                total += max(0, int(info.file_size or 0))
+                if total > MAX_UNPACKED:
+                    raise UpdateError("archive is too large when unpacked", "bad_archive", 502)
+                target = (destination / name).resolve()
+                try:
+                    target.relative_to(destination.resolve())
+                except ValueError:
+                    raise UpdateError("unsafe archive path: %s" % info.filename,
+                                      "bad_archive", 502)
+                infos.append(info)
+            zf.extractall(destination, members=infos)
+    except zipfile.BadZipFile as exc:
+        raise UpdateError("could not read update zip: %s" % exc, "bad_archive", 502)
+    return destination
+
+
+def _safe_extract(archive, destination):
+    if str(archive).lower().endswith(".zip"):
+        return _safe_extract_zip(archive, destination)
+    return _safe_extract_tar(archive, destination)
 
 
 def _archive_root(extracted):
@@ -676,6 +726,73 @@ def apply_update(target_version=None, release=None, app_root=None, backup_dir=No
             raise
 
 
+def apply_archive(archive_path, app_root=None, backup_dir=None, progress=None,
+                  state_dir=None, allow_same=False):
+    """Install a user-supplied release archive without contacting GitHub."""
+    root = Path(app_root or APP_ROOT)
+    archive = Path(archive_path)
+    if not archive.exists():
+        raise UpdateError("update archive does not exist", "missing_archive", 404)
+    if archive.stat().st_size > MAX_ARCHIVE:
+        raise UpdateError("update archive is too large", "bad_archive", 413)
+    current = read_version(root)
+    temp_dir = tempfile.mkdtemp(prefix="agent-office-manual-")
+    try:
+        with _update_lock(state_dir):
+            _progress(progress, "extracting", 15, "extracting manual archive")
+            stage = _safe_extract(archive, Path(temp_dir) / "extract")
+            source = _archive_root(stage)
+            target = read_version(source)
+            if not parse_version(target):
+                raise UpdateError("archive has an invalid VERSION", "bad_release", 400)
+            comparison = compare_versions(target, current)
+            if comparison < 0 or (comparison == 0 and not allow_same):
+                raise UpdateError(
+                    "archive version %s is not newer than the running %s"
+                    % (target, current), "not_newer", 409)
+            _progress(progress, "verifying", 35, "validating archive files")
+            verify_app(source, target)
+            _progress(progress, "backup", 50, "backing up %s" % current)
+            backup = create_backup(
+                root, backup_dir=backup_dir, version=current,
+                mode="manual", target_version=target,
+            )
+            modified = False
+            try:
+                modified = True
+                _progress(progress, "writing", 70, "writing application files")
+                _merge_copy(source, root)
+                _progress(progress, "verifying", 90, "verifying installed files")
+                verify_app(root, target)
+                _progress(progress, "done", 100, "manual update installed")
+                prune_backups(backup_dir)
+                record_last_update({
+                    "status": "updated",
+                    "action": "manual",
+                    "fromVersion": current,
+                    "toVersion": target,
+                    "mode": "manual",
+                    "backupId": backup["id"],
+                    "message": "manual update %s → %s" % (current, target),
+                }, state_dir=state_dir)
+                return {
+                    "ok": True,
+                    "fromVersion": current,
+                    "toVersion": target,
+                    "mode": "manual",
+                    "backupId": backup["id"],
+                    "restartRequired": True,
+                }
+            except Exception:
+                if modified:
+                    _restore_backup(backup["path"], root)
+                    _progress(progress, "rolled_back", 100,
+                              "manual update failed; rolled back")
+                raise
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def rollback_last(app_root=None, backup_dir=None, progress=None, state_dir=None):
     root = Path(app_root or APP_ROOT)
     current = read_version(root)
@@ -728,6 +845,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Agent Office self-updater")
     parser.add_argument("--check", action="store_true", help="check for a new release")
     parser.add_argument("--apply", action="store_true", help="install the latest release")
+    parser.add_argument("--manual", metavar="ARCHIVE",
+                        help="install a local .tar.gz/.tgz/.zip release archive")
     parser.add_argument("--rollback", action="store_true", help="restore the latest backup")
     parser.add_argument("--status", action="store_true", help="show last update and backups")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
@@ -742,6 +861,24 @@ def main(argv=None):
                             for row in list_backups()],
             }
             print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        if args.manual:
+            if args.apply or args.rollback:
+                print("Choose only one of --apply, --manual or --rollback.", file=sys.stderr)
+                return 2
+            archive = Path(args.manual).expanduser()
+            if not archive.exists():
+                print("Archive not found: %s" % archive, file=sys.stderr)
+                return 2
+            if not args.yes:
+                answer = input("Install %s? [y/N] " % archive.name).strip().lower()
+                if answer not in ("y", "yes"):
+                    print("Cancelled.")
+                    return 1
+            result = apply_archive(archive)
+            print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else
+                  "Installed %s → %s. Restart Agent Office to use it." % (
+                      result["fromVersion"], result["toVersion"]))
             return 0
         if args.rollback:
             backup = rollback_candidate()
