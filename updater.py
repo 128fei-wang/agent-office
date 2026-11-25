@@ -474,7 +474,7 @@ def _download(url, destination):
     if not _url_allowed(url):
         raise UpdateError("update download must use HTTPS", "bad_source", 400)
     request = urllib.request.Request(url, headers={
-        "Accept": "application/octet-stream",
+        "Accept": "application/vnd.github+json",
         "User-Agent": USER_AGENT,
     })
     try:

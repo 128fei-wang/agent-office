@@ -72,6 +72,10 @@ class TarHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
+        if self.headers.get("Accept") == "application/octet-stream":
+            self.send_response(415)
+            self.end_headers()
+            return
         body = self.payload
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
