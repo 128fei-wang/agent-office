@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.12.1] - 2026-11-26
+
+### Fixed
+- The 3-step AI setup now uses the configured bridge URL instead of always calling `127.0.0.1:8787`.
+
+### Changed
+- Regenerated the public README screenshots from a clean demo state with generic local agents and demo data. Personal external-agent names, IDs, missions and model endpoint details are no longer shown.
+- Removed the old task-delegation screenshot that showed a personal external agent.
+- MCP examples use a generic `ext-demo-agent` identity.
+- Version bumped to 1.12.1.
+
 ## [1.12.0] - 2026-11-26
 
 ### Added

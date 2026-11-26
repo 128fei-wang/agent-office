@@ -24,7 +24,9 @@
   }
 
   function bridge() {
-    return String(AO.BRIDGE_DEFAULT || "http://127.0.0.1:8787").replace(/\/+$/, "");
+    let stored = "";
+    try { stored = localStorage.getItem("agent-office.bridge-url") || ""; } catch (err) {}
+    return String(stored || AO.BRIDGE_DEFAULT || "http://127.0.0.1:8787").replace(/\/+$/, "");
   }
 
   class AISetup {

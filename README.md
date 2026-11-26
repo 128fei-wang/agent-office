@@ -205,7 +205,6 @@ curl -X PATCH http://127.0.0.1:8787/assignments/asg-xxxxxxxx \
 
 演示 Agent 会自动推进它的 Assignment，所以不需要真实 Agent 也能看完整流程。
 
-![Task delegation](docs/screenshots/delegation.jpg)
 
 详细协议、状态机和边界见 [docs/TASK_DELEGATION.md](docs/TASK_DELEGATION.md)。
 
@@ -786,7 +785,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.12.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.12.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

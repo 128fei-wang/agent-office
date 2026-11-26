@@ -198,7 +198,6 @@ curl -X PATCH http://127.0.0.1:8787/assignments/asg-xxxxxxxx \
   -d '{"status":"completed","progress":100,"result":"12 tests passed","evidence":["tests/12-passed"]}'
 ```
 
-![Task delegation](docs/screenshots/delegation.jpg)
 
 The demo agent advances its assignments automatically, so the flow can be
 demonstrated without a separate process. See

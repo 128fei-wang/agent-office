@@ -69,7 +69,7 @@ class MissionTest(unittest.TestCase):
         self.assertEqual(external["brand"], "Codex")
         self.assertEqual(external["logoText"], "CX")
         workbuddy = missions.normalize_agent({
-            "id": "ext-wb", "name": "小研 · WorkBuddy", "runtime": "workbuddy",
+            "id": "ext-wb", "name": "Demo Worker · WorkBuddy", "runtime": "workbuddy",
         }, "external")
         self.assertEqual(workbuddy["brand"], "WorkBuddy")
         self.assertEqual(workbuddy["logoText"], "WB")

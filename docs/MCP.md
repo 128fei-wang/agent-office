@@ -27,7 +27,7 @@ Generated shape:
       "type": "http",
       "url": "http://127.0.0.1:8787/mcp",
       "headers": {
-        "X-Agent-Id": "ext-61fcf518"
+        "X-Agent-Id": "ext-demo-agent"
       }
     }
   }
@@ -72,7 +72,7 @@ must be the assignee of a task to report on it. The existing mission rules
 ```bash
 curl -s http://127.0.0.1:8787/mcp \
   -H 'Content-Type: application/json' \
-  -H 'X-Agent-Id: ext-61fcf518' \
+  -H 'X-Agent-Id: ext-demo-agent' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
