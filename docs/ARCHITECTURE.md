@@ -91,10 +91,9 @@ flowchart LR
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
 | `src/missions.js` | mission workspace, charter, free team selection, recommendation cards, per-task executors, groups/DMs, files/OCR, approvals, AI discussion/run, usage eval |
 | `src/update.js` | tools panel, automatic/manual update, confirmation, progress, restart detection, rollback |
-| `src/shell.js` | left function drawer, floating group/DM chat, settings center, QQ/WeChat window capture UI |
+| `src/shell.js` | pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat styles |
 | `missions.py` | mission plan, recommendation scoring, brand logos, estimates, preferred-executor assignment, no-idle coverage, chat, artifact metadata, report/approval rules, usage evaluation |
 | `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |
-| `window_list.swift` | macOS visible QQ/WeChat window discovery for the capture flow |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
 | `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files and updates |
 | `trace.css` / `hiring.css` / `external.css` / `update.css` / `missions.css` / `features.css` | feature-specific styling |
@@ -112,7 +111,7 @@ flowchart LR
 9. Every task carries estimates and actual usage (minutes, model duration, tokens); AI discussion and AI run usage is stored on the mission and report messages, and `mission_evaluation()` aggregates it for the Eval tab.
 10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Users can appoint an external agent to a mission role and choose a built-in/custom avatar through `PATCH /agents/<id>`; mission members and external API responses expose the same fields.
 11. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
-12. The function drawer opens group/DM popups through the mission conversation API, or the settings/capture modals. The capture helper lists only visible QQ/WeChat windows; OCR text is returned without uploading the screenshot anywhere.
+12. The pinned function bar opens group/DM popups through the mission conversation API, and the settings modal switches QQ/WeChat chat styles.
 13. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence

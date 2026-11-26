@@ -312,14 +312,6 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 
-    def test_chat_capture_window_validation(self):
-        status, data = self.request("/chat-capture/windows", timeout=30)
-        self.assertEqual(status, 200)
-        self.assertIsInstance(data.get("windows"), list)
-        status, data = self.request("/chat-capture/window", "POST", {"windowId": 999999}, timeout=30)
-        self.assertEqual(status, 400)
-        self.assertEqual(data.get("code"), "bad_window")
-
     def test_external_agent_role_and_avatar(self):
         status, meta = self.request("/agents")
         self.assertEqual(status, 200)

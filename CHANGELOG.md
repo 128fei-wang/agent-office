@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.1] - 2026-11-26
+
+### Changed
+- Pinned the six core actions at the top of the TEAM panel in three groups; the full drawer remains available from ☰.
+- Reworked the group/DM popup to follow a QQ/WeChat chat-window reference: header avatar/title, message bubbles, composer, and a style switch.
+- Replaced the previous QQ/WeChat screen-capture feature with QQ and WeChat **chat-window styles**. No screen capture or screenshot OCR is part of this flow.
+- Added Agent / QQ / WeChat style buttons to the left bar, the chat header, and the settings center.
+- Removed the window-capture helper, bridge endpoints and related docs.
+
+### Fixed
+- The deployed Pages artifact now includes `features.css`.
+
 ## [1.8.0] - 2026-11-26
 
 ### Added

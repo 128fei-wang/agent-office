@@ -385,7 +385,6 @@
   if (params.get("features") === "1" && featureShell) featureShell.drawer.open();
   if (params.get("chat") === "group" && featureShell) featureShell.chat.openGroupPicker();
   if (params.get("chat") === "direct" && featureShell) featureShell.chat.openDirectPicker();
-  if (params.get("capture") === "1" && featureShell) featureShell.capture.open();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {
     renderer.traceLab.open();
     if (params.get("trace") === "evals") renderer.traceLab.setTab("evals");

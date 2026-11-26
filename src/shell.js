@@ -44,7 +44,6 @@
       this.messages = [];
       this.timer = null;
       this.view = "closed";
-      this.onCapture = null;
       this.bind();
     }
 
@@ -125,8 +124,11 @@
           self.ensureDirect(agent.getAttribute("data-chat-agent"));
           return;
         }
-        if (event.target.closest("[data-chat-capture]")) {
-          if (self.onCapture) self.onCapture();
+        if (event.target.closest("[data-chat-style-toggle]")) {
+          const current = readChatStyle();
+          const next = current === "agent" ? "qq" : current === "qq" ? "wechat" : "agent";
+          writeChatStyle(next);
+          self.toast("聊天窗口风格 · " + next.toUpperCase());
           return;
         }
       });
@@ -144,7 +146,11 @@
       document.addEventListener(CHAT_STYLE_EVENT, function () {
         if (self.active && self.root && !self.root.hidden) {
           const win = self.root.querySelector(".chat-window");
-          if (win) win.className = "chat-window style-" + readChatStyle();
+          if (win) {
+            win.className = "chat-window style-" + readChatStyle();
+            const label = win.querySelector(".chat-style-label");
+            if (label) label.textContent = readChatStyle().toUpperCase();
+          }
         }
       });
       document.addEventListener("keydown", function (event) {
@@ -317,10 +323,11 @@
       this.setView('<div class="chat-hub-backdrop chat-window-backdrop" data-chat-close></div>' +
         '<section class="chat-window style-' + esc(readChatStyle()) + '">' +
         '<header class="chat-window-head"><div class="chat-window-id"><span class="chat-window-avatar">' +
-        (c.kind === "direct" ? esc(initials(member.titleZh || member.name)) : "#") +
+        (c.kind === "direct" ? esc(initials(member.titleZh || member.name)) : "群") +
         '</span><div><b>' + esc(title) + '</b><span>' +
         (c.kind === "direct" ? esc(member.roleLabelZh || "DIRECT") : (c.members || []).length + " MEMBERS") +
-        '</span></div></div><div class="chat-window-tools"><button type="button" data-chat-capture title="采集 QQ / 微信窗口">◉</button>' +
+        ' · <em class="chat-style-label">' + esc(readChatStyle().toUpperCase()) + '</em>' +
+        '</span></div></div><div class="chat-window-tools"><button type="button" data-chat-style-toggle title="切换 QQ / 微信聊天窗口风格">风</button>' +
         '<button type="button" data-chat-close title="关闭">×</button></div></header>' +
         '<div class="chat-window-messages" id="chatWindowMessages"></div>' +
         '<form class="chat-window-composer" id="chatSendForm"><textarea rows="1" maxlength="4000" placeholder="' +
@@ -406,7 +413,10 @@
       this.root = document.getElementById("featureDrawer");
       this.backdrop = document.getElementById("featureDrawerBackdrop");
       this.btn = document.getElementById("featureBtn");
+      this.quick = document.getElementById("featureQuickBar");
+      this.styleButtons = document.getElementById("featureStyleButtons");
       this.bind();
+      this.syncStyle();
     }
 
     open() {
@@ -427,6 +437,19 @@
       const self = this;
       if (this.btn) this.btn.addEventListener("click", function () { self.open(); });
       if (this.backdrop) this.backdrop.addEventListener("click", function () { self.close(); });
+      if (this.quick) this.quick.addEventListener("click", function (event) {
+        const action = event.target.closest("[data-feature-action]");
+        if (action) { self.run(action.getAttribute("data-feature-action")); return; }
+        const style = event.target.closest("[data-chat-style]");
+        if (style) {
+          writeChatStyle(style.getAttribute("data-chat-style"));
+          self.syncStyle();
+          if (self.renderer && self.renderer.toast) {
+            self.renderer.toast("聊天窗口风格 · " + style.getAttribute("data-chat-style").toUpperCase());
+          }
+        }
+      });
+      document.addEventListener(CHAT_STYLE_EVENT, function () { self.syncStyle(); });
       if (!this.root) return;
       this.root.addEventListener("click", function (event) {
         if (event.target.closest("[data-feature-close]")) { self.close(); return; }
@@ -435,6 +458,14 @@
       });
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") self.close();
+      });
+    }
+
+    syncStyle() {
+      if (!this.styleButtons) return;
+      const active = readChatStyle();
+      this.styleButtons.querySelectorAll("[data-chat-style]").forEach(function (button) {
+        button.classList.toggle("active", button.getAttribute("data-chat-style") === active);
       });
     }
 
@@ -476,10 +507,6 @@
         this.close();
         if (chat) chat.openDirectPicker();
         return;
-      }
-      if (action === "capture") {
-        this.close();
-        if (this.shell) this.shell.capture.open();
       }
     }
   }
@@ -557,174 +584,11 @@
     }
   }
 
-  class ChatCapture {
-    constructor(renderer, chat) {
-      this.renderer = renderer;
-      this.chat = chat;
-      this.root = document.getElementById("featureModalRoot");
-      this.text = "";
-      this.bind();
-    }
-
-    bridge() {
-      return this.chat ? this.chat.bridge() : "";
-    }
-
-    toast(text) {
-      if (this.renderer && this.renderer.toast) this.renderer.toast(text);
-    }
-
-    open() {
-      if (!this.root) return;
-      this.text = "";
-      this.root.hidden = false;
-      this.root.innerHTML = '<div class="feature-modal-backdrop" data-capture-close></div>' +
-        '<section class="feature-capture"><header><div><span>CHAT CAPTURE</span><h2>' +
-        esc(AO.t("captureTitle")) + '</h2></div><button type="button" data-capture-close>×</button></header>' +
-        '<div class="capture-toolbar"><button type="button" class="capture-scan" data-capture-scan>◉ ' +
-        esc(AO.t("captureScan")) + '</button><button type="button" class="capture-upload" data-capture-upload>＋ ' +
-        esc(AO.t("captureUpload")) + '</button></div>' +
-        '<p class="capture-hint">' + esc(AO.t("captureHint")) + '</p>' +
-        '<div class="capture-windows" id="captureWindows"><div class="capture-empty">' +
-        esc(AO.t("captureNoWindows")) + '</div></div>' +
-        '<label class="capture-result-label">' + esc(AO.t("captureText")) + '</label>' +
-        '<pre class="capture-result" id="captureResult">' + esc(AO.t("captureEmpty")) + '</pre>' +
-        '<p class="capture-permission">' + esc(AO.t("capturePermission")) + '</p>' +
-        '<footer><button type="button" class="chat-secondary" data-capture-copy>' + esc(AO.t("captureCopy")) +
-        '</button><button type="button" class="chat-primary" data-capture-send>' + esc(AO.t("captureSend")) +
-        '</button></footer><input type="file" accept="image/*" data-capture-file hidden /></section>';
-    }
-
-    close() {
-      if (!this.root) return;
-      this.root.hidden = true;
-      this.root.innerHTML = "";
-    }
-
-    bind() {
-      if (!this.root) return;
-      const self = this;
-      this.root.addEventListener("click", function (event) {
-        if (event.target.closest("[data-capture-close]")) { self.close(); return; }
-        if (event.target.closest("[data-capture-scan]")) { self.scan(); return; }
-        if (event.target.closest("[data-capture-upload]")) {
-          const input = self.root.querySelector("[data-capture-file]");
-          if (input) input.click();
-          return;
-        }
-        if (event.target.closest("[data-capture-copy]")) {
-          if (self.text) {
-            navigator.clipboard.writeText(self.text).then(function () {
-              self.toast("已复制");
-            }).catch(function () { self.toast("复制失败"); });
-          }
-          return;
-        }
-        if (event.target.closest("[data-capture-send]")) {
-          if (!self.text) { self.toast("还没有识别结果"); return; }
-          if (!self.chat || !self.chat.active) { self.toast("请先打开群聊或单聊"); return; }
-          self.chat.sendText(self.text).then(function (ok) {
-            if (ok) { self.close(); self.toast("已发送到当前聊天"); }
-          });
-          return;
-        }
-        const win = event.target.closest("[data-capture-window]");
-        if (win) self.captureWindow(win.getAttribute("data-capture-window"));
-      });
-      this.root.addEventListener("change", function (event) {
-        if (event.target.matches("[data-capture-file]")) {
-          const file = event.target.files && event.target.files[0];
-          if (file) self.upload(file);
-        }
-      });
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && self.root && !self.root.hidden) self.close();
-      });
-    }
-
-    setResult(text) {
-      this.text = text || "";
-      const out = this.root && this.root.querySelector("#captureResult");
-      if (out) out.textContent = this.text || AO.t("captureEmpty");
-    }
-
-    async scan() {
-      const box = this.root && this.root.querySelector("#captureWindows");
-      if (box) box.innerHTML = '<div class="capture-empty">' + esc(AO.t("captureLoading")) + '</div>';
-      try {
-        const res = await fetch(this.bridge() + "/chat-capture/windows", { cache: "no-store" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "scan failed");
-        const windows = data.windows || [];
-        if (box) {
-          box.innerHTML = windows.length ? windows.map((w) =>
-            '<button type="button" class="capture-window" data-capture-window="' + esc(w.id) + '">' +
-            '<b>' + esc(w.app || "QQ / WeChat") + '</b><span>' + esc(w.title || "聊天窗口") +
-            '</span><em>#' + esc(w.id) + '</em></button>').join("") :
-            '<div class="capture-empty">' + esc(AO.t("captureNoWindows")) + '</div>';
-        }
-      } catch (err) {
-        if (box) box.innerHTML = '<div class="capture-empty error">' + esc(AO.t("captureNoWindows")) + '</div>';
-      }
-    }
-
-    async captureWindow(id) {
-      const box = this.root && this.root.querySelector("#captureResult");
-      if (box) box.textContent = AO.t("captureLoading");
-      try {
-        const res = await fetch(this.bridge() + "/chat-capture/window", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ windowId: Number(id) })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "capture failed");
-        this.setResult(data.text || "");
-        if (!data.text) this.toast("窗口已采集，但没有识别到文字");
-      } catch (err) {
-        this.setResult("");
-        this.toast("采集失败 · 请授予屏幕录制权限或上传截图");
-      }
-    }
-
-    async upload(file) {
-      const box = this.root && this.root.querySelector("#captureResult");
-      if (box) box.textContent = AO.t("captureLoading");
-      try {
-        const headers = {
-          "X-Filename": file.name || "chat.png",
-          "X-Mime": file.type || "image/png",
-          "X-Uploaded-By": "boss"
-        };
-        if (this.chat && this.chat.active) {
-          headers["X-Conversation-Id"] = this.chat.active.id;
-          if (this.chat.active.missionId) headers["X-Mission-Id"] = this.chat.active.missionId;
-        }
-        const upload = await fetch(this.bridge() + "/files", { method: "POST", headers, body: file });
-        const artifact = await upload.json();
-        if (!upload.ok) throw new Error(artifact.error || "upload failed");
-        const vision = await fetch(this.bridge() + "/files/" + encodeURIComponent(artifact.artifact.id) + "/vision", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}"
-        });
-        const result = await vision.json();
-        if (!vision.ok) throw new Error(result.error || "vision failed");
-        this.setResult((result.artifact && result.artifact.extractedText) || "");
-      } catch (err) {
-        this.setResult("");
-        this.toast("截图识别失败 · 检查 OCR / 视觉服务");
-      }
-    }
-  }
-
   class FeatureShell {
     constructor(renderer, deps) {
       this.chat = new ChatHub(renderer);
       this.settings = new SettingsCenter(renderer);
-      this.capture = new ChatCapture(renderer, this.chat);
       this.drawer = new FeatureDrawer(renderer, deps, this);
-      this.chat.onCapture = () => this.capture.open();
     }
   }
 
