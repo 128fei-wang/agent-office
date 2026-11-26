@@ -64,6 +64,11 @@
       this.aiLoading = false;
       this.aiError = "";
       this.aiNotice = "";
+      this.mcp = null;
+      this.mcpLoading = false;
+      this.mcpError = "";
+      this.mcpNotice = "";
+      this.mcpAgentId = "";
       this.params = new URLSearchParams(window.location.search);
       this.noReload = this.params.get("noUpdateReload") === "1" ||
         window.__AO_NO_UPDATE_RELOAD__ === true;
@@ -88,6 +93,15 @@
         this.root.addEventListener("click", function (event) {
           if (event.target.closest("[data-update-close]")) {
             self.close();
+            return;
+          }
+          const mcpButton = event.target.closest("[data-mcp-action]");
+          if (mcpButton) {
+            const mcpAction = mcpButton.getAttribute("data-mcp-action");
+            if (mcpAction === "refresh") self.loadMCP(true);
+            else if (mcpAction === "create") self.createMcpAgent();
+            else if (mcpAction === "copy") self.copyMcpConfig();
+            else if (mcpAction === "test") self.testMCP();
             return;
           }
           const aiButton = event.target.closest("[data-ai-action]");
@@ -117,6 +131,11 @@
           else if (action === "reload") { window.location.reload(); }
         });
         this.root.addEventListener("change", function (event) {
+          if (event.target && event.target.id === "mcpAgentSelect") {
+            self.mcpAgentId = event.target.value;
+            self.render();
+            return;
+          }
           if (!event.target || event.target.id !== "updateFile") return;
           const file = event.target.files && event.target.files[0];
           self.manualFile = file || null;
@@ -169,6 +188,7 @@
       document.body.classList.add("update-open");
       this.render();
       this.loadAI();
+      this.loadMCP();
       if (!this.data || Date.now() - this.checkedAt > 5 * 60 * 1000) {
         this.check(false, false);
       } else if (this.job && (this.job.status === "running" || this.job.status === "restarting")) {
@@ -463,6 +483,138 @@
       await this.loadAI(true);
     }
 
+    async loadMCP(force) {
+      if (this.mcpLoading) return;
+      this.mcpLoading = true;
+      this.mcpError = "";
+      if (this.isOpen && force) this.render();
+      try {
+        const data = await this.fetchJson("/agents", { timeout: 8000 });
+        const agents = (data.agents || []).filter((agent) => agent.source === "external");
+        if (!agents.some((agent) => agent.id === this.mcpAgentId)) {
+          this.mcpAgentId = agents.length ? agents[0].id : "";
+        }
+        this.mcp = { agents: agents, endpoint: this.bridge() + "/mcp" };
+      } catch (err) {
+        this.mcpError = this.errorText(err);
+      } finally {
+        this.mcpLoading = false;
+        if (this.isOpen) this.render();
+      }
+    }
+
+    mcpConfig() {
+      return JSON.stringify({
+        mcpServers: {
+          "agent-office": {
+            type: "http",
+            url: (this.mcp && this.mcp.endpoint) || (this.bridge() + "/mcp"),
+            headers: { "X-Agent-Id": this.mcpAgentId || "ext-mcp-agent" }
+          }
+        }
+      }, null, 2);
+    }
+
+    async createMcpAgent() {
+      if (this.mcpLoading) return;
+      this.mcpLoading = true;
+      this.mcpError = "";
+      try {
+        const id = "ext-mcp-" + Math.random().toString(16).slice(2, 10);
+        const data = await this.fetchJson("/agents", {
+          method: "POST",
+          body: {
+            id: id,
+            name: "MCP Agent",
+            runtime: "mcp",
+            skills: ["mcp", "tasks", "chat", "report"],
+            role: "operator",
+            avatar: "bot",
+            note: "通过 MCP 接入 Agent Office"
+          }
+        });
+        this.mcpAgentId = (data.agent && data.agent.id) || id;
+        this.mcpNotice = this.t("mcpCreated");
+        await this.loadMCP();
+      } catch (err) {
+        this.mcpError = this.errorText(err);
+        this.render();
+      } finally {
+        this.mcpLoading = false;
+      }
+    }
+
+    async copyMcpConfig() {
+      const text = this.mcpConfig();
+      try {
+        await navigator.clipboard.writeText(text);
+        this.mcpNotice = this.t("mcpConfigCopied");
+      } catch (err) {
+        this.mcpNotice = text;
+      }
+      this.render();
+    }
+
+    async testMCP() {
+      if (this.mcpLoading) return;
+      this.mcpLoading = true;
+      this.mcpNotice = this.t("mcpTesting");
+      this.render();
+      try {
+        const init = await this.fetchJson("/mcp", {
+          method: "POST",
+          headers: { "X-Agent-Id": this.mcpAgentId || "" },
+          body: {
+            jsonrpc: "2.0", id: 1, method: "initialize",
+            params: { protocolVersion: "2025-06-18", capabilities: {},
+                      clientInfo: { name: "agent-office-tools", version: "1" } }
+          },
+          timeout: 10000
+        });
+        const tools = await this.fetchJson("/mcp", {
+          method: "POST",
+          headers: { "X-Agent-Id": this.mcpAgentId || "" },
+          body: { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+          timeout: 10000
+        });
+        const count = (tools.result && tools.result.tools && tools.result.tools.length) || 0;
+        this.mcpNotice = this.t("mcpTestOk", { tools: count });
+      } catch (err) {
+        this.mcpNotice = this.t("mcpTestFailed") + " " + this.errorText(err);
+      } finally {
+        this.mcpLoading = false;
+        this.render();
+      }
+    }
+
+    mcpBlock() {
+      if (!this.mcp && !this.mcpLoading && !this.mcpError) return "";
+      const agents = (this.mcp && this.mcp.agents) || [];
+      const endpoint = (this.mcp && this.mcp.endpoint) || (this.bridge() + "/mcp");
+      const options = agents.map((agent) =>
+        '<option value="' + esc(agent.id) + '"' + (agent.id === this.mcpAgentId ? " selected" : "") + '>' +
+        esc(agent.name || agent.id) + ' · ' + esc(agent.roleLabelZh || agent.role || "external") + '</option>').join("");
+      return '<div class="update-section update-mcp">' +
+        '<div class="update-ai-head"><div><span>MCP DEPLOY</span><h3>' + esc(this.t("mcpTitle")) + '</h3></div>' +
+        '<b class="ai-status ' + (agents.length ? "ok" : "off") + '">' + esc(agents.length ? this.t("mcpReady") : this.t("mcpNoAgent")) + '</b></div>' +
+        '<p class="update-hint">' + esc(this.t("mcpHint")) + '</p>' +
+        (this.mcpError ? '<div class="update-result bad"><b>' + esc(this.t("mcpLoadError")) +
+          '</b><p>' + esc(this.mcpError) + '</p></div>' : "") +
+        (this.mcpLoading ? '<div class="update-loading small"><div class="update-spinner"></div><span>' +
+          esc(this.t("mcpLoading")) + '</span></div>' : "") +
+        '<div class="mcp-endpoint"><span>ENDPOINT</span><code>' + esc(endpoint) + '</code></div>' +
+        '<div class="mcp-row"><label>' + esc(this.t("mcpAgent")) + '<select id="mcpAgentSelect">' +
+        (options || '<option value="">—</option>') + '</select></label>' +
+        '<button type="button" class="update-mini" data-mcp-action="create">＋ ' + esc(this.t("mcpCreateAgent")) + '</button></div>' +
+        '<pre class="mcp-config">' + esc(this.mcpConfig()) + '</pre>' +
+        '<p class="update-hint">' + esc(this.t("mcpTools")) + '</p>' +
+        (this.mcpNotice ? '<p class="update-hint ai-notice">' + esc(this.mcpNotice) + '</p>' : "") +
+        '<div class="update-actions"><button type="button" class="btn" data-mcp-action="refresh">' +
+        esc(this.t("mcpRefresh")) + '</button><button type="button" class="btn ghost" data-mcp-action="copy">' +
+        esc(this.t("mcpCopy")) + '</button><button type="button" class="btn ghost" data-mcp-action="test">' +
+        esc(this.t("mcpTest")) + '</button></div></div>';
+    }
+
     aiBlock() {
       if (!this.ai && !this.aiLoading && !this.aiError) return "";
       const ai = this.ai || { providers: [], available: false, provider: "" };
@@ -603,6 +755,7 @@
       }
       if (job) body += this.jobBlock();
       if (!busy && !this.confirm) body += this.aiBlock();
+      if (!busy && !this.confirm) body += this.mcpBlock();
       if (!busy && !this.confirm) body += this.manualBlock();
       if (!busy) body += this.toolsBlock();
       if (this.confirm) body += this.confirmBlock();

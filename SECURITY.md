@@ -23,6 +23,7 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - One-time pairing codes are single-use and expire after 30 minutes, but they are not a substitute for authentication. Do not post them publicly.
 - The frontend never receives an LLM provider API key. Real agent credentials belong in the external agent process or a local bridge, not in browser code.
 - Tools → AI model settings reports provider metadata and test results only. It never accepts or stores an API key in the frontend; keys remain in the bridge environment or `~/.agent-office/providers.json`.
+- The MCP endpoint (`POST /mcp`) is localhost-only and has no separate authentication. It uses `X-Agent-Id` as an identity selector, not as a secret. Do not expose it publicly; run it only on a trusted machine. MCP tools can read assigned tasks, submit reports and send messages for that agent identity.
 - External agent endpoints and notes are stored as metadata; the current bridge does not call those endpoints.
 - Self-update is user-initiated only. Automatic update reads the latest release from the official GitHub repository over TLS; there is no separate signature beyond TLS and the GitHub release pipeline. A compromised upstream release account is therefore a trust boundary.
 - Manual update accepts a user-supplied `.tar.gz`/`.tgz`/`.zip`/`.tar` archive. The user is responsible for its source; use the official release page. Validation reduces archive attacks but is not a code signature.

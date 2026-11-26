@@ -76,51 +76,24 @@
     </header>
 
     <main class="layout">
+      <nav class="feature-rail" id="featureRail" aria-label="功能导航">
+        <button type="button" class="rail-brand" data-rail-section="all" title="全部功能" aria-label="全部功能">▦</button>
+        <div class="rail-groups">
+          <button type="button" data-rail-section="people" title="人脉"><b>＋</b><span>人脉</span></button>
+          <button type="button" data-rail-section="create" title="创建"><b>▦</b><span>创建</span></button>
+          <button type="button" data-rail-section="settings" title="设置中心"><b>⚙</b><span>设置</span></button>
+          <button type="button" data-rail-section="chat" title="沟通"><b>#</b><span>消息</span></button>
+        </div>
+        <button type="button" class="rail-all" data-rail-section="all" title="全部功能" aria-label="全部功能">☰</button>
+      </nav>
       <aside class="panel team-panel">
         <div class="panel-head">
           <div>
             <h2>TEAM</h2>
             <p id="teamSub">6 本地 · 2 热桌</p>
           </div>
-          <div class="panel-head-actions">
-            <span class="live-dot" title="模拟运行中"></span>
-            <button type="button" class="feature-trigger compact" id="featureBtn" title="全部功能" aria-label="全部功能">☰</button>
-          </div>
+          <span class="live-dot" title="模拟运行中"></span>
         </div>
-        <section class="feature-fold" id="featureFold">
-          <button type="button" class="feature-fold-head" id="featureFoldToggle" aria-expanded="true" aria-controls="featureQuickBar">
-            <span class="feature-fold-mark">▦</span>
-            <span class="feature-fold-copy"><b data-i18n="featureMenu">功能与消息</b><em data-i18n="featureFoldSummary">人脉 · 创建 · 设置 · 沟通</em></span>
-            <span class="feature-fold-chevron">⌃</span>
-          </button>
-          <div class="feature-fold-body" id="featureQuickBar">
-            <div class="feature-quick-groups">
-              <div class="feature-quick-group">
-                <span data-i18n="featurePeople">人脉</span>
-                <button type="button" data-feature-action="hire" title="添加好友 / 本地 Agent"><b>＋</b><em data-i18n="featureShortFriend">好友</em></button>
-                <button type="button" data-feature-action="external" title="添加外部 Agent"><b>⇢</b><em data-i18n="featureShortExternal">外部</em></button>
-              </div>
-              <div class="feature-quick-group">
-                <span data-i18n="featureCreate">创建</span>
-                <button type="button" data-feature-action="group" title="创建群组"><b>＋</b><em data-i18n="featureShortGroup">群组</em></button>
-                <button type="button" data-feature-action="mission" title="任务管理 · 创建任务"><b>▦</b><em data-i18n="featureShortTask">任务</em></button>
-              </div>
-              <div class="feature-quick-group">
-                <span data-i18n="featureSettings">设置</span>
-                <button type="button" data-feature-action="tools" title="工具 / 升级 / AI 设置"><b>⚙</b><em data-i18n="featureShortTools">工具</em></button>
-                <button type="button" data-feature-action="settings" title="设置中心"><b>☷</b><em data-i18n="featureShortSettings">设置</em></button>
-              </div>
-            </div>
-            <div class="feature-style-row">
-              <span data-i18n="settingsChatStyle">聊天窗口风格</span>
-              <div class="feature-style-buttons" id="featureStyleButtons">
-                <button type="button" data-chat-style="agent" title="Agent 默认聊天窗口风格">Agent</button>
-                <button type="button" data-chat-style="qq" title="QQ 紧凑聊天窗口风格">QQ</button>
-                <button type="button" data-chat-style="wechat" title="微信聊天窗口风格">微信</button>
-              </div>
-            </div>
-          </div>
-        </section>
         <div class="team-list" id="teamList"></div>
         <div class="team-foot">
           <div class="foot-row"><span data-i18n="teamMorale">团队士气</span><b id="teamMorale">—</b></div>
@@ -220,6 +193,7 @@
     </main>
   </div>
 
+  <div class="rail-flyout" id="railFlyout" hidden></div>
   <div class="feature-drawer-backdrop" id="featureDrawerBackdrop" hidden></div>
   <aside class="feature-drawer" id="featureDrawer" hidden aria-hidden="true" role="dialog" aria-label="功能与消息">
     <header class="feature-drawer-head">

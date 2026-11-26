@@ -327,6 +327,8 @@ GET    /files/<id>/raw
 POST   /files/<id>/vision
 
 GET    /missions/stream?since=N
+
+POST   /mcp                 # local MCP JSON-RPC (X-Agent-Id identity)
 ```
 
 ### External worker protocol

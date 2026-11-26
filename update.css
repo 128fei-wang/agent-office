@@ -476,6 +476,25 @@ html[data-theme="day"] .ai-config-box pre { background: #fffaf2; border-color: #
 html[data-theme="day"] .ai-provider-row b { color: #2f4049; }
 html[data-theme="day"] .ai-config-box > b { color: #2f4049; }
 
+
+.update-mcp {
+  padding: 11px;
+  border: 1px solid rgba(181, 140, 255, 0.24);
+  border-radius: 6px;
+  background: rgba(181, 140, 255, 0.035);
+}
+.mcp-endpoint { display: flex; align-items: center; gap: 6px; margin: 8px 0 6px; padding: 5px 6px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); }
+.mcp-endpoint span { color: var(--muted-2); font-family: var(--mono); font-size: 5.8px; }
+.mcp-endpoint code { min-width: 0; overflow: auto; color: var(--cyan); font-family: var(--mono); font-size: 6.4px; white-space: nowrap; }
+.mcp-row { display: flex; align-items: flex-end; gap: 6px; margin: 6px 0; }
+.mcp-row label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; color: var(--muted-2); font-size: 6.5px; }
+.mcp-row select { width: 100%; height: 26px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 7px; }
+.mcp-config { max-height: 105px; margin: 5px 0; padding: 6px; overflow: auto; border-radius: 3px; background: var(--panel-3); color: var(--muted); font-family: var(--mono); font-size: 6.1px; line-height: 1.45; white-space: pre-wrap; }
+html[data-theme="day"] .update-mcp { background: #f8f1e5; border-color: #d8c8b4; }
+html[data-theme="day"] .mcp-endpoint,
+html[data-theme="day"] .mcp-config,
+html[data-theme="day"] .mcp-row select { background: #fffaf2; border-color: #e0d2c0; color: #2f4049; }
+
 @media (max-width: 620px) {
   .update-modal { padding: 0; }
   .update-card {

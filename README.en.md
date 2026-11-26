@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a pinned left function bar, floating group/DM chat with QQ/WeChat styles, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, floating group/DM chat with QQ/WeChat styles, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -63,10 +63,10 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
-| **Pinned function bar** | **Group / DM chat popup** |
-| ![Function bar](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
-| **AI settings in Tools** | **Pinned function bar** |
-| ![AI settings](docs/screenshots/ai-tools.jpg) | ![Function bar](docs/screenshots/feature-drawer.jpg) |
+| **Function navigation rail** | **Group / DM chat popup** |
+| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **AI settings in Tools** | **MCP deployment** |
+| ![AI settings](docs/screenshots/ai-tools.jpg) | ![MCP deployment](docs/screenshots/mcp-tools.jpg) |
 
 ## Traceability and audit
 
@@ -377,6 +377,27 @@ Open **TOOLS** in the top bar and use the **AI model service** section to see:
 
 API keys stay in `~/.agent-office/providers.json` or bridge environment variables; they never enter the frontend, task records or exports. Save the file and click **Refresh model status**. Once configured, Mission Control's **AI settings** action opens the Tools panel directly.
 
+## MCP deployment
+
+The Tools panel now includes **MCP deployment**, exposing Agent Office as a local MCP service:
+
+1. Open **TOOLS → MCP deployment**.
+2. Choose an existing external agent or click **Create MCP agent**.
+3. Copy the generated MCP client configuration into Claude Code, Codex or another MCP-capable client.
+4. Click **Test MCP** to verify initialize / tools/list and the tool count.
+
+The endpoint is `http://127.0.0.1:8787/mcp`; `X-Agent-Id` binds the MCP client to a specific agent identity. The server exposes:
+
+- `agent_office_status`
+- `agent_office_list_agents`
+- `agent_office_list_tasks`
+- `agent_office_get_task`
+- `agent_office_report_task`
+- `agent_office_send_message`
+- `agent_office_list_conversations`
+
+MCP is an additional connection method alongside pairing codes and model APIs. The bridge stays localhost-only.
+
 ## Tools & self-update
 
 - Click **TOOLS** in the top bar, press `U`, or open `?update=1`.
@@ -486,9 +507,9 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
 - `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
-- `dev-features.html` — pinned left function bar, the three groups/six actions, add friend/external-agent entry points, group and direct chat popups, settings center, and the QQ/WeChat chat-style switch.
+- `dev-features.html` — left navigation rail, six actions, add friend/external-agent entry points, group and direct chat popups, settings center, AI settings and MCP deployment.
 
-Run the 21 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
+Run the 22 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v

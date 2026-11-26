@@ -312,6 +312,41 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 
+    def test_mcp_server_protocol(self):
+        status, init = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                       "clientInfo": {"name": "test", "version": "1"}},
+        })
+        self.assertEqual(status, 200, init)
+        self.assertEqual(init["result"]["serverInfo"]["name"], "agent-office")
+        status, tools = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {},
+        })
+        self.assertEqual(status, 200, tools)
+        self.assertGreaterEqual(len(tools["result"]["tools"]), 5)
+        self.assertIn("agent_office_list_tasks",
+                      [tool["name"] for tool in tools["result"]["tools"]])
+
+        self.request("/agents", "POST", {
+            "id": "ext-mcp-test", "name": "MCP Test", "runtime": "mcp",
+            "skills": ["mcp"], "role": "operator",
+        })
+        status, result = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "agent_office_list_tasks", "arguments": {}},
+        }, headers={"X-Agent-Id": "ext-mcp-test"})
+        self.assertEqual(status, 200, result)
+        self.assertFalse(result["result"]["isError"])
+        self.assertIn("tasks", result["result"]["content"][0]["text"])
+        status, bad = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {"name": "agent_office_list_tasks", "arguments": {}},
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(bad["result"]["isError"])
+        self.request("/agents/ext-mcp-test", "DELETE")
+
     def test_external_agent_role_and_avatar(self):
         status, meta = self.request("/agents")
         self.assertEqual(status, 200)

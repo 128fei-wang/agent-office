@@ -90,12 +90,12 @@ flowchart LR
 | `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
 | `src/missions.js` | mission workspace, charter, free team selection, recommendation cards, per-task executors, groups/DMs, files/OCR, approvals, AI discussion/run, usage eval |
-| `src/update.js` | tools panel, AI model status/setup, automatic/manual update, confirmation, progress, restart detection, rollback |
+| `src/update.js` | tools panel, AI model status/setup, MCP deployment, automatic/manual update, confirmation, progress, restart detection, rollback |
 | `src/shell.js` | pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat styles |
 | `missions.py` | mission plan, recommendation scoring, brand logos, estimates, preferred-executor assignment, no-idle coverage, chat, artifact metadata, report/approval rules, usage evaluation |
 | `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
-| `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files and updates |
+| `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files, updates and MCP JSON-RPC |
 | `trace.css` / `hiring.css` / `external.css` / `update.css` / `missions.css` / `features.css` | feature-specific styling |
 
 ## Data flow
@@ -112,7 +112,8 @@ flowchart LR
 10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Users can appoint an external agent to a mission role and choose a built-in/custom avatar through `PATCH /agents/<id>`; mission members and external API responses expose the same fields.
 11. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
 12. The pinned function bar opens group/DM popups through the mission conversation API, and the settings modal switches QQ/WeChat chat styles.
-13. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
+13. `POST /mcp` exposes a stateless MCP tools server: initialize, tools/list and seven task/chat tools. `X-Agent-Id` selects the acting external agent.
+14. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence
 

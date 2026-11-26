@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.0] - 2026-11-26
+
+### Added
+- **MCP deployment**: Tools can expose Agent Office at a local MCP endpoint (`POST /mcp`) and generate client configuration bound to a selected external agent. Includes initialize, tools/list, status, agent/task listing, task reports, chat messages and conversation listing.
+- **Left navigation rail**: replaced the cramped top function strip with a clearer icon rail and click-out flyout groups for people, create, settings and chat.
+
+### Changed
+- Version bumped to 1.10.0.
+- MCP uses `X-Agent-Id` as identity (not authentication); the bridge remains localhost-only.
+- README, English README, Mission docs, architecture, security and browser self-checks cover MCP deployment and the rail layout.
+
 ## [1.9.1] - 2026-11-26
 
 ### Changed

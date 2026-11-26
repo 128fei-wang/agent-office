@@ -1126,6 +1126,176 @@ def run_mission_task(mission_id, task_id, preferred=""):
             "usage": usage}
 
 
+MCP_PROTOCOL_VERSION = "2025-06-18"
+
+MCP_TOOLS = [
+    {
+        "name": "agent_office_status",
+        "description": "Return Agent Office bridge status, agent count, missions and current MCP identity.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_list_agents",
+        "description": "List internal roles and connected external agents with roles, skills and online state.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_list_tasks",
+        "description": "List mission tasks assigned to the MCP agent.",
+        "inputSchema": {"type": "object", "properties": {
+            "status": {"type": "string", "description": "Optional task status filter"},
+        }, "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_get_task",
+        "description": "Get one mission task by id.",
+        "inputSchema": {"type": "object", "properties": {
+            "taskId": {"type": "string"},
+        }, "required": ["taskId"], "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_report_task",
+        "description": "Submit a structured task report as the MCP agent.",
+        "inputSchema": {"type": "object", "properties": {
+            "taskId": {"type": "string"},
+            "status": {"type": "string", "enum": ["review", "done", "blocked"]},
+            "report": {"type": "object"},
+            "usage": {"type": "object"},
+        }, "required": ["taskId", "report"], "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_send_message",
+        "description": "Send a chat message as the MCP agent to a conversation it belongs to.",
+        "inputSchema": {"type": "object", "properties": {
+            "conversationId": {"type": "string"},
+            "text": {"type": "string"},
+        }, "required": ["conversationId", "text"], "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_list_conversations",
+        "description": "List conversations visible to the MCP agent.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+]
+
+
+def mcp_identity(header_value="", query_value=""):
+    agent_id = str(header_value or query_value or "").strip()
+    agent = find_agent(agent_id) if agent_id else None
+    if agent_id and not agent:
+        raise ValueError("unknown MCP agent identity")
+    return agent_id, agent
+
+
+def mcp_text_result(payload, is_error=False):
+    return {
+        "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}],
+        "isError": bool(is_error),
+    }
+
+
+def mcp_tool_call(agent_id, agent, name, arguments):
+    args = arguments if isinstance(arguments, dict) else {}
+    if name == "agent_office_status":
+        return mcp_text_result({
+            "ok": True,
+            "version": app_version(),
+            "agents": len(STATE.get("agents", [])),
+            "missions": len(MISSION_STORE.data.get("missions", [])) if MISSION_STORE else 0,
+            "agentId": agent_id,
+            "agentName": (agent or {}).get("name", ""),
+        })
+    if name == "agent_office_list_agents":
+        return mcp_text_result({"agents": mission_agent_directory()})
+    if not agent_id:
+        return mcp_text_result({
+            "ok": False,
+            "error": "MCP identity is missing. Set the X-Agent-Id header or ?agentId= in the MCP URL.",
+        }, True)
+    if not MISSION_STORE:
+        return mcp_text_result({"ok": False, "error": "mission store is not available"}, True)
+    if name == "agent_office_list_tasks":
+        rows = MISSION_STORE.list_tasks_for_agent(agent_id)
+        status = str(args.get("status") or "").strip()
+        if status:
+            rows = [row for row in rows if row.get("status") == status]
+        return mcp_text_result({"tasks": rows})
+    if name == "agent_office_get_task":
+        task_id = str(args.get("taskId") or "").strip()
+        mission, task = MISSION_STORE.find_task(task_id)
+        if not task:
+            return mcp_text_result({"ok": False, "error": "task not found"}, True)
+        return mcp_text_result({
+            "task": MISSION_STORE.public_task(task, mission),
+            "mission": MISSION_STORE.public_mission(mission, summary=True),
+        })
+    if name == "agent_office_report_task":
+        task_id = str(args.get("taskId") or "").strip()
+        try:
+            with MISSION_STORE.lock:
+                task = MISSION_STORE.submit_task_report(task_id, {
+                    "report": args.get("report"),
+                    "usage": args.get("usage") or {},
+                }, actor=agent_id, status=str(args.get("status") or "review"))
+            return mcp_text_result({"ok": True, "task": task})
+        except missions.MissionError as exc:
+            return mcp_text_result({"ok": False, "error": str(exc), "code": exc.code}, True)
+    if name == "agent_office_send_message":
+        conversation_id = str(args.get("conversationId") or "").strip()
+        text = str(args.get("text") or "").strip()
+        if not conversation_id or not text:
+            return mcp_text_result({"ok": False, "error": "conversationId and text are required"}, True)
+        try:
+            with MISSION_STORE.lock:
+                message = MISSION_STORE.post_message(conversation_id, {
+                    "senderId": agent_id, "senderType": "agent", "type": "text", "text": text,
+                })
+            return mcp_text_result({"ok": True, "message": message})
+        except missions.MissionError as exc:
+            return mcp_text_result({"ok": False, "error": str(exc), "code": exc.code}, True)
+    if name == "agent_office_list_conversations":
+        rows = [c for c in MISSION_STORE.list_conversations()
+                if any(m.get("id") == agent_id for m in c.get("members", []))]
+        return mcp_text_result({"conversations": rows})
+    return mcp_text_result({"ok": False, "error": "unknown tool: " + name}, True)
+
+
+def mcp_response(payload, header_value="", query_value=""):
+    if not isinstance(payload, dict):
+        return {"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32600, "message": "invalid request"}}
+    method = str(payload.get("method") or "")
+    request_id = payload.get("id")
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    if method.startswith("notifications/"):
+        return None
+    if method == "initialize":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "agent-office", "version": app_version()},
+        }}
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {}}
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": MCP_TOOLS}}
+    if method == "resources/list":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"resources": []}}
+    if method == "prompts/list":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"prompts": []}}
+    if method == "tools/call":
+        agent_id, agent = mcp_identity(header_value, query_value)
+        name = str(params.get("name") or "")
+        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        try:
+            result = mcp_tool_call(agent_id, agent, name, arguments)
+        except ValueError as exc:
+            result = mcp_text_result({"ok": False, "error": str(exc)}, True)
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+    return {"jsonrpc": "2.0", "id": request_id,
+            "error": {"code": -32601, "message": "method not found"}}
+
+
 def issue_update_tokens(latest_version: str) -> dict:
     now = time.time()
     apply_token = secrets.token_urlsafe(24)
@@ -1284,6 +1454,7 @@ def public_agent(agent: dict) -> dict:
     out["status"] = "online" if online(agent) else "offline"
     out["eventCount"] = sum(1 for e in STATE["events"] if e.get("agentId") == agent.get("id"))
     out.pop("lastSeenTs", None)
+    out["source"] = "external"
     if missions:
         role = _external_agent_role(out)
         out["role"] = role
@@ -2216,7 +2387,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header(
             "Access-Control-Allow-Headers",
             "Content-Type, X-Update-Token, X-Filename, X-Mime, X-Mission-Id, "
-            "X-Conversation-Id, X-Uploaded-By",
+            "X-Conversation-Id, X-Uploaded-By, X-Agent-Id",
         )
         self.send_header("Cache-Control", "no-store")
 
@@ -2788,6 +2959,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send_json({"artifact": MISSION_STORE.public_artifact(artifact)})
                 return
+            if path == "/mcp":
+                self.send_json({"jsonrpc": "2.0", "id": None, "error": {
+                    "code": -32000, "message": "Use POST /mcp for Streamable HTTP MCP"}}, 405)
+                return
         with LOCK:
             if path == "/health":
                 self.send_json({
@@ -2900,7 +3075,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -2920,6 +3095,27 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
         except Exception as exc:
             self.send_json({"error": str(exc)}, 400)
+            return
+        if path == "/mcp":
+            query = parse_qs(parsed.query)
+            try:
+                result = mcp_response(
+                    body,
+                    self.headers.get("X-Agent-Id") or "",
+                    (query.get("agentId") or [""])[0],
+                )
+            except ValueError as exc:
+                self.send_json({
+                    "jsonrpc": "2.0", "id": body.get("id") if isinstance(body, dict) else None,
+                    "error": {"code": -32602, "message": str(exc)},
+                }, 400)
+                return
+            if result is None:
+                self.send_response(202)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_json(result)
             return
         if path.startswith(("/missions", "/conversations", "/approvals", "/files/")):
             self.handle_mission_action(path, body)

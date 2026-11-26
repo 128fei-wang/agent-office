@@ -412,17 +412,7 @@
       this.shell = shell;
       this.root = document.getElementById("featureDrawer");
       this.backdrop = document.getElementById("featureDrawerBackdrop");
-      this.btn = document.getElementById("featureBtn");
-      this.quick = document.getElementById("featureQuickBar");
-      this.styleButtons = document.getElementById("featureStyleButtons");
-      this.fold = document.getElementById("featureFold");
-      this.foldToggle = document.getElementById("featureFoldToggle");
-      this.foldBody = document.getElementById("featureQuickBar");
-      let foldOpen = true;
-      try { foldOpen = localStorage.getItem("agent-office.feature-fold.v1") !== "0"; } catch (err) {}
       this.bind();
-      this.syncStyle();
-      this.setFold(foldOpen);
     }
 
     open() {
@@ -441,24 +431,7 @@
 
     bind() {
       const self = this;
-      if (this.btn) this.btn.addEventListener("click", function () { self.open(); });
       if (this.backdrop) this.backdrop.addEventListener("click", function () { self.close(); });
-      if (this.foldToggle) this.foldToggle.addEventListener("click", function () {
-        self.setFold(!(self.fold && self.fold.classList.contains("is-open")));
-      });
-      if (this.quick) this.quick.addEventListener("click", function (event) {
-        const action = event.target.closest("[data-feature-action]");
-        if (action) { self.run(action.getAttribute("data-feature-action")); return; }
-        const style = event.target.closest("[data-chat-style]");
-        if (style) {
-          writeChatStyle(style.getAttribute("data-chat-style"));
-          self.syncStyle();
-          if (self.renderer && self.renderer.toast) {
-            self.renderer.toast("聊天窗口风格 · " + style.getAttribute("data-chat-style").toUpperCase());
-          }
-        }
-      });
-      document.addEventListener(CHAT_STYLE_EVENT, function () { self.syncStyle(); });
       if (!this.root) return;
       this.root.addEventListener("click", function (event) {
         if (event.target.closest("[data-feature-close]")) { self.close(); return; }
@@ -467,22 +440,6 @@
       });
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") self.close();
-      });
-    }
-
-    setFold(open) {
-      this.foldOpen = !!open;
-      if (this.fold) this.fold.classList.toggle("is-open", this.foldOpen);
-      if (this.foldBody) this.foldBody.hidden = !this.foldOpen;
-      if (this.foldToggle) this.foldToggle.setAttribute("aria-expanded", this.foldOpen ? "true" : "false");
-      try { localStorage.setItem("agent-office.feature-fold.v1", this.foldOpen ? "1" : "0"); } catch (err) {}
-    }
-
-    syncStyle() {
-      if (!this.styleButtons) return;
-      const active = readChatStyle();
-      this.styleButtons.querySelectorAll("[data-chat-style]").forEach(function (button) {
-        button.classList.toggle("active", button.getAttribute("data-chat-style") === active);
       });
     }
 
@@ -523,8 +480,154 @@
       if (action === "direct-chat") {
         this.close();
         if (chat) chat.openDirectPicker();
-        return;
       }
+    }
+  }
+
+  class RailMenu {
+    constructor(renderer, shell) {
+      this.renderer = renderer;
+      this.shell = shell;
+      this.root = document.getElementById("featureRail");
+      this.flyout = document.getElementById("railFlyout");
+      this.active = "";
+      this.bind();
+    }
+
+    bind() {
+      const self = this;
+      if (!this.root || !this.flyout) return;
+      this.root.addEventListener("click", function (event) {
+        const button = event.target.closest("[data-rail-section]");
+        if (!button) return;
+        const section = button.getAttribute("data-rail-section");
+        if (section === "all") {
+          self.close();
+          if (self.shell && self.shell.drawer) self.shell.drawer.open();
+          return;
+        }
+        if (self.active === section && !self.flyout.hidden) self.close();
+        else self.openSection(section, button);
+      });
+      this.flyout.addEventListener("click", function (event) {
+        if (event.target.closest("[data-rail-close]")) { self.close(); return; }
+        if (event.target.closest("[data-rail-open-all]")) {
+          self.close();
+          if (self.shell && self.shell.drawer) self.shell.drawer.open();
+          return;
+        }
+        const style = event.target.closest("[data-chat-style]");
+        if (style) {
+          writeChatStyle(style.getAttribute("data-chat-style"));
+          self.syncStyle();
+          if (self.renderer && self.renderer.toast) {
+            self.renderer.toast("聊天窗口风格 · " + style.getAttribute("data-chat-style").toUpperCase());
+          }
+          return;
+        }
+        const action = event.target.closest("[data-feature-action]");
+        if (action) {
+          self.close();
+          if (self.shell && self.shell.drawer) self.shell.drawer.run(action.getAttribute("data-feature-action"));
+        }
+      });
+      document.addEventListener("click", function (event) {
+        if (!self.flyout || self.flyout.hidden) return;
+        if (self.root.contains(event.target) || self.flyout.contains(event.target)) return;
+        self.close();
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") self.close();
+      });
+      document.addEventListener(CHAT_STYLE_EVENT, function () { self.syncStyle(); });
+      window.addEventListener("resize", function () {
+        if (!self.flyout || self.flyout.hidden) return;
+        const button = self.root.querySelector('[data-rail-section="' + self.active + '"]');
+        if (button) self.position(button);
+      });
+    }
+
+    close() {
+      this.active = "";
+      if (this.flyout) {
+        this.flyout.hidden = true;
+        this.flyout.innerHTML = "";
+      }
+      if (this.root) {
+        this.root.querySelectorAll("[data-rail-section]").forEach(function (button) {
+          button.classList.remove("active");
+        });
+      }
+    }
+
+    openSection(section, anchor) {
+      if (!this.flyout || !this.root) return;
+      this.active = section;
+      this.root.querySelectorAll("[data-rail-section]").forEach(function (button) {
+        button.classList.toggle("active", button.getAttribute("data-rail-section") === section);
+      });
+      this.flyout.hidden = false;
+      this.flyout.innerHTML = this.render(section);
+      this.position(anchor);
+      this.syncStyle();
+    }
+
+    position(anchor) {
+      if (!this.flyout || !anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(286, window.innerWidth - 70);
+      let top = rect.top;
+      const maxTop = Math.max(12, window.innerHeight - 340);
+      top = Math.max(12, Math.min(top, maxTop));
+      this.flyout.style.width = width + "px";
+      this.flyout.style.left = Math.min(window.innerWidth - width - 8, rect.right + 8) + "px";
+      this.flyout.style.top = top + "px";
+    }
+
+    actionRow(action, glyph, title, hint) {
+      return '<button type="button" class="rail-action" data-feature-action="' + esc(action) + '">' +
+        '<b>' + esc(glyph) + '</b><span><strong>' + esc(title) + '</strong><em>' + esc(hint) + '</em></span></button>';
+    }
+
+    render(section) {
+      const t = function (key) { return AO.t(key); };
+      let title = "";
+      let body = "";
+      if (section === "people") {
+        title = t("featurePeople");
+        body = this.actionRow("hire", "＋", t("featureAddFriend"), "本地 Agent · 热桌 · onboarding") +
+          this.actionRow("external", "⇢", t("featureAddExternal"), "连接码 / 模型 API / MCP");
+      } else if (section === "create") {
+        title = t("featureCreate");
+        body = this.actionRow("group", "＋", t("featureCreateGroup"), "群聊 / 任务群 / 私聊") +
+          this.actionRow("mission", "▦", t("featureCreateTask"), "章程 / 自动拆解 / 审批");
+      } else if (section === "settings") {
+        title = t("featureSettingsGroup");
+        const style = readChatStyle();
+        body = this.actionRow("tools", "⚙", t("featureTools"), "升级 / AI 模型状态") +
+          this.actionRow("settings", "☷", t("featureSettings"), "主题 / 语言 / 聊天样式") +
+          '<div class="rail-style"><span>' + esc(t("settingsChatStyle")) + '</span><div class="feature-style-buttons">' +
+          ["agent", "qq", "wechat"].map(function (id) {
+            const label = id === "agent" ? "Agent" : id === "qq" ? "QQ" : "微信";
+            return '<button type="button" data-chat-style="' + id + '" class="' + (style === id ? "active" : "") + '">' + label + '</button>';
+          }).join("") + '</div></div>';
+      } else {
+        title = t("featureComms");
+        body = this.actionRow("group-chat", "#", t("featureGroupChat"), "群聊 / 任务群浮窗") +
+          this.actionRow("direct-chat", "@", t("featureDirectChat"), "和任一 Agent 私聊");
+      }
+      return '<header class="rail-flyout-head"><div><span>WORKSPACE</span><h3>' + esc(title) +
+        '</h3></div><button type="button" data-rail-close>×</button></header>' +
+        '<div class="rail-flyout-body">' + body + '</div>' +
+        '<footer><button type="button" data-rail-open-all>☰ ' + esc(t("featureMenu")) + '</button></footer>';
+    }
+
+    syncStyle() {
+      if (!this.flyout || this.flyout.hidden) return;
+      const active = readChatStyle();
+      this.flyout.querySelectorAll("[data-chat-style]").forEach(function (button) {
+        button.classList.toggle("active", button.getAttribute("data-chat-style") === active);
+      });
     }
   }
 
@@ -606,6 +709,7 @@
       this.chat = new ChatHub(renderer);
       this.settings = new SettingsCenter(renderer);
       this.drawer = new FeatureDrawer(renderer, deps, this);
+      this.rail = new RailMenu(renderer, this);
     }
   }
 

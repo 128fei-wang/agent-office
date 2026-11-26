@@ -14,30 +14,38 @@
     check('app exposed',!!app);
     if(!app){finish();return;}
     const shell=app.renderer.features;
-    check('feature shell constructed',!!shell&&!!shell.drawer&&!!shell.chat&&!!shell.settings);
-    const fb=$('#featureBtn');
-    check('feature trigger in left panel',!!fb&&!!fb.getAttribute('aria-label'));
-    if(fb)fb.click();await wait(200);
-    check('drawer opens',!$('#featureDrawer').hidden);
+    check('feature shell constructed',!!shell&&!!shell.drawer&&!!shell.chat&&!!shell.settings&&!!shell.rail);
+    check('feature rail in left panel',!!$('#featureRail')&&$$('#featureRail [data-rail-section]').length>=4);
+    const railFont=w.getComputedStyle($('#featureRail [data-rail-section] span')).fontSize;
+    check('rail labels readable',parseFloat(railFont)>=7,railFont);
+    const peopleRail=$('#featureRail [data-rail-section="people"]');
+    if(peopleRail){peopleRail.click();await wait(200);}
+    check('rail flyout opens',!$('#railFlyout').hidden&&!!$('.rail-action'));
+    check('people actions',/添加好友/.test($('#railFlyout').textContent)&&/添加外部 Agent/.test($('#railFlyout').textContent));
+    const hireAction=$('#railFlyout [data-feature-action="hire"]');
+    if(hireAction){hireAction.click();await wait(300);check('add friend opens modal',!$('#hireModal').hidden);const closeHire=$('[data-hire-close]');if(closeHire)closeHire.click();await wait(100);}
+    peopleRail.click();await wait(100);
+    const externalAction=$('#railFlyout [data-feature-action="external"]');
+    if(externalAction){externalAction.click();await wait(400);check('add external opens modal',!$('#externalModal').hidden);const closeExt=$('[data-ext-close]');if(closeExt)closeExt.click();await wait(100);}
+    const settingsRail=$('#featureRail [data-rail-section="settings"]');
+    if(settingsRail){settingsRail.click();await wait(150);}
+    check('settings rail flyout',/工具/.test($('#railFlyout').textContent)&&/设置/.test($('#railFlyout').textContent));
+    check('chat style in rail',!!$('#railFlyout [data-chat-style="qq"]'));
+    const topQq=$('#railFlyout [data-chat-style="qq"]');
+    if(topQq){topQq.click();await wait(120);check('rail chat style saves',w.localStorage.getItem('agent-office.chat.style.v1')==='qq');}
+    const createRail=$('#featureRail [data-rail-section="create"]');
+    if(createRail){createRail.click();await wait(150);}
+    check('create rail actions',/创建群组/.test($('#railFlyout').textContent)&&/创建任务/.test($('#railFlyout').textContent));
+    const allRail=$('#featureRail [data-rail-section="all"]');
+    if(allRail){allRail.click();await wait(200);}
+    check('full drawer opens',!$('#featureDrawer').hidden);
     check('three functional groups',$$('#featureDrawer .feature-group').length>=4);
     check('six grouped actions',$$('#featureDrawer [data-feature-action]').length>=6);
     check('people group',/人脉/.test($('#featureDrawer').textContent)&&/添加好友/.test($('#featureDrawer').textContent));
     check('create group/task',/创建群组/.test($('#featureDrawer').textContent)&&/创建任务/.test($('#featureDrawer').textContent));
     check('settings center',/设置中心/.test($('#featureDrawer').textContent)&&/工具/.test($('#featureDrawer').textContent));
-    check('functions pinned at top',!!$('#featureQuickBar')&&$$('#featureQuickBar [data-feature-action]').length>=6);
-    const foldToggle=$('#featureFoldToggle');
-    check('fold control',!!foldToggle);
-    if(foldToggle){foldToggle.click();await wait(120);check('fold collapses',!!$('#featureQuickBar')&&$('#featureQuickBar').hidden);foldToggle.click();await wait(120);check('fold expands',!!$('#featureQuickBar')&&!$('#featureQuickBar').hidden);}
-    const quickFont=w.getComputedStyle($('#featureQuickBar [data-feature-action] em')).fontSize;
-    check('function labels readable',parseFloat(quickFont)>=8,quickFont);
-    const topQq=$('#featureQuickBar [data-chat-style="qq"]');
-    check('top chat style switch',!!topQq);
-    if(topQq){topQq.click();await wait(120);check('top chat style saves',w.localStorage.getItem('agent-office.chat.style.v1')==='qq');}
-    const hireAction=$('[data-feature-action="hire"]');
-    if(hireAction){hireAction.click();await wait(300);check('drawer add friend opens hire modal',!$('#hireModal').hidden);const closeHire=$('[data-hire-close]');if(closeHire)closeHire.click();await wait(100);}
-    if(fb)fb.click();await wait(100);
-    const externalAction=$('[data-feature-action="external"]');
-    if(externalAction){externalAction.click();await wait(400);check('drawer external agent opens modal',!$('#externalModal').hidden);const closeExt=$('[data-ext-close]');if(closeExt)closeExt.click();await wait(100);}
+    check('feature cleanup no capture',!$('[data-feature-action="capture"]'));
+    const closeDrawer=$('[data-feature-close]');if(closeDrawer)closeDrawer.click();await wait(120);
 
     // group chat popup + create
     await shell.chat.openGroupPicker();await wait(500);
@@ -94,9 +102,11 @@
     if(style){style.value='wechat';style.dispatchEvent(new w.Event('change',{bubbles:true}));await wait(120);check('chat style persisted',w.localStorage.getItem('agent-office.chat.style.v1')==='wechat');}
     shell.settings.close();
 
-    const quickTools=$('#featureQuickBar [data-feature-action="tools"]');
-    check('tools action pinned',!!quickTools);
-    if(quickTools){quickTools.click();await wait(900);check('AI settings in tools',!!$('.update-ai')&&/AI 模型服务/.test($('.update-ai').textContent));const closeTools=$('[data-update-close]');if(closeTools)closeTools.click();}
+    const settingsRail2=$('#featureRail [data-rail-section="settings"]');
+    if(settingsRail2){settingsRail2.click();await wait(120);}
+    const quickTools=$('#railFlyout [data-feature-action="tools"]');
+    check('tools action in rail',!!quickTools);
+    if(quickTools){quickTools.click();await wait(1000);check('AI settings in tools',!!$('.update-ai')&&/AI 模型服务/.test($('.update-ai').textContent));check('MCP deployment in tools',!!$('.update-mcp')&&/MCP/.test($('.update-mcp').textContent));const mcpTest=$('[data-mcp-action="test"]');if(mcpTest){await wait(1200);mcpTest.click();await wait(1600);check('MCP connection test',/MCP 连接成功/.test($('.update-mcp').textContent),$('.update-mcp')?$('.update-mcp').textContent.slice(-300):'no mcp');}const closeTools=$('[data-update-close]');if(closeTools)closeTools.click();}
     check('capture feature removed',!$('[data-feature-action="capture"]')&&!$('.feature-capture'));
 
     finish();

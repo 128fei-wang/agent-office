@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧置顶功能栏、群聊/单聊弹窗与 QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能导航栏、群聊/单聊弹窗与 QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -63,10 +63,10 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
-| **Pinned function bar** | **Group / DM chat popup** |
-| ![Function bar](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
-| **AI settings in Tools** | **Pinned function bar** |
-| ![AI settings](docs/screenshots/ai-tools.jpg) | ![Function bar](docs/screenshots/feature-drawer.jpg) |
+| **Function navigation rail** | **Group / DM chat popup** |
+| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **AI settings in Tools** | **MCP deployment** |
+| ![AI settings](docs/screenshots/ai-tools.jpg) | ![MCP deployment](docs/screenshots/mcp-tools.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -351,15 +351,16 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 完整规则、API 和外部 Agent 协议见 [docs/MISSIONS.md](docs/MISSIONS.md)。
 
-## 左侧功能栏与聊天弹窗
+## 左侧导航栏与聊天弹窗
 
-左侧 TEAM 面板把功能固定在顶部，六项核心功能按三组排列：
+左侧新增独立 **功能导航栏**，图标从上到下为：
 
 - **人脉**：添加好友（本地 Agent）、添加外部 Agent。
 - **创建**：创建群组、任务管理 / 创建任务。
-- **设置中心**：工具、设置。
+- **设置**：工具（含 AI / MCP 部署）、设置。
+- **消息**：群聊弹窗、单聊弹窗。
 
-功能栏本身支持点击标题折叠/展开；点右上角 **☰** 可展开完整功能抽屉。顶部还有 **聊天窗口风格** 切换：
+点击任一图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
 
 - **Agent**：Agent Office 默认外观。
 - **QQ**：紧凑聊天窗口、蓝色标题栏和气泡。
@@ -377,6 +378,27 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - 配置方法和一份可复制的 `~/.agent-office/providers.json` 示例。
 
 API key 只放在 bridge 所在机器的 `~/.agent-office/providers.json` 或环境变量中，不进入前端、任务记录或导出。保存后点 **刷新模型状态**；配置好模型后，Mission Control 的 **AI 设置** 入口也会直接打开工具面板。
+
+## MCP 部署
+
+工具面板新增 **MCP 部署**，让 Agent Office 本身作为本地 MCP 服务：
+
+1. 打开 **工具 → MCP 部署**。
+2. 选择已有外部 Agent，或点 **创建 MCP Agent**。
+3. 工具会生成 MCP 客户端配置，复制到 Claude Code、Codex 或其他支持 MCP 的客户端。
+4. 点 **测试 MCP** 可验证 initialize / tools/list 与工具数量。
+
+Endpoint 是 `http://127.0.0.1:8787/mcp`，通过 `X-Agent-Id` 绑定 MCP 客户端对应的 Agent 身份。已提供工具：
+
+- `agent_office_status`
+- `agent_office_list_agents`
+- `agent_office_list_tasks`
+- `agent_office_get_task`
+- `agent_office_report_task`
+- `agent_office_send_message`
+- `agent_office_list_conversations`
+
+MCP 和配对码、模型 API 一样，是外部 Agent 的连接方式之一；Bridge 仍然只监听 localhost。
 
 ## 自行升级
 
@@ -549,7 +571,7 @@ agent-office/
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
 │   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
 │   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
-│   ├── shell.js        左侧功能栏、群聊/单聊弹窗、设置和聊天窗口风格
+│   ├── shell.js        左侧导航栏、群聊/单聊弹窗、设置和聊天窗口风格
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -742,9 +764,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-missions.html` 会验证任务创建、自由选人、推荐卡片、逐任务执行 Agent、品牌 Logo、预计/实际消耗、Eval 面板、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
 
-`dev-features.html` 会验证左侧置顶功能栏、三组六项功能、添加好友/外部 Agent 入口、群聊弹窗、单聊弹窗、设置中心和 QQ/微信聊天窗口风格切换。
+`dev-features.html` 会验证左侧导航栏、六项功能、添加好友/外部 Agent 入口、群聊弹窗、单聊弹窗、设置中心、AI 设置和 MCP 部署。
 
-bridge 自身的 21 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
+bridge 自身的 22 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -760,7 +782,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.9.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.10.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
