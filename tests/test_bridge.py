@@ -171,7 +171,7 @@ class BridgeTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def request(cls, path, method="GET", body=None, headers=None):
+    def request(cls, path, method="GET", body=None, headers=None, timeout=5):
         data = None if body is None else json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
             cls.base + path,
@@ -180,7 +180,7 @@ class BridgeTest(unittest.TestCase):
             headers={"Content-Type": "application/json", **(headers or {})},
         )
         try:
-            with urllib.request.urlopen(req, timeout=5) as res:
+            with urllib.request.urlopen(req, timeout=timeout) as res:
                 raw = res.read().decode("utf-8")
                 return res.status, json.loads(raw) if raw.startswith(("{", "[")) else raw
         except urllib.error.HTTPError as exc:
@@ -311,6 +311,14 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 200)
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
+
+    def test_chat_capture_window_validation(self):
+        status, data = self.request("/chat-capture/windows", timeout=30)
+        self.assertEqual(status, 200)
+        self.assertIsInstance(data.get("windows"), list)
+        status, data = self.request("/chat-capture/window", "POST", {"windowId": 999999}, timeout=30)
+        self.assertEqual(status, 400)
+        self.assertEqual(data.get("code"), "bad_window")
 
     def test_external_agent_role_and_avatar(self):
         status, meta = self.request("/agents")

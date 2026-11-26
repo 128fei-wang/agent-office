@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Feature drawer self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>FEATURE DRAWER SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2600));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const shell=app.renderer.features;
+    check('feature shell constructed',!!shell&&!!shell.drawer&&!!shell.chat&&!!shell.settings&&!!shell.capture);
+    const fb=$('#featureBtn');
+    check('feature trigger in left panel',!!fb&&/功能/.test(fb.textContent));
+    if(fb)fb.click();await wait(200);
+    check('drawer opens',!$('#featureDrawer').hidden);
+    check('three functional groups',$$('#featureDrawer .feature-group').length>=4);
+    check('six grouped actions',$$('#featureDrawer [data-feature-action]').length>=6);
+    check('people group',/人脉/.test($('#featureDrawer').textContent)&&/添加好友/.test($('#featureDrawer').textContent));
+    check('create group/task',/创建群组/.test($('#featureDrawer').textContent)&&/创建任务/.test($('#featureDrawer').textContent));
+    check('settings center',/设置中心/.test($('#featureDrawer').textContent)&&/工具/.test($('#featureDrawer').textContent));
+    const hireAction=$('[data-feature-action="hire"]');
+    if(hireAction){hireAction.click();await wait(300);check('drawer add friend opens hire modal',!$('#hireModal').hidden);const closeHire=$('[data-hire-close]');if(closeHire)closeHire.click();await wait(100);}
+    if(fb)fb.click();await wait(100);
+    const externalAction=$('[data-feature-action="external"]');
+    if(externalAction){externalAction.click();await wait(400);check('drawer external agent opens modal',!$('#externalModal').hidden);const closeExt=$('[data-ext-close]');if(closeExt)closeExt.click();await wait(100);}
+
+    // group chat popup + create
+    await shell.chat.openGroupPicker();await wait(500);
+    check('group chat picker',!!$('.chat-picker')&&/群聊/.test($('.chat-picker').textContent));
+    const newGroup=$('[data-chat-new-group]');
+    check('new group control',!!newGroup);
+    if(newGroup){
+      newGroup.click();await wait(250);
+      const form=$('#chatGroupForm');
+      check('new group form',!!form);
+      if(form){
+        form.elements.title.value='功能自检群 '+Date.now().toString().slice(-5);
+        const boxes=Array.from(form.querySelectorAll('input[name="memberIds"]'));
+        boxes.slice(0,2).forEach(b=>{b.checked=true;});
+        form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+        await wait(1500);
+        check('group chat window opens',!!$('.chat-window'));
+        const groupConv=shell.chat.active;
+        check('group conversation selected',!!groupConv&&groupConv.kind==='group');
+        if(groupConv){
+          shell.chat.sendText('功能抽屉群聊自检');
+          await wait(1200);
+          check('group message sent',/功能抽屉群聊自检/.test($('.chat-window').textContent));
+          await fetch(shell.chat.bridge()+'/conversations/'+groupConv.id,{method:'DELETE'});
+        }
+        shell.chat.close();
+      }
+    }
+
+    // direct chat popup
+    await shell.chat.openDirectPicker();await wait(800);
+    check('direct chat picker',!!$('.chat-picker')&&/单聊/.test($('.chat-picker').textContent));
+    const agent=$('[data-chat-agent]');
+    check('direct agent control',!!agent);
+    if(agent){
+      agent.click();await wait(1400);
+      check('direct chat window opens',!!$('.chat-window'));
+      const direct=shell.chat.active;
+      check('direct conversation selected',!!direct&&direct.kind==='direct');
+      if(direct){
+        shell.chat.sendText('功能抽屉单聊自检');
+        await wait(1200);
+        check('direct message sent',/功能抽屉单聊自检/.test($('.chat-window').textContent));
+        await fetch(shell.chat.bridge()+'/conversations/'+direct.id,{method:'DELETE'});
+      }
+      shell.chat.close();
+    }
+
+    // settings + chat style
+    shell.settings.open();await wait(200);
+    check('settings modal opens',!!$('.feature-settings'));
+    const style=$('[data-settings-style]');
+    check('chat style control',!!style);
+    if(style){style.value='wechat';style.dispatchEvent(new w.Event('change',{bubbles:true}));await wait(120);check('chat style persisted',w.localStorage.getItem('agent-office.chat.style.v1')==='wechat');}
+    shell.settings.close();
+
+    // capture UI (scan metadata only, never capture a user chat)
+    shell.capture.open();await wait(200);
+    check('capture modal opens',!!$('.feature-capture'));
+    check('capture scan/upload controls',!!$('[data-capture-scan]')&&!!$('[data-capture-upload]'));
+    $('[data-capture-scan]').click();await wait(2200);
+    check('capture scan completes',!!$('#captureWindows'));
+    shell.capture.close();
+
+    finish();
+  }
+})();
+</script></body></html>

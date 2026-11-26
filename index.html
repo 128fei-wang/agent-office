@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="company.css" />
   <link rel="stylesheet" href="update.css" />
   <link rel="stylesheet" href="missions.css" />
+  <link rel="stylesheet" href="features.css" />
 </head>
 <body>
   <div class="boot" id="boot">
@@ -87,8 +88,11 @@
         <div class="team-foot">
           <div class="foot-row"><span data-i18n="teamMorale">团队士气</span><b id="teamMorale">—</b></div>
           <div class="morale-bar"><i id="moraleBar"></i></div>
-          <button type="button" class="hire-btn" id="hireBtn" data-i18n="addAgent">＋ 添加 Agent</button>
-          <button type="button" class="hire-btn secondary" id="externalBtn" data-i18n="externalAgent">⇢ 接入外部 Agent</button>
+          <div class="legacy-team-actions" hidden>
+            <button type="button" class="hire-btn" id="hireBtn" data-i18n="addAgent">＋ 添加 Agent</button>
+            <button type="button" class="hire-btn secondary" id="externalBtn" data-i18n="externalAgent">⇢ 接入外部 Agent</button>
+          </div>
+          <button type="button" class="feature-trigger" id="featureBtn" data-i18n="featureMenu">功能与消息</button>
           <p class="hint" data-i18n="teamHint">点击办公室里的角色，查看 TA 的记忆与状态。</p>
         </div>
       </aside>
@@ -180,6 +184,48 @@
     </main>
   </div>
 
+  <div class="feature-drawer-backdrop" id="featureDrawerBackdrop" hidden></div>
+  <aside class="feature-drawer" id="featureDrawer" hidden aria-hidden="true" role="dialog" aria-label="功能与消息">
+    <header class="feature-drawer-head">
+      <div><span>WORKSPACE</span><h2 data-i18n="featureMenu">功能与消息</h2></div>
+      <button type="button" class="feature-drawer-close" data-feature-close aria-label="关闭">×</button>
+    </header>
+    <div class="feature-drawer-body">
+      <section class="feature-group">
+        <h3><i>01</i><span data-i18n="featurePeople">人脉</span></h3>
+        <div class="feature-grid">
+          <button type="button" data-feature-action="hire"><b>＋</b><span data-i18n="featureAddFriend">添加好友</span><em>LOCAL</em></button>
+          <button type="button" data-feature-action="external"><b>⇢</b><span data-i18n="featureAddExternal">添加外部 Agent</span><em>EXTERNAL</em></button>
+        </div>
+      </section>
+      <section class="feature-group">
+        <h3><i>02</i><span data-i18n="featureCreate">创建</span></h3>
+        <div class="feature-grid">
+          <button type="button" data-feature-action="group"><b>＋</b><span data-i18n="featureCreateGroup">创建群组</span><em>GROUP</em></button>
+          <button type="button" data-feature-action="mission"><b>▦</b><span data-i18n="featureCreateTask">任务管理 · 创建任务</span><em>MISSION</em></button>
+        </div>
+      </section>
+      <section class="feature-group">
+        <h3><i>03</i><span data-i18n="featureSettingsGroup">设置中心</span></h3>
+        <div class="feature-grid">
+          <button type="button" data-feature-action="tools"><b>⚙</b><span data-i18n="featureTools">工具</span><em>TOOLS</em></button>
+          <button type="button" data-feature-action="settings"><b>☷</b><span data-i18n="featureSettings">设置</span><em>SETTINGS</em></button>
+        </div>
+      </section>
+      <section class="feature-group feature-comms">
+        <h3><i>04</i><span data-i18n="featureComms">沟通</span></h3>
+        <div class="feature-chat-actions">
+          <button type="button" data-feature-action="group-chat"><b>#</b><span data-i18n="featureGroupChat">群聊弹窗</span></button>
+          <button type="button" data-feature-action="direct-chat"><b>@</b><span data-i18n="featureDirectChat">单聊弹窗</span></button>
+          <button type="button" data-feature-action="capture"><b>◉</b><span data-i18n="featureCapture">QQ / 微信窗口采集</span></button>
+        </div>
+      </section>
+      <p class="feature-drawer-hint" data-i18n="featureHint">左侧功能抽屉 · 点按打开</p>
+    </div>
+  </aside>
+  <div class="chat-hub-root" id="chatHubRoot"></div>
+  <div class="feature-modal-root" id="featureModalRoot"></div>
+
   <div class="company-lab" id="companyLab" hidden aria-hidden="true"></div>
   <div class="mission-lab" id="missionLab" hidden aria-hidden="true"></div>
   <div class="update-modal" id="updateModal" hidden aria-hidden="true"></div>
@@ -202,6 +248,7 @@
   <script src="src/company.js"></script>
   <script src="src/update.js"></script>
   <script src="src/missions.js"></script>
+  <script src="src/shell.js"></script>
   <script src="src/render.js"></script>
   <script src="src/main.js"></script>
 </body>

@@ -361,6 +361,11 @@
   renderer.update = updateCenter;
   const missionView = AO.MissionView ? new AO.MissionView(renderer) : null;
   renderer.missions = missionView;
+  const featureShell = AO.FeatureShell ? new AO.FeatureShell(renderer, {
+    missionView: missionView,
+    updateCenter: updateCenter
+  }) : null;
+  renderer.features = featureShell;
 
   renderer.build();
   setPlayLabel();
@@ -377,6 +382,10 @@
   if (params.get("company") === "1" && renderer.company) renderer.company.open();
   if (params.get("missions") === "1" && renderer.missions) renderer.missions.open();
   if (params.get("update") === "1" && renderer.update) renderer.update.open();
+  if (params.get("features") === "1" && featureShell) featureShell.drawer.open();
+  if (params.get("chat") === "group" && featureShell) featureShell.chat.openGroupPicker();
+  if (params.get("chat") === "direct" && featureShell) featureShell.chat.openDirectPicker();
+  if (params.get("capture") === "1" && featureShell) featureShell.capture.open();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {
     renderer.traceLab.open();
     if (params.get("trace") === "evals") renderer.traceLab.setTab("evals");

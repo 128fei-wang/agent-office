@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.8.0] - 2026-11-26
+
+### Added
+- **Left function drawer**: TEAM now opens a grouped drawer with **People** (add friend, add external agent), **Create** (create group, task manager/create task), and **Settings center** (tools, settings).
+- **Floating group and direct chat popups**: existing mission groups, ad-hoc groups and DMs open in a compact window without leaving the office; messages use the local bridge conversation API.
+- **QQ / WeChat window capture**: discover visible QQ/WeChat windows through a native macOS helper and OCR a captured window, or upload a chat screenshot. Results can be copied or sent to the active chat.
+- **QQ / WeChat chat styles**: settings can switch popups between the default Agent style, a compact QQ style and a WeChat style.
+- **Settings center**: theme, language and chat-window style in one modal.
+- `GET /chat-capture/windows` and `POST /chat-capture/window`; arbitrary window IDs are rejected and temporary screenshots are deleted after OCR.
+- Browser self-check `dev-features.html` and screenshots for the drawer and chat popup.
+
+### Changed
+- Version bumped to 1.8.0.
+- The old TEAM footer buttons remain as hidden compatibility hooks; visible actions move into the drawer.
+- README, English README, architecture, security and repository checks document the new shell, capture permission and modules.
+
 ## [1.7.0] - 2026-11-25
 
 ### Added

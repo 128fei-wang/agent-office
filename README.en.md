@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a grouped left function drawer, floating group/DM chat, QQ/WeChat window capture, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -63,6 +63,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
+| **Function drawer** | **Group / DM chat popup** |
+| ![Function drawer](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
 
 ## Traceability and audit
 
@@ -346,6 +348,22 @@ Open **TASKS** in the top bar or use `?missions=1`.
 
 See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker protocol.
 
+## Function drawer and chat popups
+
+Click **Functions & messages** at the bottom of the left TEAM panel. Six core actions are grouped into three sections:
+
+- **People** — add a local friend/agent, add an external agent.
+- **Create** — create a group, task manager / create a task.
+- **Settings center** — tools, settings.
+
+A separate **Communication** section provides:
+
+- **Group and direct chat popups** — floating windows over the office, using existing mission groups, ad-hoc groups and DMs through the local bridge.
+- **QQ / WeChat window capture** — scan visible local QQ/WeChat chat windows, or upload a chat screenshot; OCR text can be copied or sent to the active chat.
+- **QQ / WeChat chat styles** — the settings center can switch the popup to a compact QQ or WeChat appearance without changing content.
+
+macOS window scanning/capture requires **System Settings → Privacy & Security → Screen Recording**. Without it, use **Upload screenshot** and the existing OCR path. The bridge only lists visible QQ/WeChat windows and rejects arbitrary window IDs.
+
 ## Tools & self-update
 
 - Click **TOOLS** in the top bar, press `U`, or open `?update=1`.
@@ -455,8 +473,9 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
 - `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
+- `dev-features.html` — left function drawer, the three groups/six actions, add friend/external-agent entry points, group and direct chat popups, settings center, and the QQ/WeChat window-scan entry point.
 
-Run the 21 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
+Run the 22 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -492,6 +511,7 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - Mission AI discussion/AI run needs a reachable model service. When local WorkBuddy/Ollama is not running, the rule plan remains and the UI says so. PDF extraction needs `pdftotext`; image OCR uses a vision model, macOS Vision as a local fallback, or `tesseract` on other platforms.
 - Time/token values are estimates and consumption telemetry, not vendor billing. Estimates use local heuristics (role baseline, complexity, skill match, load) and do not yet learn from historical variance. Actual tokens depend on what a provider or external agent reports.
 - Brand logos are local name/runtime matches, not downloaded trademark assets; unknown agents get initials. Built-in avatars are local emoji/glyph presets; custom avatars store only initials and a color, not uploaded images.
+- QQ/WeChat window capture requires macOS Screen Recording permission; without it, use **Upload screenshot** with OCR. Capture stays local and temporary screenshots are deleted after recognition.
 - QR login is a boss approval gate for an agent-supplied QR/link; Agent Office does not implement each provider's OAuth flow. Approvals are a local trust model, not multi-tenant authentication.
 - Mission data lives in `~/.agent-office/missions.json`; large deployments should move to SQLite/Postgres.
 - Self-update never installs in the background. Automatic update needs the official GitHub Release; manual update needs a local archive newer than the running version. Both need the bridge and restart it. Versions 1.2.0 and older need one manual upgrade to 1.3.0+ before the in-app tools panel exists.

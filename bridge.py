@@ -966,6 +966,76 @@ def _macos_vision(path):
     return ""
 
 
+_CHAT_WINDOW_CACHE = {"at": 0.0, "rows": []}
+
+
+def list_chat_windows():
+    cached = _CHAT_WINDOW_CACHE
+    if cached["at"] and time.time() - cached["at"] < 8:
+        return [dict(row) for row in cached["rows"]]
+    tool = shutil.which("swift")
+    script = ROOT / "window_list.swift"
+    if not tool or not script.exists():
+        return []
+    try:
+        result = subprocess.run(
+            [tool, str(script)], capture_output=True, text=True, timeout=20,
+        )
+        rows = json.loads(result.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    if not isinstance(rows, list):
+        return []
+    clean = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            window_id = int(row.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if window_id <= 0:
+            continue
+        clean.append({
+            "id": window_id,
+            "app": str(row.get("app") or "")[:80],
+            "title": str(row.get("title") or "")[:160],
+        })
+    _CHAT_WINDOW_CACHE["at"] = time.time()
+    _CHAT_WINDOW_CACHE["rows"] = clean
+    return [dict(row) for row in clean]
+
+
+def capture_chat_window(window_id):
+    windows = list_chat_windows()
+    window = next((row for row in windows if row["id"] == int(window_id)), None)
+    if not window:
+        raise ValueError("window is not a visible QQ/WeChat chat window")
+    tool = shutil.which("screencapture")
+    if not tool:
+        raise RuntimeError("screencapture is not available")
+    handle, path = tempfile.mkstemp(prefix="agent-office-capture-", suffix=".png")
+    os.close(handle)
+    try:
+        result = subprocess.run(
+            [tool, "-x", "-l", str(window["id"]), path],
+            capture_output=True, text=True, timeout=25,
+        )
+        if result.returncode != 0 or not Path(path).exists() or Path(path).stat().st_size == 0:
+            raise RuntimeError("screen capture failed; grant Screen Recording permission")
+        text = _macos_vision(path)
+        ocr = "macos-vision" if text else ""
+        if not text:
+            text = _tesseract_vision(path)
+            ocr = "tesseract" if text else "none"
+        return {"window": window, "text": text, "ocr": ocr}
+    finally:
+        try:
+            Path(path).unlink()
+        except OSError:
+            pass
+
+
 def provider_vision(provider_id, image_path, mime, prompt=""):
     settings = provider_settings(provider_id)
     if not settings:
@@ -2860,6 +2930,9 @@ class Handler(BaseHTTPRequestHandler):
                 except ProviderCallError as exc:
                     self.send_json({"error": str(exc)}, 400)
                 return
+            if path == "/chat-capture/windows":
+                self.send_json({"windows": list_chat_windows()})
+                return
             if path == "/agents":
                 self.send_json({
                     "agents": [public_agent(a) for a in STATE["agents"]],
@@ -2900,7 +2973,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/chat-capture/windows", "/chat-capture/window", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -2920,6 +2993,17 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
         except Exception as exc:
             self.send_json({"error": str(exc)}, 400)
+            return
+        if path == "/chat-capture/window":
+            try:
+                window_id = int(body.get("windowId") or 0)
+                if window_id <= 0:
+                    raise ValueError("windowId is required")
+                self.send_json({"ok": True, **capture_chat_window(window_id)})
+            except ValueError as exc:
+                self.send_json({"error": str(exc), "code": "bad_window"}, 400)
+            except Exception as exc:
+                self.send_json({"error": str(exc)[:300], "code": "capture_failed"}, 502)
             return
         if path.startswith(("/missions", "/conversations", "/approvals", "/files/")):
             self.handle_mission_action(path, body)

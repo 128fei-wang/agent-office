@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能抽屉、群聊/单聊弹窗、QQ/微信窗口采集、白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -63,6 +63,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
+| **Function drawer** | **Group / DM chat popup** |
+| ![Function drawer](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -347,6 +349,22 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 完整规则、API 和外部 Agent 协议见 [docs/MISSIONS.md](docs/MISSIONS.md)。
 
+## 功能抽屉与聊天弹窗
+
+左侧 TEAM 面板底部点 **`功能与消息`**，打开抽屉。六项核心功能按三组排列：
+
+- **人脉**：添加好友（本地 Agent）、添加外部 Agent。
+- **创建**：创建群组、任务管理 / 创建任务。
+- **设置中心**：工具、设置。
+
+抽屉底部还有 **沟通** 区：
+
+- **群聊弹窗 / 单聊弹窗**：独立浮窗，不打断办公室；支持现有任务群、临时群和私聊，消息走本地 bridge。
+- **QQ / 微信窗口采集**：扫描本机可见的 QQ/微信聊天窗口，或上传聊天截图；OCR 结果可复制或发送到当前聊天。
+- **QQ / 微信模式**：设置中心可切换聊天弹窗的紧凑 QQ 风格或微信风格，只改变外观，不改变消息内容。
+
+macOS 窗口扫描/采集需要 **系统设置 → 隐私与安全性 → 屏幕录制** 授权；未授权时仍可使用“上传截图”走现有 OCR。Bridge 只列出可见的 QQ/微信窗口，不接受任意窗口 ID。
+
 ## 自行升级
 
 - 顶部 **`工具`**，或按 `U`，打开「工具与升级」。
@@ -518,6 +536,7 @@ agent-office/
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
 │   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
 │   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
+│   ├── shell.js        左侧功能抽屉、群聊/单聊弹窗、设置和窗口采集
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -538,6 +557,7 @@ agent-office/
 ├── dev-update.html     自检工具入口、自动升级、确认、进度、重启和完成态
 ├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
 ├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
+├── dev-features.html   自检功能抽屉、群聊/单聊弹窗、设置和窗口采集
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
@@ -545,9 +565,11 @@ agent-office/
 ├── company.css         一人公司工作台 / 群聊 / 语言样式
 ├── update.css          工具与升级面板样式
 ├── missions.css        任务工作台 / 群聊 / 私聊 / 审批样式
+├── features.css        功能抽屉 / 聊天弹窗 / 设置 / 窗口采集样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
 ├── ocr_vision.swift    macOS Vision 本地图片识别兜底
+├── window_list.swift   macOS QQ/微信窗口发现
 ├── updater.py          检查、下载、手动包、备份、更新、校验、回滚
 ├── update.sh           命令行升级入口（含 --manual）
 ├── providers.example.json  模型 API 配置模板（密钥不提交）
@@ -708,7 +730,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-missions.html` 会验证任务创建、自由选人、推荐卡片、逐任务执行 Agent、品牌 Logo、预计/实际消耗、Eval 面板、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
 
-bridge 自身的 21 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
+`dev-features.html` 会验证左侧功能抽屉、三组六项功能、添加好友/外部 Agent 入口、群聊弹窗、单聊弹窗、设置中心和 QQ/微信窗口扫描入口。
+
+bridge 自身的 22 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -724,7 +748,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.7.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.8.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -741,6 +765,7 @@ python3 -m unittest discover -s tests -v
 - 任务工作台的 AI 讨论/AI 执行需要可用的模型服务；本地 WorkBuddy/Ollama 未启动时会保留规则计划并明确提示。PDF 文本提取需要 `pdftotext`；图片识别优先使用视觉模型，macOS 可用系统 Vision 兜底，其他平台可安装 `tesseract`。
 - 时间/token 是估算与消耗统计，不是厂商账单；估算基于角色基线、复杂度、技能匹配和负载，暂未按历史偏差自动校准。实际 token 取决于模型返回或外部 Agent 汇报。
 - 品牌 Logo 是本地名称/运行时匹配，不下载商标图片；未知 Agent 使用名称缩写。内置头像是本地 emoji/字符预设，自定义头像只保存缩写和颜色，不上传图片。
+- QQ/微信窗口采集依赖 macOS 屏幕录制权限；未授权时请用“上传截图”加 OCR。采集结果只在本机处理，临时截图在识别后删除。
 - 扫码登录只提供老板审批门禁和二维码/链接附件，不实现各第三方服务自己的 OAuth 流程；审批端点是本机本地信任模型，不是多租户鉴权系统。
 - 任务工作台把数据存在 `~/.agent-office/missions.json`；大型部署应迁移到 SQLite/Postgres。
 - 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。
