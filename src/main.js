@@ -361,6 +361,9 @@
   renderer.update = updateCenter;
   const missionView = AO.MissionView ? new AO.MissionView(renderer) : null;
   renderer.missions = missionView;
+  const aiSetup = AO.AISetup ? new AO.AISetup(document.getElementById("aiSetupRoot")) : null;
+  AO.aiSetup = aiSetup;
+  renderer.aiSetup = aiSetup;
   const featureShell = AO.FeatureShell ? new AO.FeatureShell(renderer, {
     missionView: missionView,
     updateCenter: updateCenter
@@ -382,6 +385,9 @@
   if (params.get("company") === "1" && renderer.company) renderer.company.open();
   if (params.get("missions") === "1" && renderer.missions) renderer.missions.open();
   if (params.get("update") === "1" && renderer.update) renderer.update.open();
+  if (params.get("ai") === "setup" && renderer.aiSetup) {
+    window.setTimeout(function () { renderer.aiSetup.open(); }, 120);
+  }
   if (params.get("features") === "1" && featureShell) featureShell.drawer.open();
   if (params.get("chat") === "group" && featureShell) featureShell.chat.openGroupPicker();
   if (params.get("chat") === "direct" && featureShell) featureShell.chat.openDirectPicker();

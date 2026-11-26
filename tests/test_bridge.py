@@ -69,14 +69,22 @@ class MockProviderHandler(BaseHTTPRequestHandler):
             "x-goog-api-key": self.headers.get("x-goog-api-key"),
             "payload": payload,
         })
-        mission_report = "deliverable" in json.dumps(payload)
+        prompt_text = json.dumps(payload, ensure_ascii=False)
+        mission_report = "deliverable" in prompt_text
+        needs_approval = "NEEDS_APPROVAL" in prompt_text and "需求边界与验收" in prompt_text
+        invalid_gate = "INVALID_GATE" in prompt_text and not needs_approval
         report_text = json.dumps({
             "summary": "Mock agent report", "done": ["mock step"],
             "next": ["review"], "risks": ["mock risk"],
             "solution": "mock fallback and verification", "evidence": ["mock"],
             "deliverable": "# Mock deliverable\n\nThis is a test artifact.",
-            "needsBoss": [],
-        })
+            "needsBoss": ["spend"] if needs_approval else (["technical"] if invalid_gate else []),
+            "approval": ({
+                "type": "spend", "title": "Mock spend approval",
+                "description": "Approve a small test spend.", "amount": 10,
+                "currency": "CNY"
+            } if needs_approval else None),
+        }, ensure_ascii=False)
         if self.path.endswith("/chat/completions"):
             data = {
                 "choices": [{"message": {"content": report_text if mission_report else "OK from openai"}}],
@@ -133,7 +141,20 @@ class BridgeTest(unittest.TestCase):
         }
         providers_path = Path(cls.tmp.name) / "providers.json"
         providers_path.write_text(json.dumps(providers), "utf-8")
-        env = os.environ.copy()
+        cls.providers_path = providers_path
+        cls.providers_original = providers_path.read_text("utf-8")
+        env = {
+            key: value for key, value in os.environ.items()
+            if not key.startswith((
+                "ANTHROPIC_", "OPENAI_", "DEEPSEEK_", "GEMINI_", "GOOGLE_",
+                "MOONSHOT_", "KIMI_", "DASHSCOPE_", "QWEN_", "DOUBAO_",
+                "ARK_", "WORKBUDDY_", "OLLAMA_",
+            ))
+        }
+        # Isolated environment credentials for the detection/configure flow.
+        env["MOONSHOT_API_KEY"] = "test-env-kimi"
+        env["AGENT_OFFICE_KIMI_BASE_URL"] = "http://127.0.0.1:%d/v1" % cls.mock_port
+        env["AGENT_OFFICE_KIMI_MODEL"] = "mock-kimi-env"
         env["BRIDGE_STATE"] = str(Path(cls.tmp.name) / "bridge-state.json")
         env["BRIDGE_PROVIDERS"] = str(providers_path)
         env["AGENT_OFFICE_UPDATE_API"] = (
@@ -413,6 +434,115 @@ class BridgeTest(unittest.TestCase):
                             for m in messages))
         self.request("/missions/%s" % mission["id"], "DELETE")
 
+    def test_mission_autorun_completes_every_task(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Full auto mission",
+            "description": "Build and verify a landing page with independent QA and launch checks.",
+            "acceptance": "Every task is complete and has a report.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        mission_id = mission["id"]
+        deadline = time.time() + 25
+        latest = mission
+        while time.time() < deadline:
+            status, detail = self.request("/missions/%s" % mission_id)
+            self.assertEqual(status, 200, detail)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "error", "waiting_boss"):
+                break
+            time.sleep(0.2)
+        auto = latest.get("autoRun") or {}
+        self.assertEqual(auto.get("status"), "done", latest)
+        self.assertTrue(latest["tasks"])
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        self.assertEqual(latest["stats"]["done"], len(latest["tasks"]))
+        self.assertTrue(any(t.get("report") for t in latest["tasks"]))
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_drops_invalid_boss_gate(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Invalid gate auto mission",
+            "description": "INVALID_GATE: produce a weekly report and deliver it.",
+            "acceptance": "Technical work is solved by the team and all tasks complete.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 25
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "error"):
+                break
+            time.sleep(0.2)
+        self.assertEqual((latest.get("autoRun") or {}).get("status"), "done", latest)
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        reports = [t.get("report") or {} for t in latest["tasks"]]
+        self.assertTrue(any(any("无效审批类型" in risk for risk in (r.get("risks") or []))
+                            for r in reports))
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_stop_endpoint(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Stop auto mission",
+            "description": "Create a simple checklist and do not start automatically.",
+            "acceptance": "The stop endpoint marks the run stopped.",
+            "autoDiscuss": False,
+            "autoRun": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        status, stopped = self.request(
+            "/missions/%s/autorun/stop" % mission_id, "POST", {})
+        self.assertEqual(status, 202, stopped)
+        self.assertEqual(stopped["autoRun"]["status"], "stopped")
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_pauses_for_approval_and_resumes(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Approval auto mission",
+            "description": "NEEDS_APPROVAL: build a landing page and verify it end to end.",
+            "acceptance": "All work completes after the boss approves the spend.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 20
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            auto = latest.get("autoRun") or {}
+            if auto.get("status") == "waiting_boss":
+                break
+            time.sleep(0.2)
+        auto = latest.get("autoRun") or {}
+        self.assertEqual(auto.get("status"), "waiting_boss", latest)
+        pending = [a for a in latest.get("approvals", []) if a.get("status") == "pending"]
+        self.assertTrue(pending, latest)
+        self.assertEqual(pending[0]["type"], "spend")
+        status, resolved = self.request(
+            "/approvals/%s/resolve" % pending[0]["id"], "POST",
+            {"decision": "approved", "note": "test approval"})
+        self.assertEqual(status, 200, resolved)
+        deadline = time.time() + 25
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            auto = latest.get("autoRun") or {}
+            if auto.get("status") in ("done", "error"):
+                break
+            time.sleep(0.2)
+        self.assertEqual((latest.get("autoRun") or {}).get("status"), "done", latest)
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        self.request("/missions/%s" % mission_id, "DELETE")
+
     def test_update_check_status_and_bad_token(self):
         status, data = self.request("/update/check?refresh=1")
         self.assertEqual(status, 200)
@@ -535,6 +665,54 @@ class BridgeTest(unittest.TestCase):
         self.assertNotIn("apiKey", json.dumps(detail))
         status, _ = self.request("/providers/nope")
         self.assertEqual(status, 404)
+
+    def test_provider_configure_tests_and_saves_without_leaking_key(self):
+        original = self.providers_original
+        try:
+            status, data = self.request("/providers/doubao/configure", "POST", {
+                "apiKey": "test-doubao-key",
+                "baseUrl": "http://127.0.0.1:%d/v1" % self.mock_port,
+                "model": "mock-doubao",
+            })
+            self.assertEqual(status, 200, data)
+            self.assertTrue(data["saved"])
+            self.assertEqual(data["test"]["model"], "mock-doubao")
+            self.assertNotIn("test-doubao-key", json.dumps(data))
+            self.assertNotIn("apiKey", json.dumps(data))
+            saved = json.loads(self.providers_path.read_text("utf-8"))
+            self.assertEqual(saved["doubao"]["apiKey"], "test-doubao-key")
+            self.assertEqual(saved["doubao"]["model"], "mock-doubao")
+            self.assertEqual(self.providers_path.stat().st_mode & 0o777, 0o600)
+            status, catalog = self.request("/providers")
+            doubao = next(p for p in catalog["providers"] if p["id"] == "doubao")
+            self.assertTrue(doubao["configured"])
+            self.assertEqual(doubao["keySource"], "file")
+        finally:
+            self.providers_path.write_text(original, "utf-8")
+
+    def test_provider_environment_detection_and_save(self):
+        original = self.providers_original
+        try:
+            status, catalog = self.request("/providers")
+            self.assertEqual(status, 200)
+            kimi = next(p for p in catalog["providers"] if p["id"] == "kimi")
+            self.assertTrue(kimi["configured"])
+            self.assertEqual(kimi["keySource"], "environment")
+            self.assertEqual(kimi["baseSource"], "environment")
+            self.assertTrue(kimi["detected"])
+            self.assertNotIn("test-env-kimi", json.dumps(catalog))
+
+            status, data = self.request("/providers/kimi/configure", "POST", {
+                "useEnvironment": True,
+            })
+            self.assertEqual(status, 200, data)
+            self.assertTrue(data["saved"])
+            saved = json.loads(self.providers_path.read_text("utf-8"))
+            self.assertEqual(saved["kimi"]["apiKey"], "test-env-kimi")
+            self.assertEqual(saved["kimi"]["model"], "mock-kimi-env")
+            self.assertNotIn("test-env-kimi", json.dumps(data))
+        finally:
+            self.providers_path.write_text(original, "utf-8")
 
     def test_provider_openai_connect_and_run(self):
         status, data = self.request("/providers/deepseek/connect", "POST", {})

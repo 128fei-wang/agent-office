@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>AI setup self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1280px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>AI CONNECT SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2600));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    check('ai setup component',!!w.AgentOffice&&!!w.AgentOffice.aiSetup);
+    const setup=w.AgentOffice.aiSetup;
+    if(!setup){finish();return;}
+    await setup.open();
+    await wait(500);
+    check('wizard opens',!$('#aiSetupRoot').hidden);
+    check('three steps',$$('#aiSetupRoot .ai-step').length===3);
+    check('three step labels',/选服务/.test($('#aiSetupRoot').textContent)&&/填连接/.test($('#aiSetupRoot').textContent)&&/测试启用/.test($('#aiSetupRoot').textContent));
+    const cards=$$('#aiSetupRoot [data-ai-provider]');
+    check('provider cards',cards.length>=5,cards.length+'');
+    if(!cards.length){finish();return;}
+    const picked=cards.find(c=>c.classList.contains('detected'))||cards[0];
+    const pickedName=(picked.querySelector('.ai-provider-copy b')||{}).textContent||'';
+    picked.click();await wait(200);
+    check('step 2 connection form',!!$('#aiSetupRoot [name="aiModel"]')&&!!$('#aiSetupRoot [data-ai-setup-next]'));
+    check('picked provider shown',new RegExp(pickedName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).test($('#aiSetupRoot').textContent));
+    const next=$('#aiSetupRoot [data-ai-setup-next]');
+    if(next){next.click();await wait(150);}
+    check('step 3 review',!!$('#aiSetupRoot .ai-review')&&!!$('#aiSetupRoot [data-ai-setup-test]'));
+
+    let aiReady=false;
+    d.addEventListener('agent-office:ai-ready',function(){aiReady=true;});
+    const realFetch=w.fetch;
+    w.fetch=function(url,opts){
+      if(String(url).indexOf('/providers/')>=0&&String(url).indexOf('/configure')>=0){
+        const provider=setup.provider()||{id:'test',name:'Test'};
+        const body=JSON.parse((opts&&opts.body)||'{}');
+        const payload={ok:true,saved:true,provider:Object.assign({},provider,{configured:true,detected:false,keySource:'file',model:body.model||provider.model}),test:{text:'OK',model:body.model||provider.model,durationMs:42,tokensIn:5,tokensOut:3}};
+        return Promise.resolve(new w.Response(JSON.stringify(payload),{status:200,headers:{'Content-Type':'application/json'}}));
+      }
+      return realFetch.apply(w,[url,opts]);
+    };
+    const test=$('#aiSetupRoot [data-ai-setup-test]');
+    if(test){test.click();await wait(500);}
+    check('test success state',!!$('#aiSetupRoot .ai-success'));
+    check('ai-ready event',aiReady);
+    check('done action',!!$('#aiSetupRoot [data-ai-setup-done]'));
+    const done=$('#aiSetupRoot [data-ai-setup-done]');
+    if(done){done.click();await wait(120);}
+    check('wizard closes',$('#aiSetupRoot').hidden);
+
+    app.renderer.update.open();
+    await wait(700);
+    check('tools AI setup entry',!!$('#updateModal [data-ai-action="setup"]')||/3 步接入 AI|Connect AI in 3 steps/.test($('#updateModal').textContent));
+    app.renderer.update.close();await wait(100);
+
+    app.renderer.missions.open();
+    await wait(900);
+    const newMission=$('[data-mission-new="mission"]');
+    if(newMission){newMission.click();await wait(300);}
+    check('mission auto-run option',!!$('#missionAutoRun'));
+    const autoLabel=$('#missionAutoRun')&&$('#missionAutoRun').parentNode?$('#missionAutoRun').parentNode.textContent:'';
+    check('mission auto-run copy',/全自动执行/.test(autoLabel),autoLabel.trim().slice(0,80));
+    check('mission AI state',!!$('[data-mission-ai-state]'));
+    app.renderer.missions.close();await wait(120);
+
+    const bridge=app.renderer.missions.bridge();
+    const createRes=await w.fetch(bridge+'/missions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      title:'自检任务 '+Date.now().toString().slice(-5),
+      description:'生成一份简短的自检报告，确认自动执行卡片可以渲染。',
+      acceptance:'卡片渲染成功。',
+      autoDiscuss:false,autoRun:false
+    })});
+    const createdMission=(await createRes.json()).mission;
+    check('test mission created',!!createdMission&&!!createdMission.id);
+    if(createdMission){
+      const mv=app.renderer.missions;
+      mv.open();await mv.refreshAll(false);await mv.selectMission(createdMission.id);await wait(300);
+      const card=$('.mission-autorun-card');
+      check('autorun card renders',!!card&&/AI 全自动执行/.test(card.textContent));
+      check('autorun start control',!!$('[data-mission-autorun]')||/3 步接入 AI/.test((card||{}).textContent||''));
+      await w.fetch(bridge+'/missions/'+createdMission.id,{method:'DELETE'});
+      mv.close();
+    }
+    finish();
+  }
+})();
+</script></body></html>

@@ -108,7 +108,9 @@
           if (aiButton) {
             const aiAction = aiButton.getAttribute("data-ai-action");
             if (aiAction === "refresh") self.loadAI(true);
-            else if (aiAction === "copy-example") self.copyAIExample();
+            else if (aiAction === "setup") {
+              if (AO.aiSetup) AO.aiSetup.open();
+            } else if (aiAction === "copy-example") self.copyAIExample();
             else if (aiAction === "open-providers") {
               self.close();
               if (self.external) self.external.open();
@@ -162,6 +164,9 @@
       document.addEventListener("agent-office:lang", function () {
         if (self.isOpen) self.render();
         self.updateBadge();
+      });
+      document.addEventListener("agent-office:ai-ready", function () {
+        if (self.isOpen) self.loadAI(true);
       });
       if (this.params.get("update") !== "0") {
         window.setTimeout(function () {
@@ -620,21 +625,38 @@
     aiBlock() {
       if (!this.ai && !this.aiLoading && !this.aiError) return "";
       const ai = this.ai || { providers: [], available: false, provider: "" };
-      const configuredCount = (ai.providers || []).filter((item) => item.configured).length;
+      const providers = ai.providers || [];
+      const active = providers.find((item) => item.id === ai.provider) || null;
+      const detected = providers.filter((item) => item.detected);
+      const configuredCount = providers.filter((item) => item.configured).length;
       const state = ai.available ? this.t("aiAvailable") :
         (ai.configError ? this.t("aiConfigBroken") :
           (configuredCount ? this.t("aiConfiguredUnreachable") : this.t("aiUnavailable")));
-      const rows = (ai.providers || []).map((provider) => {
+      const rows = providers.map((provider) => {
         const configured = !!provider.configured;
+        const source = provider.detected ? this.t("aiSetupDetected") :
+          provider.keySource === "file" ? this.t("aiConfigured") :
+            provider.localReady ? this.t("aiSetupLocalReady") : this.t("aiNotConfigured");
         return '<div class="ai-provider-row"><span class="ai-provider-dot ' + (configured ? "ok" : "off") + '"></span>' +
           '<div><b>' + esc(provider.name || provider.id) + '</b><em>' + esc(provider.vendor || provider.protocol || "") +
           ' · ' + esc(provider.model || "") + '</em></div>' +
-          '<span class="ai-provider-state ' + (configured ? "ok" : "off") + '">' +
-          esc(configured ? this.t("aiConfigured") : this.t("aiNotConfigured")) + '</span>' +
+          '<span class="ai-provider-state ' + (configured ? "ok" : "off") + '">' + esc(source) + '</span>' +
           (configured ? '<button type="button" class="update-mini" data-ai-action="test" data-ai-provider="' +
             esc(provider.id) + '">' + esc(this.t("aiTest")) + '</button>' : '') +
           '</div>';
       }).join("");
+      const readyCard = ai.available ?
+        '<div class="ai-ready-card"><span>✓</span><div><b>' + esc(this.t("aiSetupSuccess")) +
+        (active ? ' · ' + esc(active.name || active.id) : "") + '</b><p>' +
+        esc(active ? (active.model || "") + (active.detected ? ' · ' + this.t("aiSetupDetected") : "") : this.t("aiAvailable")) +
+        '</p></div></div>' :
+        '<div class="ai-blocked-card"><b>' + esc(this.t("aiUnavailable")) + '</b><p>' +
+        esc(this.t("aiSetupSub")) + '</p><button type="button" class="btn primary" data-ai-action="setup">' +
+        esc(this.t("aiSetupOpen")) + '</button></div>';
+      const detectedNote = (!ai.available && detected.length) ?
+        '<p class="ai-detected-note">' + esc(this.t("aiSetupDetectedHint", {
+          env: detected[0].keyEnv || "environment"
+        })) + '</p>' : "";
       return '<div class="update-section update-ai">' +
         '<div class="update-ai-head"><div><span>AI SETTINGS</span><h3>' + esc(this.t("aiTitle")) + '</h3></div>' +
         '<b class="ai-status ' + (ai.available ? "ok" : "off") + '">' + esc(state) +
@@ -644,18 +666,27 @@
           '</b><p>' + esc(this.aiError) + '</p></div>' : "") +
         (this.aiLoading ? '<div class="update-loading small"><div class="update-spinner"></div><span>' +
           esc(this.t("aiLoading")) + '</span></div>' : "") +
-        '<div class="ai-provider-list">' + (rows || '<p class="update-hint">' + esc(this.t("aiNoProviders")) + '</p>') + '</div>' +
-        '<div class="ai-config-box"><b>' + esc(this.t("aiHowTo")) + '</b>' +
-        '<ol><li>' + esc(this.t("aiStep1")) + '</li><li>' + esc(this.t("aiStep2")) +
-        '</li><li>' + esc(this.t("aiStep3")) + '</li></ol>' +
+        readyCard + detectedNote +
+        '<div class="update-actions"><button type="button" class="btn ' + (ai.available ? "ghost" : "primary") +
+        '" data-ai-action="setup">' + esc(ai.available ? this.t("aiSetupChange") : this.t("aiSetupOpen")) +
+        '</button><button type="button" class="btn ghost" data-ai-action="refresh">' +
+        esc(this.t("aiRefresh")) + '</button>' +
+        (active ? '<button type="button" class="btn ghost" data-ai-action="test" data-ai-provider="' +
+          esc(active.id) + '">' + esc(this.t("aiTest")) + '</button>' : '') + '</div>' +
+        '<details class="ai-provider-details"><summary>' + esc(this.t("aiTitle")) + ' · ' +
+        providers.length + '</summary><div class="ai-provider-list">' +
+        (rows || '<p class="update-hint">' + esc(this.t("aiNoProviders")) + '</p>') + '</div></details>' +
+        '<details class="ai-provider-details ai-advanced-config"><summary>' + esc(this.t("aiHowTo")) +
+        '</summary><div class="ai-config-box"><ol><li>' + esc(this.t("aiStep1")) + '</li><li>' +
+        esc(this.t("aiStep2")) + '</li><li>' + esc(this.t("aiStep3")) + '</li></ol>' +
         '<code>~/.agent-office/providers.json</code>' +
         '<pre>{ "deepseek": { "apiKey": "sk-...", "model": "deepseek-chat" } }</pre>' +
-        '<p class="update-hint">' + esc(this.t("aiKeySafety")) + '</p></div>' +
-        (this.aiNotice ? '<p class="update-hint ai-notice">' + esc(this.aiNotice) + '</p>' : "") +
-        '<div class="update-actions"><button type="button" class="btn" data-ai-action="refresh">' +
-        esc(this.t("aiRefresh")) + '</button><button type="button" class="btn ghost" data-ai-action="copy-example">' +
+        '<p class="update-hint">' + esc(this.t("aiKeySafety")) + '</p>' +
+        '<div class="update-actions"><button type="button" class="btn ghost" data-ai-action="copy-example">' +
         esc(this.t("aiCopyExample")) + '</button><button type="button" class="btn ghost" data-ai-action="open-providers">' +
-        esc(this.t("aiOpenManage")) + '</button></div></div>';
+        esc(this.t("aiOpenManage")) + '</button></div></div></details>' +
+        (this.aiNotice ? '<p class="update-hint ai-notice">' + esc(this.aiNotice) + '</p>' : "") +
+        '</div>';
     }
 
     toolsBlock() {

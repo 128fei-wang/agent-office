@@ -1131,3 +1131,116 @@ html[data-theme="day"] .mission-artifact-backdrop { background: rgba(60, 46, 28,
 }
 .mission-agent-cost b { font-size: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mission-agent-cost span { color: var(--muted-2); white-space: nowrap; }
+
+/* ---------------------------------------------------- AI auto-run */
+.mission-autorun-card {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(85, 214, 194, 0.24);
+  border-radius: 5px;
+  background: rgba(85, 214, 194, 0.035);
+}
+.mission-autorun-card.running,
+.mission-autorun-card.discussing,
+.mission-autorun-card.queued,
+.mission-autorun-card.pending {
+  border-color: rgba(85, 214, 194, 0.4);
+  background: rgba(85, 214, 194, 0.06);
+}
+.mission-autorun-card.waiting_boss {
+  border-color: rgba(242, 181, 68, 0.4);
+  background: rgba(242, 181, 68, 0.05);
+}
+.mission-autorun-card.done {
+  border-color: rgba(123, 216, 143, 0.32);
+  background: rgba(123, 216, 143, 0.045);
+}
+.mission-autorun-card.error {
+  border-color: rgba(255, 107, 107, 0.38);
+  background: rgba(255, 107, 107, 0.045);
+}
+.mission-autorun-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.mission-autorun-head b { font-size: 8px; color: var(--text); }
+.mission-autorun-head span {
+  padding: 2px 5px;
+  border: 1px solid rgba(85, 214, 194, 0.28);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 6px;
+  white-space: nowrap;
+}
+.mission-autorun-card.waiting_boss .mission-autorun-head span { color: var(--amber); border-color: rgba(242, 181, 68, 0.35); }
+.mission-autorun-card.error .mission-autorun-head span { color: var(--red); border-color: rgba(255, 107, 107, 0.35); }
+.mission-autorun-card.done .mission-autorun-head span { color: #7bd88f; border-color: rgba(123, 216, 143, 0.35); }
+.mission-autorun-head em {
+  margin-left: auto;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 6px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.mission-autorun-bar {
+  height: 3px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.mission-autorun-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #55d6c2, #a9f0e3);
+  transition: width 0.35s ease;
+}
+.mission-autorun-card.waiting_boss .mission-autorun-bar i { background: var(--amber); }
+.mission-autorun-card.done .mission-autorun-bar i { background: #7bd88f; }
+.mission-autorun-card.error .mission-autorun-bar i { background: var(--red); }
+.mission-autorun-card p { margin: 0 0 3px; color: var(--muted); font-size: 6.8px; line-height: 1.45; }
+.mission-autorun-card p.mission-autorun-hint { color: var(--muted-2); }
+.mission-autorun-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 6px; }
+.mission-ai-state-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mission-ai-state {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 6.5px;
+}
+.mission-ai-state.ok { color: var(--cyan); border-color: rgba(85, 214, 194, 0.35); background: rgba(85, 214, 194, 0.06); }
+.mission-ai-state.off { color: var(--amber); border-color: rgba(242, 181, 68, 0.3); background: rgba(242, 181, 68, 0.05); }
+.mission-autorun-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 9px 0 2px;
+  padding: 8px;
+  border: 1px solid rgba(85, 214, 194, 0.22);
+  border-radius: 5px;
+  background: rgba(85, 214, 194, 0.035);
+}
+.mission-autorun-option .mission-check { margin: 0; }
+.mission-auto-note { color: var(--cyan) !important; }
+html[data-theme="day"] .mission-autorun-card { background: #f5fbf9; border-color: #b8dcd5; }
+html[data-theme="day"] .mission-autorun-option { background: #f5fbf9; border-color: #b8dcd5; }
+html[data-theme="day"] .mission-autorun-card p { color: #556b76; }
+
+/* Form grid labels previously inherited the page's large default font. */
+.mission-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 7px;
+}
+.mission-mini.danger { color: var(--red); border-color: rgba(255, 107, 107, 0.32); }
+.mission-autorun-card.stopped .mission-autorun-head span { color: var(--muted); border-color: var(--line); }
+.mission-autorun-card.stopped .mission-autorun-bar i { background: var(--muted-2); }

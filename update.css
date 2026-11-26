@@ -515,3 +515,60 @@ html[data-theme="day"] .mcp-row select { background: #fffaf2; border-color: #e0d
   .update-badge { position: absolute; top: 5px; right: 5px; }
   .update-actions .btn { flex: 1 1 auto; }
 }
+
+/* Simplified AI onboarding inside Tools */
+.ai-ready-card,
+.ai-blocked-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 10px;
+  border: 1px solid rgba(85, 214, 194, 0.3);
+  border-radius: 6px;
+  background: rgba(85, 214, 194, 0.055);
+}
+.ai-ready-card > span {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(123, 216, 143, 0.14);
+  color: #7bd88f;
+  font-size: 13px;
+}
+.ai-ready-card > div { min-width: 0; }
+.ai-ready-card b { display: block; color: #9be6ad; font-size: 8px; }
+.ai-ready-card p { margin: 2px 0 0; overflow: hidden; color: var(--muted); font-family: var(--mono); font-size: 6px; text-overflow: ellipsis; white-space: nowrap; }
+.ai-blocked-card {
+  flex-wrap: wrap;
+  border-color: rgba(242, 181, 68, 0.3);
+  background: rgba(242, 181, 68, 0.045);
+}
+.ai-blocked-card > b { width: 100%; color: var(--amber); font-size: 8px; }
+.ai-blocked-card > p { flex: 1; min-width: 180px; margin: 0; color: var(--muted); font-size: 7px; line-height: 1.5; }
+.ai-blocked-card .btn { flex: none; height: 25px; padding: 0 9px; font-size: 7px; }
+.ai-detected-note {
+  margin: 7px 0 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--cyan);
+  background: rgba(85, 214, 194, 0.045);
+  color: var(--muted);
+  font-size: 6.8px;
+  line-height: 1.5;
+}
+.ai-provider-details {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+}
+.ai-provider-details summary { color: var(--muted); font-size: 7px; cursor: pointer; }
+.ai-provider-details[open] summary { margin-bottom: 7px; }
+.ai-advanced-config .ai-config-box { margin-top: 7px; border: 0; padding: 0; }
+html[data-theme="day"] .ai-ready-card { background: #eef9f2; border-color: #b8dfc4; }
+html[data-theme="day"] .ai-ready-card b { color: #2c7a42; }
+html[data-theme="day"] .ai-blocked-card { background: #fff8e8; border-color: #e5c98f; }
+html[data-theme="day"] .ai-provider-details { border-color: #d8c8b4; }

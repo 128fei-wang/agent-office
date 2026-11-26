@@ -190,13 +190,15 @@
         const run = event.target.closest("[data-ai-task]");
         if (run) { self.runTask(run.getAttribute("data-ai-task"), run); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
+        if (event.target.closest("[data-mission-autorun]")) { self.startAutorun(); return; }
+        if (event.target.closest("[data-mission-autorun-stop]")) { self.stopAutorun(); return; }
         if (event.target.closest("[data-mission-recommend]")) {
           self.refreshRecommendation(false);
           return;
         }
         if (event.target.closest("[data-mission-ai-settings]")) {
-          self.close();
-          if (self.renderer && self.renderer.update) self.renderer.update.open();
+          if (AO.aiSetup) AO.aiSetup.open();
+          else if (self.renderer && self.renderer.update) self.renderer.update.open();
           return;
         }
         const formClose = event.target.closest("[data-mission-form-close]");
@@ -297,6 +299,35 @@
       document.addEventListener("agent-office:lang", function () {
         if (self.isOpen) self.render();
       });
+      document.addEventListener("agent-office:ai-ready", function () {
+        if (!self.isOpen) return;
+        self.applyAIReady();
+      });
+    }
+
+    async applyAIReady() {
+      try {
+        const data = await this.api("/missions/overview", null, 8000);
+        this.ai = data.ai || { available: false, provider: "" };
+        if (this.formMode === "mission") {
+          const input = this.root.querySelector("#missionAutoRun");
+          const note = this.root.querySelector("[data-mission-ai-state]");
+          if (input) {
+            input.disabled = false;
+            if (!input.checked) input.checked = true;
+          }
+          if (note) note.innerHTML = this.aiStateHTML();
+          const hint = this.root.querySelector(".mission-ai-note");
+          if (hint) {
+            hint.textContent = this.t("missionAutoRunHint");
+            hint.classList.remove("mission-ai-note");
+            hint.classList.add("mission-auto-note");
+          }
+          return;
+        }
+        if (this.mission) await this.loadActive();
+        this.render();
+      } catch (err) {}
     }
 
     async api(path, options, timeout) {
@@ -434,6 +465,8 @@
     stopPoll() {
       if (this.pollTimer) window.clearInterval(this.pollTimer);
       this.pollTimer = null;
+      if (this.autoRunTimer) window.clearInterval(this.autoRunTimer);
+      this.autoRunTimer = null;
     }
 
     isEditing() {
@@ -835,6 +868,7 @@
         esc(this.t("missionTabTasks")) + '</span></div><div><b>' + (stats.review || 0) + '</b><span>' +
         esc(this.t("statusReview")) + '</span></div><div><b>' + (stats.approvals || 0) + '</b><span>' +
         esc(this.t("missionApprovals")) + '</span></div></div>' +
+        this.autorunHTML(m) +
         '<div class="mission-coverage ' + (coverage.noIdle ? 'ok' : 'bad') + '"><b>' +
         esc(coverage.noIdle ? this.t("missionNoIdle") : this.t("missionIdle")) + '</b><p>' +
         esc(this.t("missionCoverageHint", { assigned: coverage.assigned || 0, total: coverage.total || 0 })) + '</p></div>' +
@@ -846,8 +880,10 @@
         esc(discussion.status === "done" ? this.t("missionAiDone") :
           discussion.status === "running" || discussion.status === "queued" ? this.t("missionAiRunning") :
           discussion.status === "error" ? this.t("missionAiError") :
-          discussion.status === "unavailable" ? this.t("missionAiUnavailable") : this.t("missionAiPending")) +
-        '</p>' + (discussion.error ? '<small>' + esc(short(discussion.error, 180)) + '</small>' : '') +
+          discussion.status === "unavailable" ? (this.ai.available ? this.t("missionAiReadyRetry") : this.t("missionAiUnavailable")) :
+          this.t("missionAiPending")) +
+        '</p>' + (discussion.error && !(discussion.status === "unavailable" && this.ai.available) ?
+          '<small>' + esc(short(discussion.error, 180)) + '</small>' : '') +
         '</div><div class="mission-discussion-actions">' +
         (this.ai.available ? '' : '<button class="mission-mini" type="button" data-mission-ai-settings>' +
           esc(this.t("missionAiSettings")) + '</button>') +
@@ -1158,6 +1194,134 @@
       return !!(agent && agent.source === "external");
     }
 
+    aiStateHTML() {
+      if (this.ai && this.ai.available) {
+        return '<span class="mission-ai-state ok">' + esc(this.t("missionAutoRunReady")) +
+          (this.ai.provider ? ' · ' + esc(this.ai.provider) : '') + '</span>';
+      }
+      return '<span class="mission-ai-state off">' + esc(this.t("aiUnavailable")) + '</span>' +
+        '<button type="button" class="mission-mini" data-mission-ai-settings>' +
+        esc(this.t("missionAutoRunSetup")) + '</button>';
+    }
+
+    autorunLabel(status) {
+      return {
+        off: this.t("missionAutoRunOff"),
+        pending: this.t("missionAutoRunPending"),
+        queued: this.t("missionAutoRunQueued"),
+        discussing: this.t("missionAutoRunDiscussing"),
+        running: this.t("missionAutoRunRunning"),
+        waiting_boss: this.t("missionAutoRunWaiting"),
+        stopped: this.t("missionAutoRunStopped"),
+        done: this.t("missionAutoRunDone"),
+        error: this.t("missionAutoRunError")
+      }[status] || this.t("missionAutoRunOff");
+    }
+
+    autorunHTML(m) {
+      if (!m) return "";
+      const auto = m.autoRun || {};
+      const status = auto.status || "off";
+      const active = status === "pending" || status === "queued" ||
+        status === "discussing" || status === "running";
+      const total = Number(auto.total || (m.stats && m.stats.tasks) || 0);
+      const done = Number(auto.completed || (m.stats && m.stats.done) || 0);
+      const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      let actions = "";
+      if (active) {
+        actions = '<button type="button" class="mission-mini danger" data-mission-autorun-stop>' +
+          esc(this.t("missionAutoRunStop")) + '</button>';
+      } else if (status === "waiting_boss") {
+        actions = '<button type="button" class="mission-mini" data-mission-autorun-stop>' +
+          esc(this.t("missionAutoRunStop")) + '</button><button type="button" class="mission-mini" data-detail-tab="approvals">' +
+          esc(this.t("missionApprovals")) + '</button>';
+      } else if (!this.ai.available) {
+        actions = '<button type="button" class="mission-mini" data-mission-ai-settings>' +
+          esc(this.t("missionAutoRunSetup")) + '</button>';
+      } else if (status !== "done") {
+        actions = '<button type="button" class="mission-primary small" data-mission-autorun>' +
+          esc(status === "error" || status === "stopped" ? this.t("missionAutoRunRestart") : this.t("missionAutoRunStart")) +
+          '</button>';
+      }
+      const hint = status === "waiting_boss" ? this.t("missionAutoRunPausedHint") :
+        status === "done" ? this.t("missionAutoRunDoneHint") :
+        status === "stopped" ? this.t("missionAutoRunStoppedHint") :
+        status === "error" ? (auto.error || this.t("missionAutoRunErrorHint")) :
+        !this.ai.available ? this.t("missionAutoRunSetupHint") :
+        this.t("missionAutoRunHint");
+      return '<div class="mission-autorun-card ' + esc(status) + '">' +
+        '<div class="mission-autorun-head"><b>' + esc(this.t("missionAutoRunTitle")) +
+        '</b><span>' + esc(this.autorunLabel(status)) + '</span>' +
+        (total ? '<em>' + esc(this.t("missionAutoRunProgress", { done: done, total: total })) +
+          '</em>' : '') + '</div>' +
+        '<div class="mission-autorun-bar"><i style="width:' + pct + '%"></i></div>' +
+        (auto.currentTaskTitle ? '<p>' + esc(this.t("missionAutoRunCurrent", {
+          task: auto.currentTaskTitle
+        })) + '</p>' : '') +
+        '<p class="mission-autorun-hint">' + esc(hint) + '</p>' +
+        (actions ? '<div class="mission-autorun-actions">' + actions + '</div>' : '') +
+        '</div>';
+    }
+
+    async startAutorun() {
+      if (!this.mission) return;
+      const missionId = this.mission.id;
+      try {
+        await this.api("/missions/" + encodeURIComponent(missionId) + "/autorun", {
+          method: "POST", body: JSON.stringify({})
+        }, 30000);
+        this.toast(this.t("missionAutoRunStarted"));
+        await this.loadActive();
+        this.render();
+        this.watchAutorun(missionId);
+      } catch (err) {
+        this.toast(err.code === "no_provider" ? this.t("missionAiUnavailable") :
+          this.t("missionAutoRunFailed") + " " + String(err.message || ""));
+      }
+    }
+
+    async stopAutorun() {
+      if (!this.mission) return;
+      try {
+        await this.api("/missions/" + encodeURIComponent(this.mission.id) + "/autorun/stop", {
+          method: "POST", body: JSON.stringify({})
+        }, 20000);
+        this.toast(this.t("missionAutoRunStoppedToast"));
+        await this.loadActive();
+        this.render();
+      } catch (err) {
+        this.toast(String(err.message || err));
+      }
+    }
+
+    watchAutorun(missionId) {
+      if (this.autoRunTimer) window.clearInterval(this.autoRunTimer);
+      const self = this;
+      let tries = 0;
+      this.autoRunTimer = window.setInterval(async function () {
+        tries += 1;
+        if (!self.isOpen || self.activeId !== missionId || tries > 120) {
+          window.clearInterval(self.autoRunTimer);
+          self.autoRunTimer = null;
+          return;
+        }
+        try {
+          const detail = await self.api("/missions/" + encodeURIComponent(missionId));
+          self.mission = detail.mission;
+          if (!self.isEditing()) self.render();
+          const status = ((self.mission || {}).autoRun || {}).status;
+          if (["done", "error", "waiting_boss", "stopped", "off"].indexOf(status) >= 0) {
+            window.clearInterval(self.autoRunTimer);
+            self.autoRunTimer = null;
+            self.refreshOverview();
+          }
+        } catch (err) {
+          window.clearInterval(self.autoRunTimer);
+          self.autoRunTimer = null;
+        }
+      }, 2000);
+    }
+
     async runTask(taskId, button) {
       if (!this.mission || !taskId) return;
       if (button) {
@@ -1218,6 +1382,13 @@
           '<select name="priority"><option>P0</option><option selected>P1</option><option>P2</option></select></label>' +
           '<label>' + esc(this.t("missionBudget")) + '<input name="budget" type="number" min="0" step="1" placeholder="0" /></label>' +
           '<label>' + esc(this.t("missionDeadline")) + '<input name="deadline" type="date" /></label></div>' +
+          '<div class="mission-autorun-option"><label class="mission-check"><input id="missionAutoRun" name="autoRun" type="checkbox"' +
+          (this.ai.available ? ' checked' : ' disabled') + ' /> ' +
+          esc(this.t("missionAutoRun")) + '</label><div class="mission-ai-state-wrap" data-mission-ai-state>' +
+          this.aiStateHTML() + '</div></div>' +
+          (this.ai.available ? '<p class="mission-note mission-auto-note">' +
+            esc(this.t("missionAutoRunHint")) + '</p>' :
+            '<p class="mission-note mission-ai-note">' + esc(this.t("missionAiUnavailableHint")) + '</p>') +
           '<div class="mission-team-section" id="missionTeamPicker">' +
           this.renderTeamPickerHTML() + '</div>' +
           '<label>' + esc(this.t("missionFiles")) + '<input id="missionCreateFiles" type="file" multiple />' +
@@ -1226,11 +1397,6 @@
             return '<span class="mission-file-chip">' + esc(file.name) +
               ' <button type="button" data-form-file-remove="' + index + '">×</button></span>';
           }).join("") + '</div></label>' +
-          '<label class="mission-check"><input name="autoDiscuss" type="checkbox"' +
-          (this.ai.available ? ' checked' : '') + ' /> ' +
-          esc(this.t("missionAutoDiscuss")) + '</label>' +
-          (this.ai.available ? '' : '<p class="mission-note mission-ai-note">' +
-            esc(this.t("missionAiUnavailableHint")) + '</p>') +
           '<p class="mission-note">' + esc(this.t("missionAutoTeamHint")) + '</p>' +
           '<p class="mission-note">' + esc(this.t("missionBudgetHint")) + '</p>';
       } else if (isGroup) {
@@ -1495,13 +1661,15 @@
               if (!preferred[key] && team.indexOf(agentId) >= 0) preferred[key] = agentId;
             });
           }
+          const autoRun = data.get("autoRun") === "on" && !!this.ai.available;
           const payload = {
             title: String(data.get("title") || "").trim(),
             description: String(data.get("description") || "").trim(),
             acceptance: String(data.get("acceptance") || "").trim(),
             priority: String(data.get("priority") || "P1"),
             budget: Number(data.get("budget") || 0),
-            autoDiscuss: data.get("autoDiscuss") === "on",
+            autoRun: autoRun,
+            autoDiscuss: autoRun,
             language: AO.lang,
             memberIds: team,
             preferredExecutors: preferred
@@ -1537,6 +1705,7 @@
           this.activeId = mission.id;
           await this.refreshAll(false);
           await this.selectMission(mission.id);
+          if (autoRun) this.watchAutorun(mission.id);
           this.toast(this.t("missionCreated"));
         } else if (this.formMode === "group") {
           const memberIds = data.getAll("memberIds");

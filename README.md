@@ -1,6 +1,6 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -65,7 +65,9 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat popup** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
-| **AI settings in Tools** | **MCP deployment** |
+| **AI 三步接入** | **测试并启用** |
+| ![AI connect](docs/screenshots/ai-connect.jpg) | ![AI test](docs/screenshots/ai-connect-test.jpg) |
+| **工具内 AI 状态** | **MCP 部署** |
 | ![AI settings](docs/screenshots/ai-tools.jpg) | ![MCP deployment](docs/screenshots/mcp-tools.jpg) |
 
 ## 工作可追溯 / 审计
@@ -369,16 +371,17 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 群聊弹窗 / 单聊弹窗是独立浮窗，支持现有任务群、临时群和私聊，消息走本地 bridge；窗口右上角的 **风** 按钮可以随时切换 QQ / 微信风格。风格只改变外观，不改变消息内容。
 
-## AI 模型设置
+## AI 三步接入与全自动执行
 
-打开顶部 **`工具`**，在 **AI 模型服务** 区域查看：
+打开 **工具 → AI 模型服务 → 3 步接入 AI**，或直接点 Mission Control 里的 **AI 设置**：
 
-- 当前是否有可用模型，以及正在使用哪个 provider；
-- 豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama 的配置状态；
-- 已配置模型的 **测试** 按钮；
-- 配置方法和一份可复制的 `~/.agent-office/providers.json` 示例。
+1. **选服务**：豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama；本机已检测到的凭据和已配置服务排在最前。
+2. **填连接**：复用本机环境、粘贴 API Key，或展开高级设置修改模型和接口地址。
+3. **测试并启用**：bridge 发起一次真实最小调用；测试通过后才写入配置，失败不会覆盖旧配置。
 
-API key 只放在 bridge 所在机器的 `~/.agent-office/providers.json` 或环境变量中，不进入前端、任务记录或导出。保存后点 **刷新模型状态**；配置好模型后，Mission Control 的 **AI 设置** 入口也会直接打开工具面板。
+bridge 现在会识别 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` 等本机环境变量，不再出现“明明有凭据却显示 AI 不可用”。密钥只写入本机 `~/.agent-office/providers.json`（权限 `0600`），不进入浏览器存储、任务记录、日志或仓库。
+
+创建任务时勾选 **创建后全自动执行（讨论 → 分配 → 执行 → 汇报）**，Agent 会按依赖顺序逐个执行并自动验收；只有花费、拍板、扫码登录、授权四类老板门禁会暂停，批准后自动继续。已有任务可在概览里点 **全自动执行**。详细规则见 [docs/AI_SETUP.md](docs/AI_SETUP.md)。
 
 ## MCP 部署
 
@@ -783,7 +786,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.10.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.11.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

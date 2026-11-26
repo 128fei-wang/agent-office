@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.11.0] - 2026-11-26
+
+### Added
+- **AI setup in three steps**: provider cards → connect (environment or API key) → test and enable. Built-in providers cover Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen and Ollama, with local gateway readiness shown before selection.
+- **Environment credential detection**: the bridge recognises `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_BASE` and similar gateway variables, and identifies the source as `environment` without exposing the value to the page.
+- **Test-before-save**: `POST /providers/<id>/configure` validates and performs a real minimal call, then writes `~/.agent-office/providers.json` atomically with mode `0600`. A failed test never overwrites existing settings.
+- **Full auto-run**: missions can run discuss → assign → execute → report automatically. Dependency-ready tasks execute in order; reports, Markdown deliverables and token usage are archived; approving a boss gate resumes the run.
+- **Auto-run status card**: progress, current task, waiting-for-approval, completion and error states, with start/resume, stop and approval shortcuts for existing missions.
+- `docs/AI_SETUP.md` and new AI setup screenshots.
+
+### Fixed
+- AI no longer appears unavailable when a Claude-compatible gateway supplies `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` instead of `ANTHROPIC_API_KEY`.
+- Long tasks no longer fail with an empty provider response when a DeepSeek Anthropic-compatible gateway spends the whole token budget on thinking; thinking is disabled for that gateway and task budgets were raised.
+- Invalid AI-generated boss gates (for example `authorization` without scopes) are recorded as a risk and skipped instead of aborting the whole mission.
+- Mission form labels inherited oversized text, and auto-run was buried below the file picker; labels are fixed and auto-run now sits directly below priority/budget/deadline.
+- A stale “AI unavailable” discussion message now shows “AI is ready; run the discussion again” once a model is connected.
+
+### Changed
+- Version bumped to 1.11.0.
+- README, provider docs, security docs and browser self-checks cover the three-step setup and auto-run flow.
+
 ## [1.10.1] - 2026-11-26
 
 ### Changed

@@ -82,7 +82,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
         check('per-task executor override',view.taskExecutors[chosenKey]===alternate.value);
       }
     }
-    form.elements.autoDiscuss.checked=false;
+    if(form.elements.autoRun)form.elements.autoRun.checked=false;
     await wait(1200);
     if(chosenKey)check('executor survives recommendation refresh',view.taskExecutors[chosenKey]===chosenAgent,
       chosenKey+'='+view.taskExecutors[chosenKey]+'/'+chosenAgent);

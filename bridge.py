@@ -60,6 +60,9 @@ MISSION_STORE = (
     if missions else None
 )
 MISSION_DISCUSS_LOCK = threading.Lock()
+MISSION_AUTORUN_LOCK = threading.Lock()
+MISSION_AUTORUN_ACTIVE = set()
+MISSION_AUTORUN_STOP = set()
 BOOT_ID = secrets.token_hex(8)
 UPDATE_TOKENS = {}
 UPDATE_TOKEN_LOCK = threading.Lock()
@@ -103,7 +106,9 @@ PROVIDER_CATALOG = {
         "model": "deepseek-chat",
         "env": ["DEEPSEEK_API_KEY"],
         "baseEnv": "AGENT_OFFICE_DEEPSEEK_BASE_URL",
+        "baseEnvAliases": ["DEEPSEEK_BASE_URL"],
         "modelEnv": "AGENT_OFFICE_DEEPSEEK_MODEL",
+        "modelEnvAliases": ["DEEPSEEK_MODEL"],
         "skills": ["chat", "coding", "reasoning"],
         "color": "#5b8cff",
         "note": "DeepSeek OpenAI 兼容接口；默认 deepseek-chat。",
@@ -129,9 +134,11 @@ PROVIDER_CATALOG = {
         "protocol": "gemini",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "model": "gemini-2.5-flash",
-        "env": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "env": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_API_KEY"],
         "baseEnv": "AGENT_OFFICE_GEMINI_BASE_URL",
+        "baseEnvAliases": ["GEMINI_BASE_URL"],
         "modelEnv": "AGENT_OFFICE_GEMINI_MODEL",
+        "modelEnvAliases": ["GEMINI_MODEL"],
         "skills": ["chat", "vision", "reasoning"],
         "color": "#9b8cff",
         "note": "Google Generative Language API；默认 gemini-2.5-flash。",
@@ -144,7 +151,9 @@ PROVIDER_CATALOG = {
         "model": "gpt-4.1-mini",
         "env": ["OPENAI_API_KEY"],
         "baseEnv": "AGENT_OFFICE_OPENAI_BASE_URL",
+        "baseEnvAliases": ["OPENAI_BASE_URL", "OPENAI_API_BASE"],
         "modelEnv": "AGENT_OFFICE_OPENAI_MODEL",
+        "modelEnvAliases": ["OPENAI_MODEL"],
         "skills": ["chat", "coding", "tools"],
         "color": "#74d6a3",
         "note": "OpenAI Chat Completions；也兼容大多数 /v1 代理。",
@@ -155,9 +164,11 @@ PROVIDER_CATALOG = {
         "protocol": "anthropic",
         "baseUrl": "https://api.anthropic.com/v1",
         "model": "claude-sonnet-5-5",
-        "env": ["ANTHROPIC_API_KEY"],
+        "env": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
         "baseEnv": "AGENT_OFFICE_ANTHROPIC_BASE_URL",
+        "baseEnvAliases": ["ANTHROPIC_BASE_URL"],
         "modelEnv": "AGENT_OFFICE_ANTHROPIC_MODEL",
+        "modelEnvAliases": ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL"],
         "skills": ["chat", "coding", "review"],
         "color": "#d0a27a",
         "note": "Anthropic Messages API；默认 claude-sonnet-5-5。",
@@ -196,7 +207,9 @@ PROVIDER_CATALOG = {
         "model": "llama3.2",
         "env": ["OLLAMA_API_KEY"],
         "baseEnv": "AGENT_OFFICE_OLLAMA_BASE_URL",
+        "baseEnvAliases": ["OLLAMA_BASE_URL"],
         "modelEnv": "AGENT_OFFICE_OLLAMA_MODEL",
+        "modelEnvAliases": ["OLLAMA_MODEL"],
         "skills": ["chat", "coding", "local"],
         "color": "#8ee0d0",
         "keyOptional": True,
@@ -264,6 +277,14 @@ def load_provider_overrides():
         return {}, str(exc)[:200]
 
 
+def _first_env(names):
+    for name in names or []:
+        value = str(os.environ.get(name) or "").strip()
+        if value:
+            return value, name
+    return "", ""
+
+
 def provider_settings(provider_id: str, overrides=None):
     meta = PROVIDER_CATALOG.get(provider_id)
     if not meta:
@@ -273,24 +294,29 @@ def provider_settings(provider_id: str, overrides=None):
     cfg = overrides.get(provider_id)
     if not isinstance(cfg, dict):
         cfg = {}
-    api_key = str(cfg.get("apiKey") or "").strip()
-    if not api_key:
-        for name in meta.get("env", []):
-            api_key = str(os.environ.get(name) or "").strip()
-            if api_key:
-                break
-    base_url = str(
-        cfg.get("baseUrl")
-        or os.environ.get(meta.get("baseEnv", ""))
-        or meta.get("baseUrl")
-        or ""
-    ).strip().rstrip("/")
-    model = str(
-        cfg.get("model")
-        or os.environ.get(meta.get("modelEnv", ""))
-        or meta.get("model")
-        or ""
-    ).strip()
+    file_key = str(cfg.get("apiKey") or "").strip()
+    env_key, key_env = _first_env(meta.get("env", []))
+    api_key = file_key or env_key
+    key_source = "file" if file_key else ("environment" if env_key else
+                                          ("none" if meta.get("keyOptional") else ""))
+    base_names = [meta.get("baseEnv", "")] + list(meta.get("baseEnvAliases") or [])
+    env_base, base_env = _first_env(base_names)
+    file_base = str(cfg.get("baseUrl") or "").strip()
+    base_url = (file_base or env_base or meta.get("baseUrl") or "").strip().rstrip("/")
+    base_source = "file" if file_base else ("environment" if env_base else "default")
+    model_names = [meta.get("modelEnv", "")] + list(meta.get("modelEnvAliases") or [])
+    env_model, model_env = _first_env(model_names)
+    file_model = str(cfg.get("model") or "").strip()
+    # A model written by the example config is not a user choice. When the key
+    # comes from the environment, prefer the environment's model over a default.
+    stale_file_model = env_model and key_source == "environment" and (
+        not file_model or file_model == meta.get("model")
+    )
+    if stale_file_model:
+        model, model_source = env_model, "environment"
+    else:
+        model = (file_model or env_model or meta.get("model") or "").strip()
+        model_source = "file" if file_model else ("environment" if env_model else "default")
     if not base_url.startswith(("http://", "https://")):
         raise ProviderCallError("provider baseUrl must start with http:// or https://")
     configured = bool(api_key) or bool(meta.get("keyOptional"))
@@ -306,8 +332,14 @@ def provider_settings(provider_id: str, overrides=None):
         "keyOptional": bool(meta.get("keyOptional")),
         "local": bool(meta.get("local")),
         "env": list(meta.get("env", [])),
+        "keyEnv": key_env,
+        "keySource": key_source,
         "baseEnv": meta.get("baseEnv", ""),
+        "baseEnvName": base_env,
+        "baseSource": base_source,
         "modelEnv": meta.get("modelEnv", ""),
+        "modelEnvName": model_env,
+        "modelSource": model_source,
         "skills": list(meta.get("skills", [])),
         "color": meta.get("color", "#b58cff"),
         "note": meta.get("note", ""),
@@ -320,7 +352,11 @@ def provider_public(provider_id: str, overrides=None) -> dict:
         return {}
     out = dict(settings)
     out.pop("apiKey", None)
-    out["keyEnv"] = out["env"][0] if out.get("env") else ""
+    out["detected"] = out.get("keySource") == "environment" or (
+        out.get("keyOptional") and out.get("baseSource") == "environment"
+    )
+    if out.get("local"):
+        out["localReady"] = _provider_local_ready(out)
     return out
 
 
@@ -343,6 +379,120 @@ def providers_payload() -> dict:
         "providers": providers,
         "configFile": PROVIDERS_FILE.name,
         "configError": error,
+    }
+
+
+def _write_provider_overrides(overrides):
+    """Persist provider settings atomically with owner-only permissions."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(STATE_DIR, 0o700)
+    except OSError:
+        pass
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(STATE_DIR), prefix=".providers-", suffix=".json"
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(overrides, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, PROVIDERS_FILE)
+        os.chmod(PROVIDERS_FILE, 0o600)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _provider_text(value, limit, label):
+    text = str(value or "").strip()
+    if len(text) > limit:
+        raise ProviderCallError("%s is too long (max %d characters)" % (label, limit))
+    if "\r" in text or "\n" in text:
+        raise ProviderCallError("%s must be a single line" % label)
+    return text
+
+
+def configure_provider(provider_id: str, body):
+    """Validate, test, then persist one provider. Keys never return to the browser."""
+    meta = PROVIDER_CATALOG.get(provider_id)
+    if not meta:
+        raise ProviderCallError("unknown provider")
+    overrides, load_error = load_provider_overrides()
+    if load_error:
+        raise ProviderCallError("providers.json is unreadable: " + load_error)
+    existing = overrides.get(provider_id)
+    existing = dict(existing) if isinstance(existing, dict) else {}
+    merged = dict(existing)
+    body = body if isinstance(body, dict) else {}
+
+    if body.get("useEnvironment"):
+        env_key, _ = _first_env(meta.get("env", []))
+        base_names = [meta.get("baseEnv", "")] + list(meta.get("baseEnvAliases") or [])
+        env_base, _ = _first_env(base_names)
+        model_names = [meta.get("modelEnv", "")] + list(meta.get("modelEnvAliases") or [])
+        env_model, _ = _first_env(model_names)
+        if env_key:
+            merged["apiKey"] = env_key
+        if env_base:
+            merged["baseUrl"] = env_base
+        if env_model:
+            merged["model"] = env_model
+
+    if "apiKey" in body:
+        api_key = _provider_text(body.get("apiKey"), 4096, "API key")
+        if api_key:
+            merged["apiKey"] = api_key
+        elif body.get("clearKey"):
+            merged["apiKey"] = ""
+    if "baseUrl" in body:
+        base_url = _provider_text(body.get("baseUrl"), 500, "base URL")
+        if base_url:
+            parsed = urlparse(base_url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ProviderCallError("base URL must be an http(s) URL")
+            if parsed.username or parsed.password:
+                raise ProviderCallError("base URL must not contain credentials")
+            merged["baseUrl"] = base_url.rstrip("/")
+    if "model" in body:
+        model = _provider_text(body.get("model"), 200, "model")
+        if model:
+            merged["model"] = model
+
+    candidate = dict(overrides)
+    candidate[provider_id] = merged
+    settings = provider_settings(provider_id, overrides=candidate)
+    if not settings:
+        raise ProviderCallError("unknown provider")
+    if not settings.get("configured"):
+        raise ProviderNotConfigured(
+            "missing API key for %s; enter a key or use the detected environment" % settings["name"]
+        )
+
+    started = time.time()
+    result = provider_chat(
+        provider_id, "Return the single word OK.", "", max_tokens=64, settings=settings
+    )
+    duration_ms = int(round((time.time() - started) * 1000))
+
+    overrides[provider_id] = merged
+    _write_provider_overrides(overrides)
+    public = provider_public(provider_id, overrides=overrides)
+    return {
+        "ok": True,
+        "provider": public,
+        "saved": True,
+        "test": {
+            "text": result.get("text", "")[:200],
+            "model": result.get("model", ""),
+            "tokensIn": int(result.get("tokensIn") or 0),
+            "tokensOut": int(result.get("tokensOut") or 0),
+            "durationMs": duration_ms,
+        },
     }
 
 
@@ -390,8 +540,9 @@ def _text_from_content(content) -> str:
     return ""
 
 
-def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: int = 512):
-    settings = provider_settings(provider_id)
+def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: int = 512,
+                  settings=None):
+    settings = settings or provider_settings(provider_id)
     if not settings:
         raise ProviderCallError("unknown provider")
     if not settings["configured"]:
@@ -432,12 +583,35 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         }
         if system:
             payload["system"] = system
+        host = (urlparse(base).hostname or "").lower()
+        if "deepseek" in host or model.lower().startswith("deepseek"):
+            # DeepSeek's Anthropic-compatible gateway thinks by default; long
+            # JSON tasks can exhaust max_tokens before any text is emitted.
+            payload["thinking"] = {"type": "disabled"}
+        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+        # ANTHROPIC_AUTH_TOKEN gateways expect a bearer token; official API keys
+        # use x-api-key. Sending both keeps local Claude-compatible gateways working.
+        if key:
+            headers["Authorization"] = "Bearer " + key
         data = _post_json(
             _provider_endpoint(base, "/messages"),
             payload,
-            {"x-api-key": key, "anthropic-version": "2023-06-01"},
+            headers,
         )
         text = _text_from_content(data.get("content"))
+        if not text and "thinking" not in payload:
+            retry = dict(payload)
+            retry["thinking"] = {"type": "disabled"}
+            try:
+                retry_data = _post_json(
+                    _provider_endpoint(base, "/messages"), retry, headers
+                )
+                retry_text = _text_from_content(retry_data.get("content"))
+                if retry_text:
+                    data = retry_data
+                    text = retry_text
+            except ProviderCallError:
+                pass
         usage = data.get("usage") or {}
         tokens_in = int(usage.get("input_tokens") or 0)
         tokens_out = int(usage.get("output_tokens") or 0)
@@ -870,7 +1044,7 @@ def _run_mission_discussion(mission_id, preferred=""):
                                      startedAt=now_iso(), error="")
         started_at = time.time()
         try:
-            result = provider_chat(provider_id, prompt, system, max_tokens=1800)
+            result = provider_chat(provider_id, prompt, system, max_tokens=3000)
             usage = {
                 "provider": provider_id,
                 "model": result.get("model") or "",
@@ -930,6 +1104,289 @@ def start_mission_discussion(mission_id, preferred=""):
     )
     thread.start()
     return mission.get("discussion")
+
+
+def _autorun_message(mission_id, text):
+    if not MISSION_STORE:
+        return
+    with MISSION_STORE.lock:
+        mission = MISSION_STORE.find_mission(mission_id)
+        if not mission:
+            return
+        try:
+            MISSION_STORE._system_message(mission, "system", text)
+        except Exception:
+            pass
+
+
+def _mission_done_count(mission):
+    return sum(1 for task in mission.get("tasks", []) if task.get("status") == "done")
+
+
+def _mission_pending_approvals(mission):
+    return [
+        item for item in MISSION_STORE.data.get("approvals", [])
+        if item.get("missionId") == mission.get("id") and item.get("status") == "pending"
+    ]
+
+
+def _run_mission_autorun(mission_id, preferred=""):
+    """Run discussion, then execute every dependency-ready task.
+
+    The provider model acts as the execution engine for the task owner. Reports
+    still carry the assigned agent identity, so the audit trail remains intact.
+    Technical work continues automatically; only a pending boss gate pauses it.
+    """
+    if not MISSION_STORE or not missions:
+        return
+    try:
+        candidates = mission_provider_candidates(preferred)
+        with MISSION_STORE.lock:
+            mission = MISSION_STORE.find_mission(mission_id)
+            if not mission:
+                return
+            if not candidates:
+                MISSION_STORE.set_autorun(
+                    mission_id, enabled=True, status="error", provider="",
+                    error="no reachable model service", finishedAt=now_iso(),
+                )
+                auto_error = "AI 全自动执行未启动：没有可用的模型服务。请先完成 3 步接入。"
+            else:
+                auto_error = ""
+                MISSION_STORE.set_autorun(
+                    mission_id, enabled=True, status="discussing", provider=candidates[0],
+                    startedAt=now_iso(), finishedAt="", error="",
+                    completed=_mission_done_count(mission),
+                    total=len(mission.get("tasks", [])),
+                    currentTaskId="", currentTaskTitle="",
+                )
+        if auto_error:
+            _autorun_message(mission_id, auto_error)
+            return
+        _autorun_message(
+            mission_id,
+            "AI 全自动执行已启动：讨论 → 分配 → 逐个执行 → 汇报。"
+            "执行由本机模型完成，任务归属和汇报留痕仍记在对应 Agent 名下；"
+            "只有花费、拍板、扫码登录、授权四类审批会暂停自动执行。",
+        )
+
+        with MISSION_STORE.lock:
+            mission = MISSION_STORE.find_mission(mission_id)
+            discussion = (mission or {}).get("discussion") or {}
+        if mission and mission.get("autoDiscuss") and discussion.get("status") not in ("done", "partial"):
+            _run_mission_discussion(mission_id, preferred)
+
+        for _ in range(200):
+            if mission_id in MISSION_AUTORUN_STOP:
+                with MISSION_STORE.lock:
+                    MISSION_STORE.set_autorun(
+                        mission_id, status="stopped", finishedAt=now_iso(),
+                        currentTaskId="", currentTaskTitle="",
+                        error="",
+                    )
+                _autorun_message(mission_id, "AI 全自动执行已停止；已完成的汇报和交付物会保留。")
+                return
+            with MISSION_STORE.lock:
+                mission = MISSION_STORE.find_mission(mission_id)
+                if not mission:
+                    return
+                tasks = mission.get("tasks", [])
+                done = _mission_done_count(mission)
+                pending = _mission_pending_approvals(mission)
+                if tasks and done >= len(tasks):
+                    MISSION_STORE.set_autorun(
+                        mission_id, status="done", completed=done, total=len(tasks),
+                        currentTaskId="", currentTaskTitle="", finishedAt=now_iso(),
+                        error="",
+                    )
+                    mission["status"] = "done"
+                    MISSION_STORE._save()
+                    should_finish = True
+                    task = None
+                elif pending:
+                    MISSION_STORE.set_autorun(
+                        mission_id, status="waiting_boss", completed=done,
+                        total=len(tasks), currentTaskId="", currentTaskTitle="",
+                        error="", finishedAt="",
+                    )
+                    should_finish = True
+                    task = None
+                else:
+                    should_finish = False
+                    by_id = {t.get("id"): t for t in tasks}
+                    ready = [
+                        t for t in tasks
+                        if t.get("status") in ("queued", "assigned")
+                        and all(by_id.get(dep, {}).get("status") == "done" for dep in t.get("deps") or [])
+                    ]
+                    if not ready:
+                        review = [t for t in tasks if t.get("status") == "review"]
+                        if review:
+                            for item in review:
+                                MISSION_STORE.update_task(item["id"], {"status": "done"})
+                            continue
+                        MISSION_STORE.set_autorun(
+                            mission_id, status="error", completed=done, total=len(tasks),
+                            error="no runnable task; mission may be blocked",
+                            finishedAt=now_iso(),
+                        )
+                        should_finish = True
+                        task = None
+                    else:
+                        task = ready[0]
+                        MISSION_STORE.set_autorun(
+                            mission_id, status="running", completed=done, total=len(tasks),
+                            currentTaskId=task.get("id", ""),
+                            currentTaskTitle=task.get("title", ""),
+                            provider=preferred or candidates[0], error="", finishedAt="",
+                        )
+            if should_finish:
+                break
+            try:
+                run_mission_task(mission_id, task["id"], preferred)
+            except Exception as exc:
+                with MISSION_STORE.lock:
+                    MISSION_STORE.set_autorun(
+                        mission_id, status="error", error=str(exc)[:500],
+                        finishedAt=now_iso(),
+                    )
+                _autorun_message(
+                    mission_id,
+                    "AI 全自动执行中断于「" + str(task.get("title") or task.get("id")) +
+                    "」：" + str(exc)[:300] + "。可在任务面板重试。",
+                )
+                return
+            with MISSION_STORE.lock:
+                mission = MISSION_STORE.find_mission(mission_id)
+                raw_task = None
+                for item in (mission or {}).get("tasks", []):
+                    if item.get("id") == task["id"]:
+                        raw_task = item
+                        break
+                pending = _mission_pending_approvals(mission) if mission else []
+                if pending:
+                    MISSION_STORE.set_autorun(
+                        mission_id, status="waiting_boss",
+                        completed=_mission_done_count(mission),
+                        total=len((mission or {}).get("tasks", [])),
+                        currentTaskId=task["id"], currentTaskTitle=task.get("title", ""),
+                    )
+                elif raw_task and raw_task.get("status") == "review":
+                    MISSION_STORE.update_task(task["id"], {"status": "done"})
+                    mission = MISSION_STORE.find_mission(mission_id)
+                    MISSION_STORE.set_autorun(
+                        mission_id, completed=_mission_done_count(mission),
+                        total=len(mission.get("tasks", [])),
+                    )
+            if pending:
+                _autorun_message(
+                    mission_id,
+                    "AI 全自动执行已暂停：任务「" + str(task.get("title") or task.get("id")) +
+                    "」提交了老板门禁审批。审批通过后会自动继续。",
+                )
+                return
+        else:
+            with MISSION_STORE.lock:
+                MISSION_STORE.set_autorun(
+                    mission_id, status="error", error="auto-run exceeded its task limit",
+                    finishedAt=now_iso(),
+                )
+            _autorun_message(mission_id, "AI 全自动执行已停止：任务数量超过单次执行上限。")
+            return
+        with MISSION_STORE.lock:
+            mission = MISSION_STORE.find_mission(mission_id)
+            auto = (mission or {}).get("autoRun") or {}
+        if auto.get("status") == "done":
+            _autorun_message(mission_id, "AI 全自动执行完成：全部任务已完成并留下汇报与交付物。")
+    except Exception as exc:
+        with MISSION_STORE.lock:
+            try:
+                MISSION_STORE.set_autorun(
+                    mission_id, status="error", error=str(exc)[:500], finishedAt=now_iso(),
+                )
+            except Exception:
+                pass
+        _autorun_message(mission_id, "AI 全自动执行异常中断：" + str(exc)[:300])
+    finally:
+        with MISSION_AUTORUN_LOCK:
+            MISSION_AUTORUN_ACTIVE.discard(mission_id)
+            MISSION_AUTORUN_STOP.discard(mission_id)
+
+
+def start_mission_autorun(mission_id, preferred=""):
+    if not MISSION_STORE:
+        raise ValueError("mission store is not available")
+    with MISSION_STORE.lock:
+        mission = MISSION_STORE.find_mission(mission_id)
+        if not mission:
+            raise ValueError("mission not found")
+        auto = dict(mission.get("autoRun") or {})
+        tasks = mission.get("tasks", [])
+        completed = _mission_done_count(mission)
+    with MISSION_AUTORUN_LOCK:
+        if mission_id in MISSION_AUTORUN_ACTIVE:
+            return auto
+        MISSION_AUTORUN_ACTIVE.add(mission_id)
+        MISSION_AUTORUN_STOP.discard(mission_id)
+    with MISSION_STORE.lock:
+        auto = MISSION_STORE.set_autorun(
+            mission_id, enabled=True, status="queued", provider=preferred,
+            completed=completed, total=len(tasks), startedAt=now_iso(),
+            finishedAt="", error="", currentTaskId="", currentTaskTitle="",
+        )
+    thread = threading.Thread(
+        target=_run_mission_autorun, args=(mission_id, preferred), daemon=True
+    )
+    thread.start()
+    return auto
+
+
+def stop_mission_autorun(mission_id):
+    if not MISSION_STORE:
+        raise ValueError("mission store is not available")
+    with MISSION_STORE.lock:
+        mission = MISSION_STORE.find_mission(mission_id)
+        if not mission:
+            raise ValueError("mission not found")
+    with MISSION_AUTORUN_LOCK:
+        active = mission_id in MISSION_AUTORUN_ACTIVE
+        MISSION_AUTORUN_STOP.add(mission_id)
+    if not active:
+        with MISSION_STORE.lock:
+            MISSION_STORE.set_autorun(
+                mission_id, status="stopped", finishedAt=now_iso(),
+                currentTaskId="", currentTaskTitle="", error="",
+            )
+    return MISSION_STORE.find_mission(mission_id).get("autoRun", {})
+
+
+def resume_mission_after_approval(approval):
+    """Continue an auto-run that was paused on a boss gate."""
+    if not MISSION_STORE or not approval:
+        return
+    mission_id = approval.get("missionId") or ""
+    with MISSION_STORE.lock:
+        mission = MISSION_STORE.find_mission(mission_id)
+        if not mission:
+            return
+        auto = mission.get("autoRun") or {}
+        if not auto.get("enabled") or auto.get("status") != "waiting_boss":
+            return
+        task_id = approval.get("taskId") or ""
+        if approval.get("status") == "approved":
+            if task_id:
+                _, task = MISSION_STORE.find_task(task_id)
+                if task and task.get("status") == "review":
+                    MISSION_STORE.update_task(task_id, {"status": "done"})
+            provider = auto.get("provider") or ""
+        else:
+            MISSION_STORE.set_autorun(
+                mission_id, status="error", error="老板驳回了审批，自动执行已停止",
+                finishedAt=now_iso(),
+            )
+            provider = ""
+    if approval.get("status") == "approved":
+        start_mission_autorun(mission_id, provider)
 
 
 def _tesseract_vision(path):
@@ -1041,9 +1498,82 @@ def _mission_task_prompt(mission, task):
         "\"next\":[\"\"],\"risks\":[\"\"],\"solution\":\"\",\"evidence\":[\"\"],"
         "\"deliverable\":\"可直接交付的文本内容\","
         "\"needsBoss\":[]}。\n"
-        "needsBoss 只允许 spend/decision/login/authorization；技术阻塞必须给出解决方案，"
-        "不得把技术问题交给老板。deliverable 要有实际内容，不要只写“已完成”。"
+        "needsBoss 通常必须是空数组。只有确实需要老板花钱、业务拍板、扫码登录或授权时才填写，"
+        "且：spend 必须给 amount>0；decision 必须给至少两个 options；login 必须给 service；"
+        "authorization 必须给非空 scopes。技术阻塞和有替代路径的事项不得放进 needsBoss。"
+        "deliverable 要有实际内容，不要只写“已完成”。"
     )
+
+
+def _sanitize_raw_boss(data):
+    """Filter non-boss-gate values before shared report validation.
+
+    External agents still get strict validation when they call the API. This
+    path only protects AI-generated mission reports from one stray gate value.
+    """
+    if not isinstance(data, dict):
+        return data
+    raw = data.get("needsBoss")
+    if isinstance(raw, str):
+        raw = [part.strip() for part in raw.replace("，", ",").split(",") if part.strip()]
+    if not isinstance(raw, list):
+        raw = []
+    allowed = ("spend", "decision", "login", "authorization")
+    valid = [item for item in raw if str(item) in allowed]
+    invalid = [str(item) for item in raw if str(item) not in allowed]
+    if invalid:
+        risks = data.get("risks")
+        if isinstance(risks, str):
+            risks = [risks]
+        risks = list(risks or [])
+        risks.append("已忽略无效审批类型：" + "、".join(invalid) + "；技术问题由团队自行解决。")
+        data["risks"] = risks
+        data["needsBoss"] = valid
+    return data
+
+
+def _sanitize_boss_gate(report):
+    """Drop malformed boss approvals so one bad model field cannot stop a run."""
+    if not isinstance(report, dict):
+        return report
+    needs = [str(item) for item in (report.get("needsBoss") or [])]
+    if not needs:
+        return report
+    approval = report.get("approval") if isinstance(report.get("approval"), dict) else {}
+    valid = []
+    dropped = []
+    for gate in needs:
+        ok = False
+        if gate == "spend":
+            try:
+                ok = float(approval.get("amount") or 0) > 0
+            except (TypeError, ValueError):
+                ok = False
+        elif gate == "decision":
+            options = approval.get("options")
+            if isinstance(options, str):
+                options = [part for part in options.split("|") if part.strip()]
+            ok = isinstance(options, list) and len(options) >= 2
+        elif gate == "login":
+            ok = bool(str(approval.get("service") or "").strip())
+        elif gate == "authorization":
+            scopes = approval.get("scopes")
+            if isinstance(scopes, str):
+                scopes = [part for part in scopes.split(",") if part.strip()]
+            ok = isinstance(scopes, list) and bool([s for s in scopes if str(s).strip()])
+        if ok and not valid:
+            valid.append(gate)
+        elif not ok:
+            dropped.append(gate)
+    if dropped:
+        note = "审批信息不完整（" + "、".join(dropped) + "），已按替代路径继续，未创建审批。"
+        report["risks"] = list(report.get("risks") or []) + [note]
+        report["needsBoss"] = valid
+        if not valid:
+            report["approval"] = None
+    else:
+        report["needsBoss"] = valid[:1] if valid else []
+    return report
 
 
 def run_mission_task(mission_id, task_id, preferred=""):
@@ -1071,12 +1601,13 @@ def run_mission_task(mission_id, task_id, preferred=""):
     started_at = time.time()
     for pid in candidates:
         try:
-            result = provider_chat(pid, prompt, system, max_tokens=1600)
+            result = provider_chat(pid, prompt, system, max_tokens=3000)
             data = _parse_model_json(result.get("text"))
             if not data:
                 errors.append(pid + ": non-JSON response")
                 continue
-            report = MISSION_STORE.validate_report(data)
+            data = _sanitize_raw_boss(data)
+            report = _sanitize_boss_gate(MISSION_STORE.validate_report(data))
             parsed = (data, report)
             provider_id = pid
             usage = {
@@ -2651,11 +3182,26 @@ class Handler(BaseHTTPRequestHandler):
                 directory = mission_agent_directory()
                 with MISSION_STORE.lock:
                     mission = MISSION_STORE.create_mission(body, directory)
-                    if mission.get("autoDiscuss"):
-                        start_mission_discussion(mission["id"], str(body.get("providerId") or ""))
+                    provider_id = str(body.get("providerId") or "")
+                    if (mission.get("autoRun") or {}).get("enabled"):
+                        start_mission_autorun(mission["id"], provider_id)
+                    elif mission.get("autoDiscuss"):
+                        start_mission_discussion(mission["id"], provider_id)
                     mission = MISSION_STORE.get_mission(mission["id"])
                 self.send_json({"ok": True, "mission": mission,
                                 "agents": directory}, 201)
+                return
+            if path.startswith("/missions/") and path.endswith("/autorun/stop"):
+                mission_id = path.split("/")[2]
+                auto = stop_mission_autorun(mission_id)
+                mission = MISSION_STORE.get_mission(mission_id)
+                self.send_json({"ok": True, "autoRun": auto, "mission": mission}, 202)
+                return
+            if path.startswith("/missions/") and path.endswith("/autorun"):
+                mission_id = path.split("/")[2]
+                auto = start_mission_autorun(mission_id, str(body.get("providerId") or ""))
+                mission = MISSION_STORE.get_mission(mission_id)
+                self.send_json({"ok": True, "autoRun": auto, "mission": mission}, 202)
                 return
             if path.startswith("/missions/") and path.endswith("/discuss"):
                 mission_id = path.split("/")[2]
@@ -2701,6 +3247,7 @@ class Handler(BaseHTTPRequestHandler):
                         str(body.get("note") or ""),
                         str(body.get("optionId") or ""),
                     )
+                resume_mission_after_approval(approval)
                 self.send_json({"ok": True, "approval": approval})
                 return
             if path.startswith("/files/") and path.endswith("/vision"):
@@ -3075,7 +3622,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/autorun", "/missions/<id>/autorun/stop", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/configure", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -3319,6 +3866,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(exc)}, 400)
                 return
             self.send_json({"ok": True, "created": created, "agent": public_agent(agent)})
+            return
+        if action == "configure":
+            try:
+                result = configure_provider(provider_id, body)
+            except ProviderNotConfigured as exc:
+                self.send_json({"error": str(exc), "code": "provider_not_configured"}, 409)
+                return
+            except ProviderCallError as exc:
+                self.send_json({"error": str(exc), "code": "provider_config_failed"}, 400)
+                return
+            self.send_json(result)
             return
         if action not in ("test", "run"):
             self.send_json({"error": "not found"}, 404)

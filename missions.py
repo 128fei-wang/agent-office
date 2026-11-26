@@ -580,6 +580,7 @@ class MissionStore:
             "decisions": mission.get("decisions", []),
             "evaluation": self.mission_evaluation(mission),
             "autoDiscuss": bool(mission.get("autoDiscuss")),
+            "autoRun": mission.get("autoRun", {}),
             "discussion": mission.get("discussion", {}),
             "approvals": [self.public_approval(a) for a in approvals][-20:],
             "artifacts": [self.public_artifact(self.find_artifact(i))
@@ -674,6 +675,7 @@ class MissionStore:
             "reportFormat": "已完成 / 下一步 / 风险 / 解决方案 / 证据",
             "communication": "任务群用于决策和汇报；私聊用于一对一澄清，不替代任务记录。",
         }
+        auto_run = bool(body.get("autoRun"))
         mission = {
             "id": mission_id,
             "title": title,
@@ -697,6 +699,18 @@ class MissionStore:
             "autoDiscuss": bool(body.get("autoDiscuss", True)),
             "discussion": {"status": "pending" if body.get("autoDiscuss", True) else "off",
                            "startedAt": "", "finishedAt": "", "provider": "", "error": ""},
+            "autoRun": {
+                "enabled": auto_run,
+                "status": "pending" if auto_run else "off",
+                "provider": "",
+                "currentTaskId": "",
+                "currentTaskTitle": "",
+                "completed": 0,
+                "total": 0,
+                "startedAt": "",
+                "finishedAt": "",
+                "error": "",
+            },
         }
         preferred = body.get("preferredExecutors")
         mission["preferredExecutors"] = preferred if isinstance(preferred, dict) else {}
@@ -1244,6 +1258,17 @@ class MissionStore:
         mission["updatedAt"] = now_iso()
         self._save()
         return discussion
+
+    def set_autorun(self, mission_id, **fields):
+        mission = self.find_mission(mission_id)
+        if not mission:
+            raise MissionError("mission not found", "not_found", 404)
+        autorun = mission.setdefault("autoRun", {})
+        autorun.update(fields)
+        autorun["updatedAt"] = now_iso()
+        mission["updatedAt"] = now_iso()
+        self._save()
+        return dict(autorun)
 
     def messages_since(self, since=0):
         rows = [m for m in self.data["messages"] if int(m.get("seq") or 0) > int(since)]

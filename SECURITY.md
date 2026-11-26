@@ -21,8 +21,9 @@ Do not include real API keys, tokens, private endpoints or personal data.
 - The bridge accepts only local `Host` headers and browser `Origin`s (`127.0.0.1`, `localhost`, `::1`) to reduce DNS-rebinding and cross-site access. Command-line clients without an `Origin` header still work. Opening `index.html` from `file://` is blocked by default; run `./start.sh`, or set `BRIDGE_ALLOW_FILE_ORIGIN=1` only on a machine you trust.
 - **Never expose the bridge to a public network or the internet.** If you need remote access, put it behind an authenticated reverse proxy and add a real auth layer.
 - One-time pairing codes are single-use and expire after 30 minutes, but they are not a substitute for authentication. Do not post them publicly.
-- The frontend never receives an LLM provider API key. Real agent credentials belong in the external agent process or a local bridge, not in browser code.
-- Tools → AI model settings reports provider metadata and test results only. It never accepts or stores an API key in the frontend; keys remain in the bridge environment or `~/.agent-office/providers.json`.
+- Provider API keys are submitted only to the local bridge when you use the AI setup wizard. The bridge never returns a key, and the browser never writes one to localStorage, IndexedDB, task records or exports.
+- Detected environment credentials are never sent to the browser; only the environment variable name and model metadata are shown.
+- Keys remain in the bridge environment or `~/.agent-office/providers.json` (mode `0600`). Real external-agent credentials belong in the external agent process.
 - The MCP endpoint (`POST /mcp`) is localhost-only and has no separate authentication. It uses `X-Agent-Id` as an identity selector, not as a secret. Do not expose it publicly; run it only on a trusted machine. MCP tools can read assigned tasks, submit reports and send messages for that agent identity.
 - External agent endpoints and notes are stored as metadata; the current bridge does not call those endpoints.
 - Self-update is user-initiated only. Automatic update reads the latest release from the official GitHub repository over TLS; there is no separate signature beyond TLS and the GitHub release pipeline. A compromised upstream release account is therefore a trust boundary.

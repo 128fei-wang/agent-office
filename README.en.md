@@ -1,6 +1,6 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [MCP deployment](docs/MCP.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [MCP deployment](docs/MCP.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -65,6 +65,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat popup** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **AI setup in 3 steps** | **Test & enable** |
+| ![AI connect](docs/screenshots/ai-connect.jpg) | ![AI test](docs/screenshots/ai-connect-test.jpg) |
 | **AI settings in Tools** | **MCP deployment** |
 | ![AI settings](docs/screenshots/ai-tools.jpg) | ![MCP deployment](docs/screenshots/mcp-tools.jpg) |
 
@@ -366,16 +368,17 @@ The function bar title folds or expands it; the **☰** button opens the full fu
 
 Group and direct chats open as floating windows, using existing mission groups, ad-hoc groups and DMs through the local bridge. The **风** button in the chat header cycles the QQ/WeChat appearance; it changes style only, never message content.
 
-## AI model settings
+## AI setup in 3 steps + full auto-run
 
-Open **TOOLS** in the top bar and use the **AI model service** section to see:
+Open **Tools → AI model service → Connect AI in 3 steps**, or use **AI settings** in Mission Control:
 
-- whether a model is available and which provider is active;
-- configuration status for Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen and Ollama;
-- a **Test** action for configured models;
-- setup steps and a copyable `~/.agent-office/providers.json` example.
+1. **Service** — Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen or Ollama. Detected local credentials and configured services sort first.
+2. **Connect** — reuse the local environment, paste an API key, or expand Advanced to edit the model and base URL.
+3. **Test & enable** — the bridge makes one real minimal call. Configuration is saved only after the test passes; a failure never overwrites the old config.
 
-API keys stay in `~/.agent-office/providers.json` or bridge environment variables; they never enter the frontend, task records or exports. Save the file and click **Refresh model status**. Once configured, Mission Control's **AI settings** action opens the Tools panel directly.
+The bridge now recognises `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` and similar environment variables, so credentials no longer appear missing just because they use a gateway-style variable name. Keys are written only to `~/.agent-office/providers.json` (mode `0600`) and never enter browser storage, task records, logs or the repo.
+
+When creating a mission, enable **Run automatically after creation (discuss → assign → execute → report)**. Agents execute dependency-ready tasks in order and auto-verify the reports. Only spend, decision, login and authorization gates pause the run; approving resumes it. Existing missions get a **Run automatically** button in the overview. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
 
 ## MCP deployment
 

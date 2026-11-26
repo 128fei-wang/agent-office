@@ -4,18 +4,19 @@ Agent Office can connect a model API as an external agent. The bridge owns the
 credentials and makes the outbound request; the browser only receives provider
 metadata, model names and aggregated token counts.
 
-This is a **one-shot model call adapter**, not a fully autonomous coding agent.
-It is useful for verifying a provider, generating a real trace entry, and
-demonstrating how external telemetry lands in the ledger, Trace Lab and OTLP
-export. Provider-managed agents are intentionally excluded from task
-delegation: they do not poll assignments. Use Claude Code / Codex or another
-worker agent for assignments.
+The model can power Mission Control's AI discussion and **full auto-run**: the
+bridge executes dependency-ready tasks and stores each report plus a Markdown
+deliverable. It is still **not a code execution sandbox**; repository changes
+need an external Agent or a tool-enabled runtime. Provider-managed agents do not
+poll assignments; MCP or pairing is the path for a real external worker.
+
+For the beginner path, see [AI setup and auto-run](AI_SETUP.md).
 
 ## Security model
 
 - API keys are read only by `bridge.py`, from environment variables or
   `~/.agent-office/providers.json`.
-- The browser never sends or receives an API key.
+- A pasted key travels only to the local bridge configure endpoint. The bridge never returns it; the browser does not store it in localStorage, IndexedDB, task records or exports.
 - The config lives outside the static web root, so
   `http://127.0.0.1:5173/providers.json` cannot serve it.
 - The legacy repo-root `providers.local.json` name is ignored by git as an extra
@@ -28,7 +29,16 @@ worker agent for assignments.
 
 ## Configure
 
-### Option A: environment variables
+### Option A: three-step UI (recommended)
+
+Open **Tools → AI model service → Connect AI in 3 steps**:
+
+1. pick a provider;
+2. reuse detected local credentials or paste an API key;
+3. test and enable. The bridge writes the file with mode `0600` only after the
+   test passes.
+
+### Option B: environment variables
 
 Restart the bridge after changing environment variables:
 
@@ -39,7 +49,12 @@ export DOUBAO_API_KEY=...
 ./start.sh
 ```
 
-### Option B: `~/.agent-office/providers.json`
+Claude-compatible gateways commonly use `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL`; these are supported in addition to
+`ANTHROPIC_API_KEY`. OpenAI-compatible gateways also accept `OPENAI_BASE_URL` /
+`OPENAI_API_BASE` and `OPENAI_MODEL`.
+
+### Option C: `~/.agent-office/providers.json`
 
 Create the directory and file. The bridge reads it on every request, so no
 restart is needed after editing it. It is outside the static app directory, so
