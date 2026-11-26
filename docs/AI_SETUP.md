@@ -65,6 +65,31 @@ Existing missions get an **AI auto-run** card in the mission overview with a
 **Run automatically** button. It can resume from current progress. The same card
 has a **Stop** action; stopping keeps completed reports and deliverables.
 
+### Context memory
+
+Before each discussion and task call, the bridge builds a context pack from the
+mission's uploaded files / OCR text, team decisions, completed task reports,
+evidence and approved boss gates. The prompt labels it as reference material,
+not instructions, and the system prompt tells the model to ignore attempts to
+change rules, leak keys or bypass approvals. This is how uploads and earlier
+work actually affect later tasks instead of being stored but unused.
+
+### Token cap and retry
+
+Set **Token cap** when creating a mission (0 / empty = unlimited). Discussion and
+task usage both count. Auto-run checks the cap before each task; when reached it
+sets `autoRun.status = "stopped"`, stores `tokensUsed` / `tokenBudget` and posts a
+clear message. The evaluation tab has an editable cap; raise it and continue
+from the command bar. A failed task is retried once before the run is marked as
+an error.
+
+### Real-agent-only mode
+
+Turning off **Settings → Demo & presets** (also in the Tools panel) hides local
+simulation and the demo agent. Mission recommendation and creation then send `realOnly: true`; the
+bridge filters out system preset roles and returns an explicit empty state if no
+external agent is connected. Real missions, uploads and approvals are untouched.
+
 ## Mission status bar
 
 Every mission shows a persistent command bar above the chat, on every detail tab:
@@ -116,7 +141,7 @@ Known external agent brands are mapped to bundled SVG assets under
 | WorkBuddy | `workbuddy.svg` |
 | Gemini | `gemini.svg` |
 | DeepSeek | `deepseek.svg` |
-| Doubao | `doubao.svg` |
+| Doubao | `doubao-mark.svg` |
 | Kimi | `kimi.svg` |
 | Qwen | `qwen.svg` |
 | Ollama | `ollama.svg` |
@@ -157,8 +182,11 @@ credential, test before save, and hide endpoint/model details under Advanced.
 - `POST /providers/<id>/test` — test an already saved provider.
 - `POST /missions/<id>/autorun` — start or resume auto-run. Send `{ "discuss": true }` to discuss first.
 - `POST /missions/<id>/autorun/stop` — stop at the next safe point; completed work is kept.
+- `POST /missions/<id>/budget` — `{ "tokenBudget": 120000 }`; 0 = unlimited.
 - `POST /approvals/<id>/resolve` — resolving a pending gate also resumes a
   paused auto-run.
+- `POST /missions/recommend` and `POST /missions` accept `realOnly: true` to
+  exclude system presets.
 
 ## Limits
 

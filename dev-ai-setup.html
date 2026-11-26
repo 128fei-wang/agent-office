@@ -80,8 +80,9 @@
     check('test mission created',!!createdMission&&!!createdMission.id);
     if(createdMission){
       const mv=app.renderer.missions;
-      mv.open();await mv.refreshAll(false);await mv.selectMission(createdMission.id);await wait(300);
-      const card=$('.mission-autorun-card');
+      await mv.open();await mv.selectMission(createdMission.id);
+      let card=null;
+      for(let i=0;i<10;i++){card=$('.mission-autorun-card');if(card)break;await wait(200);}
       check('autorun card renders',!!card&&/AI 全自动执行/.test(card.textContent));
       check('command bar renders',!!$('.mission-command')&&/下一步/.test($('.mission-command').textContent));
       check('four flow steps',$$('.mission-flow-step').length===4);

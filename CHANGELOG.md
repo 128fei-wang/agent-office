@@ -1,5 +1,130 @@
 # Changelog
 
+## [1.18.0] - 2026-11-26
+
+### Added
+- **Real-mode office parity**: real mode now keeps the office stage and its ambient animation alive, renders external agents at desks with brand marks and online state, shows real metrics in the topbar, a working team-morale score, and a live REAL OPS activity feed instead of a static empty panel.
+- **Real-mode stage panel**: the closed REAL OPS panel becomes a compact dismissible status card; the topbar gains a Mission Center shortcut and the approval badge remains actionable.
+- **Comfortable UI density**: Settings → Display density offers Comfortable (larger task/report/approval text on desktop) and Compact; Comfortable is the default.
+- **Scheduled auto-run**: missions can set a start time; the bridge scheduler starts due missions automatically, with a Scheduled status in Mission Control and MISSION LIVE.
+- **Mission lifecycle**: archive/unarchive, duplicate a mission with its team and charter, and a dedicated Archived filter.
+- **Batch task actions**: select tasks in Mission Control to accept reviews or mark them blocked in one pass.
+- **Agent health check**: external agent dossiers gain a Test heartbeat action and report success/failure.
+- **Animation performance**: the sprint board now skips unchanged rebuilds using a task/progress signature, and `dev-performance.html` covers 72-task board and roster rendering.
+
+### Fixed
+- Real mode no longer freezes stage animations or hides team morale; PAUSED is only shown for an actually paused demo.
+- Real stats, morale, mission-center button and real feed update on the mission SSE/poll cycle.
+
+### Changed
+- Version bumped to 1.18.0.
+- `docs/ACCEPTANCE.md` updated to the 1.18 scorecard and verification evidence.
+
+## [1.17.0] - 2026-11-26
+
+### Added
+- **Command palette**: `Cmd/Ctrl + K` (or `?command=1`) opens a searchable command palette for new missions, Mission Control, Boss Inbox, external agents, AI setup, guide, settings, tools, demo toggle, theme, language, fullscreen, missions and external agent dossiers. Arrow keys, Enter and Esc are supported.
+- **Mission quick templates**: the create form offers E-commerce, Content, Product launch and Incident review templates that prefill goal, acceptance, priority and token budget.
+- **Bulk approvals**: Boss Inbox pending spend/login/authorization approvals can be selected and approved/rejected together; decision gates stay individual because they need an option choice.
+- **Message search**: search the loaded conversation transcript with live match counts, no-results state and preserved input focus.
+- **Task editing**: edit a task title, brief, acceptance and priority from Mission Control; changes persist through `PATCH /mission-tasks/<id>`.
+- **Real-time mission overview stream**: `/missions/stream` now emits an `overview` revision event whenever tasks, progress, auto-run, approvals, files or conversations change; Mission Control and Mission Live react in ~0.35s instead of waiting for the next 2.5–5s poll. Polling remains as fallback.
+- **UI/layout polish**: command palette styling, mobile stage-tool cleanup, reduced-motion support, subtle card transitions, and template/bulk/search styles.
+
+### Changed
+- Added `docs/ACCEPTANCE.md` with the 9.8 scorecard, GitHub peer comparison and the remaining UI/scale/animation gaps.
+- Mission templates leave the monetary budget blank to avoid creating an unnecessary spend approval at creation; token budget is still prefilled.
+- Version bumped to 1.17.0.
+
+## [1.16.1] - 2026-11-26
+
+### Fixed
+- **Doubao avatar**: the Doubao brand entry now uses the multicolor Doubao mark instead of the ByteDance corporate bars, so the Doubao agent card, drawer, mission cards and chat avatars identify the right product. Added a regression test for `Doubao → assets/logos/doubao.svg`.
+- **Real-mode panel can be closed**: the REAL OPS cover now has a close button (and `Esc`), and closing it keeps real mode on instead of forcing a demo restore. Dismissal is remembered locally; a compact stage note links to Mission Control or reopens the panel, and a topbar **真实模式面板 / Real panel** button toggles it. Turning demo off again resets the panel so the status is shown once more.
+
+### Changed
+- Version bumped to 1.16.1.
+
+## [1.16.0] - 2026-11-26
+
+### Added
+- **Acceptance review pass — per-agent progress everywhere**: Mission Control task rows, the task filter, member cards, the office inspector, the local agent dossier and the external agent dossier now all show progress bars and the agent's current task. The stage task drawer adds live progress and elapsed state.
+- **Task actions from Mission Control**: accept a review task, send it back, mark it blocked (with reason) or reassign it to another member. Backend task records now persist real `progress` (0–100) and `blockedReason`.
+- **Boss Inbox context and history**: every approval now shows its mission, task, requester and request time, with an **Open mission** action; decision gates render option cards with pros/risks. Pending / Resolved / All filters use the bridge approval history, and a mission's Approvals tab is scoped to that mission.
+- **File downloads and Files-tab upload**: every file row and the preview modal link to the raw artifact, and the Files tab can upload more files with retry.
+- **Mission archive and deletion**: export a Markdown archive (charter, tasks, reports, approvals, files, decisions, transcript) from the mission header, and delete a mission with confirmation from the overview danger zone.
+- **Approval notifications**: Mission Live keeps a pending-approval badge on the Mission button and the Work rail icon and raises a toast when a new approval arrives.
+- **Drawer history and live refresh**: task/agent dossiers refresh while the simulation runs, preserve scroll and focus, and gain a back button when navigating task ↔ agent.
+- **Inbox / search / mobile fixes**: approval filters, immediate mission search with preserved focus, distinct no-results copy, a mobile back button, list-first Mission Control on narrow screens, and connection-loss retry banner.
+- **Pause and completion clarity**: paused simulation freezes stage animations, marks TEAM / HUD as PAUSED, the completion banner sits outside the scaled stage with the real release-gate result and an **Open audit** action, and reset/scenario changes ask for confirmation.
+- **Real-mode containment**: local task/agent drawers close when demo is turned off, the Work flyout explains disabled simulation actions, and Company / Trace shortcuts are blocked in real mode.
+- **Mobile office usability**: scaled agent hit boxes keep a ~44 px touch target, tapping an agent opens the full dossier, the inspector is hidden on phones, and the real-mode cover scrolls on short screens.
+
+### Changed
+- Mission list rows now derive display status from auto-run / approvals / blocked / review state and show last activity in the tooltip.
+- AI auto-run now states that review tasks are auto-accepted and can be sent back, blocked or reassigned manually.
+- Version bumped to 1.16.0.
+
+## [1.15.0] - 2026-11-26
+
+### Added
+- **Topbar demo switch**: a visible **DEMO ON / DEMO OFF** button in the topbar toggles local simulation instantly, and stays visible when demo is off so restoring is obvious.
+- **In-app usage guide**: open via the topbar **Guide** button, left settings flyout, all-features drawer, the demo-off cover, the `?` shortcut or `?guide=1`. It includes a live demo status and one-click actions for demo toggle, external agents, AI, missions and tools.
+- `docs/GUIDE.md`: full first-use guide covering demo shutdown, real agents, 3-step AI, missions, approvals, token caps, next round and troubleshooting.
+- `dev-guide.html` browser self-check for the topbar switch and the guide.
+
+### Fixed
+- **Partial AI reports no longer stop auto-run**: missing `done / next / risks / solution / evidence` are repaired with explicit reviewable defaults, and the repair is recorded as a risk. This addresses tasks stopping at 2/7 with “report must include…” errors.
+
+### Changed
+- **Real-mode is no longer a dead end**: the REAL OPS cover now shows AI availability, active/incomplete real missions (click to open), a clear explanation that offline external agents can still run under the local AI, and primary actions for Create real mission, Mission Control, Manage agents and Connect AI.
+- Version bumped to 1.15.0.
+- README and README.en add a first-use callout and link the guide.
+
+## [1.14.2] - 2026-11-26
+
+### Added
+- **Next round after completion**: a completed mission now shows **Start next round** in the command bar and overview. It reuses the same team, carries the previous mission link, deliverables, decisions and report summaries as context, and starts auto-run again when the previous round used it.
+- **Completed coverage state**: a finished mission no longer shows the false “Agent idle” warning; coverage reads “round complete · everyone wrapped up”.
+
+### Fixed
+- Mission selection no longer races the initial Mission Control refresh; a stale load can no longer replace the mission the user just selected.
+
+### Changed
+- Version bumped to 1.14.2.
+
+## [1.14.1] - 2026-11-26
+
+### Fixed
+- **Completed office no longer freezes**: celebration is now a one-shot state; after a finished sprint agents return to an ambient loop of chatting, coffee, wandering, board review and short celebrations. The SHIPPED banner gains a **New sprint** button.
+- **Task ↔ animation linkage**: working/reviewing characters show a task progress bar under the name, team cards show `task · NN%`, and idle/chatting/reviewing sprites have ambient animations.
+- **Stalled task watchdog**: a task with no progress for 24 ticks is re-dispatched to its owner, or returned to the backlog if nobody is on it; recovery is written to the feed and ledger.
+- **Long real auto-run tasks look alive**: MISSION LIVE HUD and hot-desk card show an elapsed timer; the HUD has a direct **Stop** action. The bridge records `currentTaskStartedAt` per task.
+- Test isolation: bridge integration tests now use a temporary `BRIDGE_STATE_DIR`, so tests can never create or delete missions in the local user workspace.
+
+### Added
+- `docs/ANIMATION.md` with the state-machine patterns reviewed and implemented.
+- `dev-activity.html` self-check for task progress, one-shot celebration, ambient movement and New sprint.
+
+### Changed
+- Version bumped to 1.14.1.
+- README / README.en document the animation state machine and new tool.
+
+## [1.14.0] - 2026-11-26
+
+### Added
+- **Demo & preset shutdown**: a new **Settings → Demo & presets** control (also in the left settings menu, feature drawer and Tools panel) turns off the six local simulation roles, scripted tasks and the demo agent. Real missions, uploads, approvals and external agents are preserved. When off, the office switches to a clear REAL OPS view with a real-mission board and real-external-agent list.
+- **Real-agent-only missions**: while demo mode is off, Mission Control recommendations and new mission members are restricted to connected external agents. Recommendation returns an explicit external-only empty state instead of silently falling back to system presets; new mission creation rejects preset roles.
+- **Mission context memory**: AI discussion and task execution now receive uploaded file text, team decisions, completed task reports, evidence and approved boss gates as context. Context is labelled as untrusted reference material and cannot override safety rules, secrets or approvals.
+- **Token budget guardrail**: missions accept an optional token cap, shown in evaluation and auto-run. Auto-run stops cleanly at the cap, reports usage, and the cap can be edited from the evaluation tab to resume. Discussion tokens and task tokens both count.
+- **Auto-run retry**: a failed task is retried once after a short delay; retry state and token usage remain visible in the mission record.
+- `docs/TRENDS.md` with the 2026 agent-platform trend review, gap analysis and roadmap, plus a browser self-check for demo mode and new Python tests for real-only recommendations, token budgets and context prompts.
+
+### Changed
+- Version bumped to 1.14.0.
+- Mission overview shows token budget usage and a context hint; auto-run cards show tokens used/cap.
+- README and AI setup docs cover the real-agent mode, context memory and budget guard.
+
 ## [1.13.0] - 2026-11-26
 
 ### Added

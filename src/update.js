@@ -119,6 +119,26 @@
             }
             return;
           }
+          const demoTool = event.target.closest("[data-demo-tool]");
+          if (demoTool) {
+            const action = demoTool.getAttribute("data-demo-tool");
+            if (action === "toggle" && AO.DemoMode) {
+              const next = !AO.DemoMode.enabled;
+              AO.DemoMode.setEnabled(next);
+              if (self.renderer && self.renderer.toast) {
+                self.renderer.toast(AO.t(next ? "demoModeOn" : "demoModeOff"));
+              }
+              window.setTimeout(function () { self.render(); }, 280);
+            } else if (action === "clean" && AO.DemoMode) {
+              AO.DemoMode.stopDemoAgent().then(function () {
+                if (self.isOpen) self.render();
+              });
+            } else if (action === "missions") {
+              self.close();
+              if (self.renderer && self.renderer.missions) self.renderer.missions.open();
+            }
+            return;
+          }
           const button = event.target.closest("[data-update-action]");
           if (!button) return;
           const action = button.getAttribute("data-update-action");
@@ -622,6 +642,24 @@
         esc(this.t("mcpTest")) + '</button></div></div>';
     }
 
+    demoBlock() {
+      const enabled = AO.DemoMode ? AO.DemoMode.enabled : true;
+      return '<div class="update-section tools-demo' + (enabled ? '' : ' is-real') + '">' +
+        '<div class="update-ai-head"><div><span>WORKSPACE MODE</span><h3>' +
+        esc(this.t("settingsDemo")) + '</h3></div><b class="ai-status ' +
+        (enabled ? "ok" : "off") + '">' + esc(enabled ? this.t("demoModeOn") :
+          this.t("demoModeOff")) + '</b></div>' +
+        '<p class="update-hint">' + esc(enabled ? this.t("settingsDemoDesc") : this.t("settingsDemoNote")) + '</p>' +
+        '<div class="tools-demo-actions">' +
+        '<button type="button" class="btn ' + (enabled ? "ghost" : "primary") +
+        '" data-demo-tool="toggle">' + esc(enabled ? this.t("demoModeOff") : this.t("realModeRestore")) +
+        '</button>' +
+        '<button type="button" class="btn ghost" data-demo-tool="clean">' +
+        esc(this.t("settingsDemoClean")) + '</button>' +
+        '<button type="button" class="btn ghost" data-demo-tool="missions">' +
+        esc(this.t("realModeOpenMissions")) + '</button></div></div>';
+    }
+
     aiBlock() {
       if (!this.ai && !this.aiLoading && !this.aiError) return "";
       const ai = this.ai || { providers: [], available: false, provider: "" };
@@ -789,6 +827,7 @@
       if (job) body += this.jobBlock();
       if (!busy && !this.confirm) body += this.aiBlock();
       if (!busy && !this.confirm) body += this.mcpBlock();
+      if (!busy && !this.confirm) body += this.demoBlock();
       if (!busy && !this.confirm) body += this.manualBlock();
       if (!busy) body += this.toolsBlock();
       if (this.confirm) body += this.confirmBlock();

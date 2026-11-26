@@ -15,7 +15,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
   function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:'')); if(!ok)failed++;}
   function wait(ms){return new Promise(r=>setTimeout(r,ms));}
   function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
-  const f=document.getElementById('f'); f.src='index.html?intro=0&ticks=0';
+  const f=document.getElementById('f'); f.src='index.html?noStream=1&intro=0&ticks=0';
   f.addEventListener('load',function(){setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+ (err&&err.stack||err));failed++;finish();}),2400);});
   async function run(){
     const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
@@ -68,6 +68,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       await wait(400);
       check('provider agent removed',!ext.agents.some(a=>a.id==='ext-workbuddy'));
     }
+    const prePendingPairs=ext.pendingPairs().length;
     const pairBtn=$('[data-ext-pair-new]');
     check('generate pair code control',!!pairBtn);
     if(pairBtn) pairBtn.click();
@@ -111,7 +112,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     const claimed=ext.agentById(added.id);
     check('claimed agent auto logo',!!claimed&&!!claimed.logoText&&!!claimed.brand,claimed&&claimed.logoText);
     check('claimed agent logo rendered',!!$('[data-external="'+added.id+'"] .ext-glyph.brand-mark'));
-    check('pair no longer pending',ext.pendingPairs().length===0);
+    check('pair no longer pending',ext.pendingPairs().length===prePendingPairs,ext.pendingPairs().length+'/'+prePendingPairs);
     check('greeting event ingested',engine.world.ledger.some(e=>e.external&&e.kind==='hello'&&e.agentId===added.id));
     check('external team card',!!$('[data-external="'+added.id+'"]'));
     check('waiting card removed',!$('[data-ext-pair-open="'+pair.code+'"]'));
@@ -121,6 +122,13 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     $('[data-external="'+added.id+'"]').click();
     await wait(150);
     check('external drawer opens',!$('#detailDrawer').hidden&&/EXTERNAL AGENT/.test($('#detailDrawer').textContent));
+    ext.missionTasks[added.id]=[{id:'mt-test',missionId:'msn-test',missionTitle:'真实任务',title:'真实子任务',status:'in_progress',assigneeId:added.id}];
+    app.renderer.renderDrawer();
+    check('external real mission progress section',!!$('.agent-mission-task'));
+    check('external real mission progress bar',!!$('.agent-mission-task i u'));
+    const heartbeat=$('[data-ext-heartbeat="'+added.id+'"]');
+    check('external heartbeat control',!!heartbeat);
+    if(heartbeat){heartbeat.click();await wait(700);check('external heartbeat works',/心跳成功/.test(($('#toast')||{}).textContent||''));}
     const renameExt=$('[data-rename-external="'+added.id+'"]');
     check('external rename control',!!renameExt);
     if(renameExt){renameExt.click(); await wait(100); $('#renameInput').value='外部 QA'; $('#renameSubmit').click(); await wait(700);}
@@ -220,7 +228,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     // persistence across reload
     const f2=document.createElement('iframe');
     f2.style.cssText='position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0';
-    f2.src='index.html?intro=0&ticks=0&reload=1';
+    f2.src='index.html?noStream=1&intro=0&ticks=0&reload=1';
     document.body.appendChild(f2);
     f2.addEventListener('load',()=>setTimeout(()=>{
       try{

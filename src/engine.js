@@ -1411,6 +1411,7 @@
 
       this.managerSweep();
       this.checkDone();
+      this.watchdog();
 
       if (w.done) this.celebrationTick();
 
@@ -1555,7 +1556,21 @@
     decide(a) {
       const w = this.world;
       if (w.done) {
-        this.startCelebration(a);
+        // Completion is a one-shot celebration, not a terminal pose. Keep the
+        // office alive with a mix of celebrating, chatting, coffee and wandering
+        // so a finished sprint never looks frozen.
+        const roll = this.rand();
+        if (roll < 0.28) {
+          this.startCelebration(a);
+        } else if (roll < 0.53) {
+          this.socialize(a);
+        } else if (roll < 0.71) {
+          this.goCoffee(a);
+        } else if (roll < 0.88) {
+          this.wander(a);
+        } else {
+          this.goTo(a, this.deskSeat(a), { type: "desk" }, "回看本轮成果");
+        }
         return;
       }
 
@@ -1936,10 +1951,69 @@
     celebrateAgentTick(a) {
       a.celebrateTicks += 1;
       a.activity = "庆祝目标达成";
-      if (!this.world.done && a.celebrateTicks > 1) {
+      // Success/celebration is a ONESHOT state: play briefly, then return to
+      // the ambient office loop. Never leave every agent on a terminal pose.
+      const limit = this.world.done ? 3 : 1;
+      if (a.celebrateTicks > limit) {
         a.state = "idle";
         a.celebrateTicks = 0;
+        a.activity = this.world.done ? "收工后自由活动" : "回到工位";
       }
+    }
+
+    watchdog() {
+      const w = this.world;
+      if (w.done || w.meeting) return;
+      if (w.tick % 8 !== 0) return;
+      w.tasks.forEach((task) => {
+        if (task.status !== "in_progress") {
+          task._watchProgress = null;
+          task._watchTick = 0;
+          return;
+        }
+        if (task._watchProgress == null ||
+            task.progress > task._watchProgress + 0.01) {
+          task._watchProgress = task.progress;
+          task._watchTick = w.tick;
+          return;
+        }
+        if (!task._watchTick) task._watchTick = w.tick;
+        if (w.tick - task._watchTick < 24) return;
+        const owner = w.agents.find((a) => a.id === task.assignee);
+        const onTask = w.agents.some((a) => a.taskId === task.id);
+        if (owner && !onTask) {
+          this.goWork(owner, task, true);
+          this.addMessage(
+            "alert",
+            "任务「" + task.title + "」长时间无进展，已让 " + owner.name + " 继续处理",
+            owner.id
+          );
+          this.recordEvent({
+            agentId: owner.id,
+            taskId: task.id,
+            kind: "recover",
+            action: "超时恢复 · " + task.title,
+            note: "24 tick 无进度，重新指派给 " + owner.name
+          });
+        } else if (!onTask) {
+          task.status = "backlog";
+          task.assignee = null;
+          task.progress = Math.max(0, task.progress - 10);
+          this.addMessage(
+            "alert",
+            "任务「" + task.title + "」长时间无进展，已放回看板",
+            null
+          );
+          this.recordEvent({
+            taskId: task.id,
+            kind: "recover",
+            action: "超时回收 · " + task.title,
+            note: "24 tick 无进度，重新进入待领取"
+          });
+        }
+        task._watchProgress = task.progress;
+        task._watchTick = w.tick;
+      });
     }
 
     socialize(a) {

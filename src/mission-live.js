@@ -9,7 +9,7 @@
     engineer: "engineer",
     qa: "qa"
   };
-  const ACTIVE = ["running", "discussing", "queued", "waiting_boss"];
+  const ACTIVE = ["running", "discussing", "queued", "waiting_boss", "scheduled"];
 
   function esc(value) {
     return String(value == null ? "" : value)
@@ -29,6 +29,7 @@
       this.layer = null;
       this.busy = false;
       this.timer = null;
+      this.timerTick = null;
       this.activity = null;
       this.lastActive = null;
       this.completedUntil = 0;
@@ -38,11 +39,31 @@
         try { return !!localStorage.getItem("agent-office.bridge-url"); } catch (err) { return false; }
       })();
       this.enabled = localHost || customBridge;
+      this.noStream = false;
+      try {
+        this.noStream = new URLSearchParams(location.search).get("noStream") === "1";
+      } catch (err) {}
+      this.eventStream = null;
       this.build();
       if (this.enabled) {
         this.poll();
+        if (!this.noStream) this.startStream();
         this.timer = window.setInterval(this.poll.bind(this), 2500);
+        this.timerTick = window.setInterval(this.renderTimers.bind(this), 1000);
       }
+    }
+
+    startStream() {
+      if (typeof EventSource === "undefined") return;
+      const self = this;
+      try {
+        this.eventStream = new EventSource(this.bridge() +
+          "/missions/stream?since=999999999");
+        this.eventStream.addEventListener("overview", function () {
+          if (!document.hidden) self.poll();
+        });
+        this.eventStream.onerror = function () {};
+      } catch (err) {}
     }
 
     build() {
@@ -51,12 +72,22 @@
       this.hud.className = "mission-live-hud";
       this.hud.hidden = true;
       this.hud.addEventListener("click", (event) => {
+        if (event.target.closest("[data-mission-live-stop]")) {
+          this.stopRun();
+          return;
+        }
         if (!event.target.closest("[data-mission-live-open]")) return;
         const id = this.activity && this.activity.missionId;
+        const pending = (this.activity && this.activity.pendingApprovals) || 0;
         const view = this.renderer.missions;
         if (!id || !view) return;
         Promise.resolve(view.open()).then(function () {
           return view.selectMission(id);
+        }).then(function () {
+          if (!pending || !view) return;
+          view.detailTab = "approvals";
+          view.mobileDetail = true;
+          view.render();
         }).catch(function () {});
       });
       this.viewport.appendChild(this.hud);
@@ -64,7 +95,48 @@
       this.layer = document.createElement("div");
       this.layer.className = "mission-live-layer";
       this.layer.setAttribute("aria-hidden", "true");
+      this.layer.addEventListener("click", (event) => {
+        const chip = event.target.closest("[data-real-desktop-agent]");
+        if (chip) this.renderer.openExternalDrawer(chip.getAttribute("data-real-desktop-agent"));
+      });
       this.stage.appendChild(this.layer);
+      document.addEventListener("agent-office:demo-change", () => {
+        window.setTimeout(() => this.poll(), 120);
+      });
+    }
+
+    renderRealDesks() {
+      if (!this.layer) return;
+      const demoOff = AO.DemoMode && !AO.DemoMode.enabled;
+      if (!demoOff) {
+        this.lastRealDeskSig = "";
+        this.layer.innerHTML = "";
+        return;
+      }
+      const agents = (this.renderer.external && this.renderer.external.agents) || [];
+      const sig = agents.slice(0, 4).map(function (agent) {
+        return [agent.id, agent.name, agent.status, agent.logoText,
+          agent.logoColor, agent.avatar].join(":");
+      }).join("|");
+      if (sig === this.lastRealDeskSig) return;
+      this.lastRealDeskSig = sig;
+      const hot = AO.DESKS.filter(function (desk) { return desk.hot; });
+      const rest = AO.DESKS.filter(function (desk) { return !desk.hot; });
+      const anchors = hot.concat(rest).slice(0, 4);
+      this.layer.innerHTML = agents.slice(0, anchors.length).map((agent, index) => {
+        const anchor = anchors[index];
+        const online = agent.status === "online";
+        const left = Math.max(10, anchor.x + 38);
+        const top = Math.max(70, anchor.y - 52);
+        return '<button type="button" class="real-agent-desk ' + (online ? "online" : "") +
+          '" data-real-desktop-agent="' + esc(agent.id) + '" style="left:' + left + "px;top:" +
+          top + 'px;--c:' + esc(agent.logoColor || "#55d6c2") + '" title="' +
+          esc((agent.name || agent.id) + " · " + (online ? "在线" : "离线") + " · 点击查看档案") +
+          '"><span class="rad-logo' + AO.logoClass(agent) + '">' + AO.logoMarkHTML(agent) +
+          '</span><span class="rad-copy"><b>' + esc(agent.name || agent.id) +
+          '</b><em>' + esc(online ? "ONLINE" : "OFFLINE") + '</em></span>' +
+          '<i class="rad-dot"></i></button>';
+      }).join("");
     }
 
     bridge() {
@@ -91,6 +163,34 @@
       }
     }
 
+    syncTopbar(data) {
+      const pending = (data.approvals || []).filter(function (a) {
+        return a && a.status === "pending";
+      }).length;
+      ["missionBadge", "railWorkBadge"].forEach(function (id) {
+        const badge = document.getElementById(id);
+        if (!badge) return;
+        badge.hidden = pending === 0;
+        badge.textContent = pending > 99 ? "99+" : String(pending);
+      });
+      const quick = document.getElementById("approvalQuickBtn");
+      if (quick) {
+        quick.hidden = pending === 0;
+        const count = quick.querySelector("b");
+        if (count) count.textContent = pending > 99 ? "99+" : String(pending);
+        quick.title = pending ? pending + " 个待审批，点击打开 Boss Inbox" : "";
+      }
+      const button = document.getElementById("missionBtn");
+      if (button) {
+        button.title = pending ? pending + " 个待审批" : "任务中心";
+        button.classList.toggle("has-approvals", pending > 0);
+      }
+      if (this.lastPending != null && pending > this.lastPending && this.renderer) {
+        this.renderer.toast(AO.t("missionNewApproval") || "有新的审批待处理");
+      }
+      this.lastPending = pending;
+    }
+
     localAgent(role) {
       const target = ROLE_TO_LOCAL[role];
       if (!target || !this.renderer || !this.renderer.world) return null;
@@ -100,7 +200,17 @@
     }
 
     applyOverview(data) {
-      const missions = (data && data.missions) || [];
+      this.lastOverview = data || null;
+      this.syncTopbar(data || {});
+      if (AO.DemoMode && AO.DemoMode.refreshCover) AO.DemoMode.refreshCover();
+      const demoSafe = !(AO.DemoMode && !AO.DemoMode.enabled);
+      if (!demoSafe && this.renderer) {
+        this.renderer.renderBoard();
+        this.renderer.renderHeader();
+        this.renderer.renderRoster();
+        if (this.renderer.renderFeed) this.renderer.renderFeed(true);
+      }
+      const missions = ((data && data.missions) || []).filter(function (m) { return !m.archived; });
       const ranked = missions.filter(function (m) {
         return ACTIVE.indexOf(((m.autoRun || {}).status)) >= 0;
       }).sort(function (a, b) {
@@ -127,6 +237,7 @@
 
       if (!mission) {
         if (this.activity) this.clear();
+        this.renderRealDesks();
         return;
       }
 
@@ -158,6 +269,8 @@
         done: done,
         pendingApprovals: Number((mission.stats && mission.stats.approvals) || 0),
         error: auto.error || "",
+        taskStartedAt: auto.currentTaskStartedAt || auto.startedAt || "",
+        startedAt: auto.startedAt || "",
         transient: transient
       };
       if (ACTIVE.indexOf(status) >= 0) {
@@ -174,6 +287,7 @@
         discussing: AO.t("missionLiveDiscussing"),
         waiting_boss: AO.t("missionLiveWaiting"),
         queued: AO.t("missionLiveQueued"),
+        scheduled: AO.t("missionAutoRunScheduled"),
         done: AO.t("missionLiveDone")
       };
       return labels[item.status] || AO.t("missionLiveQueued");
@@ -225,15 +339,20 @@
           done: item.done, total: item.total
         }))) + '</p></div><em class="mlh-count">' + item.done + '/' + item.total + '</em></div>' +
         '<div class="mlh-bar"><i style="width:' + percent + '%"></i></div>' +
-        '<div class="mlh-foot"><span>' + esc(this.hint(item)) + '</span>' +
+        '<div class="mlh-foot"><span class="mlh-hint">' + esc(this.hint(item)) +
+        '<em class="mlh-elapsed" data-mlh-elapsed></em></span>' +
+        (["running", "discussing", "queued", "scheduled"].indexOf(item.status) >= 0 ?
+          '<button type="button" class="mlh-stop" data-mission-live-stop>' +
+          esc(AO.t("missionLiveStop")) + '</button>' : '') +
         '<button type="button" data-mission-live-open>' + esc(AO.t("missionLiveOpen")) + '</button></div>';
+      this.renderTimers();
     }
 
     renderStage(item) {
       if (!this.layer) return;
       const external = item.external && item.agent;
       if (!external) {
-        this.layer.innerHTML = "";
+        this.renderRealDesks();
         return;
       }
       const desk = AO.DESKS.find((d) => d.hot) || { x: 435, y: 230 };
@@ -246,7 +365,9 @@
         '" style="--c:' + esc(item.agent.logoColor || "#b58cff") + '">' + logo + '</span>' +
         '<div class="mdc-copy"><b>' + esc(item.agentName || item.agent.name || "Agent") +
         '</b><em>' + esc(item.taskTitle || this.statusLabel(item)) + '</em></div>' +
+        '<span class="mdc-elapsed" data-mlh-elapsed></span>' +
         '<span class="mdc-dots"><i></i><i></i><i></i></span></div>';
+      this.renderTimers();
     }
 
     renderBubbles(item) {
@@ -275,6 +396,75 @@
       // The bubble is a child of the animated character, so it follows it.
     }
 
+    formatElapsed(ms) {
+      const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+      const minutes = Math.floor(total / 60);
+      const seconds = total % 60;
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        return hours + ":" + String(minutes % 60).padStart(2, "0") +
+          ":" + String(seconds).padStart(2, "0");
+      }
+      return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    renderTimers() {
+      const item = this.activity;
+      const active = item && ["running", "discussing", "queued"].indexOf(item.status) >= 0;
+      let label = "";
+      const startedAt = item && (item.status === "running" ?
+        (item.taskStartedAt || item.startedAt) : item.startedAt);
+      if (active && startedAt) {
+        const started = Date.parse(startedAt);
+        if (!Number.isNaN(started)) {
+          label = this.formatElapsed(Date.now() - started);
+        }
+      }
+      if (this.hud) {
+        this.hud.querySelectorAll("[data-mlh-elapsed]").forEach((node) => {
+          node.textContent = label ? "· " + label : "";
+          node.hidden = !label;
+        });
+      }
+      if (this.layer) {
+        this.layer.querySelectorAll("[data-mlh-elapsed]").forEach((node) => {
+          node.textContent = label;
+          node.hidden = !label;
+        });
+      }
+    }
+
+    async stopRun() {
+      const item = this.activity;
+      if (!item || !item.missionId) return;
+      const button = this.hud && this.hud.querySelector("[data-mission-live-stop]");
+      if (button) {
+        button.disabled = true;
+        button.textContent = AO.t("missionLiveStopping");
+      }
+      try {
+        const response = await fetch(this.bridge() + "/missions/" +
+          encodeURIComponent(item.missionId) + "/autorun/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        if (this.renderer && this.renderer.toast) {
+          this.renderer.toast(AO.t("missionLiveStopped"));
+        }
+        await this.poll();
+      } catch (err) {
+        if (this.renderer && this.renderer.toast) {
+          this.renderer.toast(AO.t("missionLiveStopFailed"));
+        }
+        if (button) {
+          button.disabled = false;
+          button.textContent = AO.t("missionLiveStop");
+        }
+      }
+    }
+
     clear() {
       this.activity = null;
       this.lastSignature = "";
@@ -297,7 +487,13 @@
 
     stop() {
       if (this.timer) window.clearInterval(this.timer);
+      if (this.timerTick) window.clearInterval(this.timerTick);
+      if (this.eventStream) {
+        this.eventStream.close();
+        this.eventStream = null;
+      }
       this.timer = null;
+      this.timerTick = null;
     }
   }
 

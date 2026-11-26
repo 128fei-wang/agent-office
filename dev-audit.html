@@ -32,7 +32,7 @@
         document.body.setAttribute("data-result", failed ? "fail" : "pass");
       }
       const frame = document.getElementById("frame");
-      frame.src = "index.html?intro=0&ticks=" + encodeURIComponent(ticks) +
+      frame.src = "index.html?noStream=1&intro=0&ticks=" + encodeURIComponent(ticks) +
         "&scenario=" + encodeURIComponent(scenario);
       frame.addEventListener("load", function () {
         window.setTimeout(function () {

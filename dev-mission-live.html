@@ -18,6 +18,11 @@
     if(!live){finish();return;}
     live.stop();
     await wait(200);
+    live.syncTopbar({approvals:[{status:'pending'},{status:'pending'}]});
+    check('topbar approval quick action',!!$('#approvalQuickBtn')&&!$('#approvalQuickBtn').hidden);
+    check('topbar approval count',/2/.test(($('#approvalQuickBtn')||{}).textContent||''));
+    live.syncTopbar({approvals:[]});
+    check('topbar approval clears',!!$('#approvalQuickBtn')&&$('#approvalQuickBtn').hidden);
 
     const ext=app.renderer.external.agents||[];
     const codex=ext.find(a=>/codex/i.test(a.name))||ext[0];
@@ -32,6 +37,8 @@
       stats:{tasks:7,done:2,approvals:0},
       autoRun:{status:'running',currentTaskId:'t1',currentTaskTitle:'实现与技术方案',
         currentAgentId:codex&&codex.id,currentAgentName:codex&&codex.name,currentRole:'engineer',
+        startedAt:new Date(Date.now()-125000).toISOString(),
+        currentTaskStartedAt:new Date(Date.now()-65000).toISOString(),
         completed:2,total:7}
     }]});
     await wait(150);
@@ -40,6 +47,9 @@
     check('hud shows task',/实现与技术方案/.test((hud||{}).textContent||''));
     check('hud shows progress',/2\/7/.test((hud||{}).textContent||''));
     check('office external chip',!!$('.mission-desk-chip')&&$('.mission-desk-chip').textContent.trim().length>0);
+    check('hud elapsed timer',!!$('.mission-live-hud [data-mlh-elapsed]')&&/\d\d:\d\d/.test($('.mission-live-hud [data-mlh-elapsed]').textContent));
+    check('hud stop action',!!$('[data-mission-live-stop]'));
+    check('hot-desk elapsed timer',!!$('.mission-desk-chip [data-mlh-elapsed]')&&/\d\d:\d\d/.test($('.mission-desk-chip [data-mlh-elapsed]').textContent));
     check('team card marks working',!!$('.external-card.mission-active')&&/实现与技术方案/.test($('.external-card.mission-active').textContent));
 
     live.applyOverview({missions:[{

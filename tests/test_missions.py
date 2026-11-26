@@ -44,6 +44,43 @@ class MissionTest(unittest.TestCase):
         body.update(kwargs)
         return self.store.create_mission(body, self.directory)
 
+    def test_revision_tracks_task_and_approval_changes(self):
+        mission = self.make()
+        revision = self.store.revision()
+        task = mission["tasks"][0]
+        self.store.update_task(task["id"], {"status": "in_progress", "progress": 30})
+        changed = self.store.revision()
+        self.assertNotEqual(revision, changed)
+        self.assertEqual(changed, self.store.revision())
+
+    def test_scheduled_autorun_status(self):
+        mission = self.make(autoRun=True, scheduleAt="2030-01-01T10:00")
+        self.assertEqual(mission["autoRun"]["status"], "scheduled")
+        self.assertEqual(mission["autoRun"]["scheduledAt"], "2030-01-01T10:00")
+
+    def test_archive_and_public_flag(self):
+        mission = self.make()
+        archived = self.store.set_archived(mission["id"], True)
+        self.assertTrue(archived["archived"])
+        reopened = self.store.get_mission(mission["id"])
+        self.assertTrue(reopened["archived"])
+        restored = self.store.set_archived(mission["id"], False)
+        self.assertFalse(restored["archived"])
+
+    def test_task_editable_fields(self):
+        mission = self.make()
+        task = mission["tasks"][0]
+        updated = self.store.update_task(task["id"], {
+            "title": "Edited task title",
+            "brief": "Edited brief",
+            "acceptance": "Edited acceptance",
+            "priority": "P0",
+        })
+        self.assertEqual(updated["title"], "Edited task title")
+        self.assertEqual(updated["brief"], "Edited brief")
+        self.assertEqual(updated["acceptance"], "Edited acceptance")
+        self.assertEqual(updated["priority"], "P0")
+
     def test_plan_assigns_every_member_and_creates_group(self):
         mission = self.make()
         self.assertTrue(mission["conversationId"])
@@ -75,6 +112,12 @@ class MissionTest(unittest.TestCase):
         self.assertEqual(workbuddy["brand"], "WorkBuddy")
         self.assertEqual(workbuddy["logoText"], "WB")
         self.assertEqual(workbuddy["logoUrl"], "assets/logos/workbuddy.svg")
+        doubao = missions.normalize_agent({
+            "id": "ext-doubao", "name": "Doubao", "runtime": "doubao-agent",
+        }, "external")
+        self.assertEqual(doubao["brand"], "Doubao")
+        self.assertEqual(doubao["logoText"], "豆")
+        self.assertEqual(doubao["logoUrl"], "assets/logos/doubao-mark.svg")
         unknown = missions.normalize_agent({
             "id": "ext-zed", "name": "Zed Worker", "runtime": "http",
         }, "external")
@@ -190,6 +233,68 @@ class MissionTest(unittest.TestCase):
         resolved = self.store.resolve_approval(
             approval["id"], "approved", "A", approval["options"][0]["id"])
         self.assertEqual(resolved["status"], "approved")
+
+    def test_real_only_recommendation_never_falls_back_to_presets(self):
+        result = self.store.recommend(missions.builtin_directory(), {
+            "description": "Build and test a landing page with code and QA.",
+            "acceptance": "Tests pass.",
+            "realOnly": True,
+        })
+        self.assertEqual(result["scope"], "external")
+        self.assertTrue(result["requiresExternal"])
+        self.assertEqual(result["candidateCount"], 0)
+        self.assertEqual(result["suggestedMemberIds"], [])
+        self.assertTrue(result["tasks"])
+        self.assertTrue(all(not task["recommended"] for task in result["tasks"]))
+
+    def test_real_only_mission_rejects_system_roles(self):
+        with self.assertRaises(missions.MissionError) as raised:
+            self.store.create_mission({
+                "title": "Real only mission",
+                "description": "Build and test a landing page with code and QA.",
+                "realOnly": True,
+            }, missions.builtin_directory())
+        self.assertEqual(raised.exception.code, "no_external_agents")
+
+        mission = self.store.create_mission({
+            "title": "Real only mission",
+            "description": "Build and test a landing page with code and QA.",
+            "realOnly": True,
+            "memberIds": ["ext-test"],
+            "autoDiscuss": False,
+        }, self.directory)
+        self.assertEqual(mission["memberScope"], "external")
+        self.assertTrue(mission["members"])
+        self.assertTrue(all(member["source"] == "external" for member in mission["members"]))
+
+    def test_completed_mission_coverage_and_previous_link(self):
+        mission = self.make(previousMissionId="msn-previous")
+        self.assertEqual(mission["previousMissionId"], "msn-previous")
+        for task in mission["tasks"]:
+            self.store.update_task(task["id"], {"status": "done"})
+        done = self.store.get_mission(mission["id"])
+        self.assertTrue(done["coverage"]["completed"])
+        self.assertTrue(done["coverage"]["noIdle"])
+        self.assertEqual(done["coverage"]["assigned"], done["coverage"]["total"])
+        self.assertEqual(done["coverage"]["idle"], [])
+
+    def test_token_budget_is_stored_and_editable(self):
+        mission = self.make(tokenBudget=120000)
+        self.assertEqual(mission["tokenBudget"], 120000)
+        self.assertEqual(mission["autoRun"]["tokenBudget"], 120000)
+        self.assertEqual(mission["autoRun"].get("currentTaskStartedAt"), "")
+        updated = self.store.update_token_budget(mission["id"], 250000)
+        self.assertEqual(updated["tokenBudget"], 250000)
+        self.assertEqual(updated["autoRun"]["tokenBudget"], 250000)
+        self.assertEqual(updated["evaluation"]["tokenBudget"], 250000)
+        self.assertEqual(updated["evaluation"]["tokenBudgetRemaining"], 250000)
+        self.assertEqual(updated["evaluation"]["totalTokens"], 0)
+        with self.assertRaises(missions.MissionError) as raised:
+            self.store.update_token_budget(mission["id"], "not-a-number")
+        self.assertEqual(raised.exception.code, "bad_budget")
+        with self.assertRaises(missions.MissionError) as raised:
+            self.store.update_token_budget(mission["id"], "inf")
+        self.assertEqual(raised.exception.code, "bad_budget")
 
     def test_group_and_direct_conversations(self):
         group = self.store.create_conversation({

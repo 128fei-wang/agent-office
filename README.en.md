@@ -1,6 +1,6 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [MCP deployment](docs/MCP.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -14,6 +14,8 @@ No Node, no build step, no image assets. Every character sprite and every piece 
 ![Agent Office](docs/screenshots/office.jpg)
 
 > **Status:** early-stage open-source prototype. It is not a production observability platform and not a real code-execution sandbox. See the [Roadmap](docs/ROADMAP.md) for the boundaries.
+>
+> **First time?** Read the [Usage guide](docs/GUIDE.md). Turn off demo with the topbar **Turn off demo** button, or Settings → Demo & presets.
 
 ## Quick start
 
@@ -93,7 +95,7 @@ This is the core product capability. The simulation is not “agents looking bus
 - **Mission Control** — create a task with a charter, description, acceptance, priority, deadline and files; auto-select and assign a team, open a group, keep every member covered, and discuss/decide technical topics without the boss.
 - **Only four boss gates** — spend, final business calls, QR login and authorization. Technical architecture, tools, schedules, tests, copy and design tradeoffs are decided by the team; escalating a technical issue is rejected by the bridge.
 - **No idle / no waiting** — every member gets a primary or useful standby check; every blocker report must include a solution or fallback; assignment reasons and coverage are recorded.
-- **Mission chat and files** — task groups, ad-hoc groups and DMs; document/image uploads, DOCX/XLSX extraction, optional OCR/vision, structured reports and inline approvals.
+- **Mission chat and files** — task groups, ad-hoc groups and DMs; document/image uploads and downloads, DOCX/XLSX extraction, optional OCR/vision, structured reports and inline approvals. Tasks can be filtered by agent with live progress, accepted, sent back, blocked, edited, reassigned or batch-processed; the Boss Inbox shows mission, task, requester and time with pending/resolved history and bulk approval; conversations are searchable, missions support scheduled start, duplicate, archive, Markdown export and delete, `Cmd/Ctrl + K` opens the command palette, and mission/task/approval changes stream over local SSE in under a second. Real mode keeps the animated office, external-agent desks, real metrics, team morale and an activity feed.
 - **One-person company** — generate 8 AI employees, 11 dependency-aware tasks, 4 department channels and an isolated room per task; ready tasks auto-dispatch and dependencies unlock automatically.
 - **Real-time group chat** — SSE message stream; founder, role agents and system events live in separate channels. Task rooms require `assignmentId + executionId`, so an agent working on multiple tasks cannot report into the wrong room.
 - **Bilingual** — `EN / 中` toggle or `?lang=en`; shell, task statuses, chat, company template and generated content support both languages.
@@ -381,6 +383,34 @@ The bridge now recognises `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHR
 
 While a mission runs, the home office shows a **MISSION LIVE** HUD, the executing agent logo, task, progress, a hot-desk work card and an active state on the matching team card. The mission page also has the persistent four-stage command bar. When you open the mission, every mission also has a persistent command bar showing Discuss, Approvals, Execute and Report, plus whether you need to act. A mission with a finished discussion but no execution gets **Start N tasks**; a mission with no plan gets **Discuss & run** in one click. Only spend, decision, login and authorization gates pause the run; approving resumes it. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
 
+## Turn off demo and presets: real agents only
+
+**Settings → Demo & presets** (also in the left settings menu, feature drawer and Tools panel) shuts down the local demo:
+
+- Pauses the office simulation and hides the six local preset roles, scripted tasks, simulated board and demo agent.
+- Stops and removes the demo agent (`ext-demo-claude`) while preserving real external agents, real missions, uploads, approvals and reports.
+- Recommendations and new missions use connected external agents only; they never fall back to preset roles.
+- The home office becomes REAL OPS with AI availability, active real missions, real external agents, a **Create real mission** action and a Mission Control shortcut. An offline agent only means no heartbeat; local AI can still execute under the assigned identity. Demo can be restored at any time.
+
+## Mission context, token cap and retry
+
+- **Context memory** — AI discussion and execution read uploaded file / OCR text, team decisions, completed reports, evidence and approved gates. Context is marked as untrusted reference and cannot change rules, leak secrets or bypass approvals.
+- **Token cap** — an optional per-mission token cap counts discussion and task usage. Auto-run stops at the cap, shows used/cap in evaluation, and can resume after the cap is raised.
+- **Retry** — a failed task is retried once; retries and final failures are written to the mission group and audit trail.
+
+See [docs/TRENDS.md](docs/TRENDS.md) for the 2026 trend review, gaps and roadmap.
+
+## Task / animation linkage
+
+- Completion celebration is a one-shot: after 3 ticks the character returns to idle and keeps chatting, drinking coffee, wandering and reviewing the board. A finished office never freezes in a celebration pose.
+- Working/reviewing characters show a task progress bar under the name; team cards show `task · NN%`; idle, chatting and reviewing have ambient animations.
+- A watchdog re-dispatches a task with no progress for 24 ticks, or returns it to the backlog if nobody is on it, with a feed/audit record.
+- During real auto-run, the MISSION LIVE HUD and hot-desk card show elapsed time and a direct Stop action.
+- The SHIPPED banner has a **New sprint** button to reset the scenario immediately.
+- A completed real mission shows **Start next round** in the command bar and overview: same team, previous deliverables/decisions/reports as context, and the same auto-run mode.
+
+See [docs/ANIMATION.md](docs/ANIMATION.md) for the state-machine patterns and references.
+
 ## MCP deployment
 
 The Tools panel now includes **MCP deployment**, exposing Agent Office as a local MCP service:
@@ -474,6 +504,9 @@ agent-office/
 ├── docs/TASK_DELEGATION.md external task protocol and status machine
 ├── docs/COMPANY_OS.md    one-person template, chat and isolation
 ├── docs/MISSIONS.md      mission workspace, approvals, files and agent protocol
+├── docs/TRENDS.md        2026 agent-platform trends, gaps and roadmap
+├── docs/ANIMATION.md     task linkage, one-shot completion and idle animation
+├── docs/GUIDE.md         usage guide: demo off, agents, AI, missions and next round
 ├── docs/UPGRADING.md     self-update, backups, rollback and security
 ├── theme.css             day theme, Trace Lab light skin, mobile layout
 ├── company.css           company workspace, chat and language styles
@@ -510,10 +543,15 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-i18n.html` — English/Chinese toggle, persistence and reload.
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
-- `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation and cleanup.
+- `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation, token budget editor and cleanup.
 - `dev-features.html` — left navigation rail, six actions, add friend/external-agent entry points, group and direct chat popups, settings center, AI settings and MCP deployment.
+- `dev-ai-setup.html` — 3-step AI setup, environment credentials, test-before-save and auto-run state.
+- `dev-mission-live.html` — homepage MISSION LIVE HUD, external agent hot desk, team activity and task bubble.
+- `dev-demo-mode.html` — demo shutdown, real-agent-only recommendations, REAL OPS board/feed and restoring demo.
+- `dev-activity.html` — task progress on characters/team cards, one-shot celebration returning to ambient office activity, and the New sprint reset.
+- `dev-guide.html` — topbar demo toggle, in-app usage guide and quick actions.
 
-Run the 22 bridge integration tests, 14 updater unit tests, 9 mission unit tests and repository checks with:
+Run the 32 bridge integration tests, 14 updater unit tests, 13 mission unit tests, 1 context test (60 total) and repository checks with:
 
 ```bash
 python3 -m unittest discover -s tests -v

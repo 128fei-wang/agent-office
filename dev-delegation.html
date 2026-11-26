@@ -17,7 +17,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
   function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
   function wait(ms){return new Promise(r=>setTimeout(r,ms));}
   function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
-  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&scenario=launch';
+  const f=document.getElementById('f');f.src='index.html?noStream=1&intro=0&ticks=0&scenario=launch';
   f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2400));
   async function run(){
     const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
@@ -99,6 +99,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
 
     await fetch(ext.bridgeUrl+'/agents/'+agentId,{method:'DELETE'}).catch(()=>{});
     await ext.refresh();
+    await wait(300);
     check('test agent removed',!ext.agentById(agentId));
     renderer.closeDrawer();
     finish();

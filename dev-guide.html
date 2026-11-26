@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Usage guide self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>USAGE GUIDE SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  try { localStorage.setItem('agent-office.demo-mode.v1','on'); } catch (err) {}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),3500));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    check('topbar demo quick action',!!$('#demoQuickBtn')&&/关闭演示/.test($('#demoQuickBtn').textContent));
+    check('topbar guide action',!!$('#guideBtn'));
+    $('#guideBtn').click();
+    await wait(250);
+    check('guide opens',!!$('.feature-guide'));
+    check('guide has 7 sections',$$('.guide-section').length>=7,'sections='+$$('.guide-section').length);
+    check('guide demo status',/演示模式开启/.test(($('.guide-status')||{}).textContent||''));
+    check('guide demo toggle',!!$('[data-guide-demo-toggle]'));
+    check('guide quick actions',$$('[data-guide-action]').length>=6);
+    $('[data-guide-demo-toggle]').click();
+    await wait(800);
+    check('guide toggle turns demo off',/恢复演示/.test($('#demoQuickBtn').textContent));
+    check('guide toggle shows cover',!!$('#realModeCover')&&!$('#realModeCover').hidden);
+    check('guide reopens in real mode',!!$('.guide-status.off')||/真实模式/.test(($('.feature-guide')||{}).textContent||''));
+    const close=$('[data-guide-close]');if(close)close.click();
+    await wait(150);
+    check('guide closes',!$('.feature-guide'));
+    $('#demoQuickBtn').click();
+    await wait(500);
+    check('quick action restores demo',/关闭演示/.test($('#demoQuickBtn').textContent));
+    check('quick action hides cover',!!$('#realModeCover')&&$('#realModeCover').hidden);
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'?',bubbles:true}));
+    await wait(200);
+    check('? opens guide',!!$('.feature-guide'));
+    finish();
+  }
+})();
+</script></body></html>

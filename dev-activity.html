@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Office activity self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>OFFICE ACTIVITY SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),3500));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const engine=app.engine,renderer=app.renderer;
+    engine.paused=true;
+    let warmup=0;
+    while(!engine.world.agents.some(a=>a.state==='working'&&a.taskId)&&warmup<80){engine.step();warmup++;}
+    renderer.render();
+    check('working agent task progress',$$('.team-card[data-agent]').some(el=>/%/.test((el.querySelector('.team-state')||{}).textContent||'')||/%/.test((el.querySelector('.team-mood')||{}).textContent||'')),'ticks='+warmup);
+    check('working progress bar shown',$$('.agent-progress.show').length>=1);
+    let guard=0;
+    while(!engine.world.done&&guard<800){engine.step();guard++;}
+    check('scenario completes',engine.world.done,'ticks='+guard);
+    if(!engine.world.done){finish();return;}
+    renderer.render();
+    const agents=engine.world.agents;
+    check('completion banner',!!$('#doneBanner')&&$('#doneBanner').classList.contains('show'));
+    check('new sprint action',!!$('#newSprintBtn')&&!$('#newSprintBtn').hidden);
+    const before=agents.map(a=>({id:a.id,x:a.x,y:a.y,state:a.state}));
+    for(let i=0;i<45;i++)engine.step();
+    renderer.render();
+    const moved=agents.filter((a,i)=>Math.abs(a.x-before[i].x)>0.5||Math.abs(a.y-before[i].y)>0.5).length;
+    const celebrating=agents.filter(a=>a.state==='celebrating').length;
+    const idleLike=agents.filter(a=>a.state==='idle'||a.state==='walking'||a.state==='chatting'||a.state==='coffee').length;
+    check('post-completion movement',moved>=1,'moved='+moved);
+    check('celebration is one-shot',celebrating<agents.length,'celebrating='+celebrating);
+    check('ambient office resumes',idleLike>=1,'ambient='+idleLike);
+    check('task progress bars',$$('.agent-progress').length===agents.length);
+    $('#newSprintBtn').click();
+    await wait(400);
+    renderer.render();
+    check('new sprint resets completion',!engine.world.done);
+    check('new sprint banner clears',!$('#doneBanner').classList.contains('show'));
+    check('new sprint resumes simulation',engine.paused===false);
+    const drawerTask=engine.world.tasks.find(t=>t.assignee)||engine.world.tasks[0];
+    if(drawerTask){
+      renderer.openTaskDrawer(drawerTask.id);
+      await wait(120);
+      check('task drawer progress bar',!!$('.drawer-task-progress'));
+      check('task drawer highlights owner',!drawerTask.assignee||renderer.selectedId===drawerTask.assignee);
+      const ownerLink=$('#detailDrawer [data-open-agent]');
+      if(ownerLink){
+        ownerLink.click();await wait(120);
+        check('drawer navigates to agent',renderer.drawerMode==='agent');
+        check('drawer back control',!!$('[data-drawer-back]'));
+        const back=$('[data-drawer-back]');if(back)back.click();
+        await wait(120);
+        check('drawer back returns to task',renderer.drawerMode==='task');
+      }
+      renderer.closeDrawer();
+    }
+
+    engine.paused=true;
+    const world=engine.world;
+    const task=world.tasks.find(t=>t.status==='backlog')||world.tasks[0];
+    const owner=world.agents.find(a=>a.state==='idle')||world.agents[0];
+    world.meeting=null;
+    world.agents.forEach(a=>{if(a.taskId===task.id){a.taskId=null;}});
+    task.status='in_progress';
+    task.progress=5;
+    task.assignee=owner.id;
+    task._watchProgress=5;
+    task._watchTick=world.tick-25;
+    owner.state='idle';
+    owner.taskId=null;
+    owner.path=[];
+    owner.pending=null;
+    world.tick=Math.ceil((world.tick+1)/8)*8;
+    engine.watchdog();
+    check('stalled task watchdog recovers',owner.taskId===task.id||task.status==='backlog',
+      'task='+task.status+' owner='+owner.taskId);
+    finish();
+  }
+})();
+</script></body></html>

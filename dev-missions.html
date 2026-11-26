@@ -15,11 +15,13 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
   const out=document.getElementById('out'),lines=[];let failed=0;
   function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
   function wait(ms){return new Promise(r=>setTimeout(r,ms));}
-  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  let watchdog=null;
+  function finish(){if(watchdog){clearTimeout(watchdog);watchdog=null;}out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
   const f=document.getElementById('f');
   f.src='index.html?intro=0&ticks=0&noStream=1&missions=1&theme=day&lang=zh';
   f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2600));
   async function run(){
+    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 45s');failed++;finish();},45000);
     const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
     const $=(s)=>d.querySelector(s);
     check('app exposed',!!app);
@@ -36,6 +38,14 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     const form=$('#missionCreateForm');
     check('mission form opens',!!form);
     if(!form){finish();return;}
+    const templateBtn=$('[data-mission-template="ecom"]');
+    check('mission quick templates',!!templateBtn);
+    if(templateBtn){
+      templateBtn.click();await wait(120);
+      check('template fills title',/电商/.test(form.elements.title.value),form.elements.title.value);
+      check('template fills acceptance',form.elements.acceptance.value.length>10);
+      check('template fills token budget',Number(form.elements.tokenBudget.value)>=100000);
+    }
     form.elements.title.value=title;
     form.elements.description.value='为自检创建一条真实任务，包含文档和图片附件、任务规则、自动分配和审批。';
     form.elements.acceptance.value='任务群创建成功，所有成员有任务，附件可读取，审批可处理。';
@@ -48,6 +58,9 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     }
     check('agent picker rendered',picks.length>=6,'agents='+picks.length);
     const checkedPicks=Array.from(d.querySelectorAll('[data-team-agent]:checked'));
+    check('token budget field rendered',!!form.elements.tokenBudget);
+    check('scheduled start field rendered',!!form.elements.scheduleAt);
+    if(form.elements.tokenBudget)form.elements.tokenBudget.value='200000';
     check('auto team preselected',checkedPicks.length>=2);
     const pickInfo=(id)=>(view.data.agents||[]).find(a=>a.id===id)||{};
     check('external agents recommended',checkedPicks.every(el=>pickInfo(el.getAttribute('data-team-agent')).source==='external'),
@@ -112,14 +125,107 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('members assigned',(mission.members||[]).every(m=>(mission.tasks||[]).some(t=>t.assigneeId===m.id)));
     check('task estimates generated',(mission.tasks||[]).every(t=>t.estimate&&t.estimate.minutes>0&&t.estimate.tokens>0));
     check('mission evaluation generated',!!mission.evaluation&&mission.evaluation.estimatedTokens>0);
+    check('token budget persisted',mission.tokenBudget===200000,mission.tokenBudget);
+    check('token budget in evaluation',mission.evaluation&&mission.evaluation.tokenBudget===200000);
     check('member logos generated',(mission.members||[]).every(m=>!!m.logoText));
     view.detailTab='overview';view.render();await wait(120);
     check('AI settings shortcut',view.ai&&view.ai.available?true:!!d.querySelector('[data-mission-ai-settings]'));
     view.detailTab='eval';view.render();await wait(200);
     check('evaluation tab renders',/预计/.test($('.mission-detail-body').textContent)&&/Token/i.test($('.mission-detail-body').textContent));
+    check('token budget editor rendered',!!$('#missionTokenBudget')&&!!$('[data-mission-budget-save]'));
     check('rules present',(mission.rules||[]).length>=5);
     check('document attachment stored',(mission.artifacts||[]).some(a=>a.name==='brief.md'&&/自检文档内容/.test(a.extractedText||'')));
     check('image attachment stored',(mission.artifacts||[]).some(a=>a.kind==='image'));
+    const finished=JSON.parse(JSON.stringify(mission));
+    finished.tasks.forEach(t=>{t.status='done';t.report={summary:'已完成 '+t.title,solution:'验证通过',next:['继续优化']};});
+    finished.stats=Object.assign({},finished.stats,{progress:100,done:finished.tasks.length,review:0});
+    finished.decisions=[{topic:'路线',outcome:'采用方案 A'}];
+    finished.coverage={total:finished.members.length,assigned:finished.members.length,idle:[],noIdle:true,completed:true};
+    const nextPayload=view.nextRoundPayload(finished);
+    check('next round payload',!!nextPayload&&nextPayload.previousMissionId===mission.id);
+    check('next round title',!!nextPayload&&/第 2 轮/.test(nextPayload.title),nextPayload&&nextPayload.title);
+    check('next round team',!!nextPayload&&nextPayload.memberIds.length===mission.members.length);
+    check('next round artifacts',!!nextPayload&&(nextPayload.artifactIds||[]).length===(finished.artifacts||[]).length);
+    check('next round context',!!nextPayload&&/上一轮/.test(nextPayload.description)&&/继续下一轮/.test(nextPayload.description));
+    view.mission=finished;view.detailTab='overview';view.render();await wait(120);
+    check('next round command action',!!d.querySelector('[data-mission-next-round]'));
+    check('completed coverage no idle warning',/本轮已完成/.test(($('.mission-coverage')||{}).textContent||''));
+    view.mission=mission;view.render();
+    view.detailTab='tasks';view.render();await wait(120);
+    check('task agent filter rendered',!!d.querySelector('[data-task-agent-filter]'));
+    check('task progress bars rendered',d.querySelectorAll('.mission-task-progress').length>=mission.tasks.length);
+    const filterMember=mission.members[0];
+    view.taskAgentFilter=filterMember.id;view.render();await wait(120);
+    const filteredRows=d.querySelectorAll('.mission-task').length;
+    const expectedRows=mission.tasks.filter(t=>t.assigneeId===filterMember.id).length;
+    check('task filter by agent',filteredRows===expectedRows,filteredRows+'/'+expectedRows);
+    view.taskAgentFilter='';view.detailTab='members';view.render();await wait(120);
+    check('member progress bar',!!d.querySelector('.mission-member-progress'));
+    check('member view tasks action',!!d.querySelector('[data-member-tasks]'));
+    const memberTasksBtn=d.querySelector('[data-member-tasks]');
+    if(memberTasksBtn){memberTasksBtn.click();await wait(150);}
+    check('member action filters tasks',view.taskAgentFilter===filterMember.id);
+    const patchTarget=mission.tasks.find(t=>t.status!=='done');
+    if(patchTarget){
+      await view.patchTask(patchTarget.id,{status:'review',progress:73});
+      await wait(900);
+      const patched=(view.mission&&view.mission.tasks||[]).find(t=>t.id===patchTarget.id);
+      check('task status patched from UI',!!patched&&patched.status==='review',patched&&patched.status);
+      check('task progress persisted',!!patched&&Number(patched.progress)===73,patched&&patched.progress);
+      view.detailTab='tasks';view.taskAgentFilter='';view.render();await wait(150);
+      check('task accept action rendered',!!d.querySelector('[data-task-accept="'+patchTarget.id+'"]'));
+      check('task reassign control rendered',!!d.querySelector('[data-task-reassign="'+patchTarget.id+'"]'));
+      check('task block action rendered',!!d.querySelector('[data-task-block="'+patchTarget.id+'"]'));
+      const editBtn=d.querySelector('[data-task-edit="'+patchTarget.id+'"]');
+      check('task edit action rendered',!!editBtn);
+      if(editBtn){
+        editBtn.click();await wait(150);
+        const editForm=$('#missionTaskEditForm');
+        check('task edit form opens',!!editForm);
+        if(editForm){
+          editForm.elements.title.value='自检任务已编辑';
+          editForm.elements.brief.value='编辑后的任务说明';
+          editForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+          await wait(900);
+          const edited=(view.mission&&view.mission.tasks||[]).find(t=>t.id===patchTarget.id);
+          check('task title edited',!!edited&&edited.title==='自检任务已编辑',edited&&edited.title);
+          check('task brief edited',!!edited&&edited.brief==='编辑后的任务说明');
+          check('task edit closes',!$('#missionTaskEditForm'));
+        }
+      }
+    }
+    view.detailTab='tasks';view.taskAgentFilter='';view.render();await wait(150);
+    const bulkTaskIds=[];
+    for(let i=0;i<2;i++){
+      const box=Array.from(d.querySelectorAll('[data-task-select]')).find(cb=>!cb.checked);
+      if(!box)break;
+      bulkTaskIds.push(box.getAttribute('data-task-select'));
+      box.checked=true;box.dispatchEvent(new w.Event('change',{bubbles:true}));
+      await wait(180);
+      view.detailTab='tasks';view.render();await wait(120);
+    }
+    check('task bulk toolbar',!!$('.mission-task-bulk'),'ids='+bulkTaskIds.join(','));
+    const blockBulk=$('[data-task-bulk="block"]');
+    check('task bulk block action',!!blockBulk&&!blockBulk.disabled);
+    if(blockBulk){blockBulk.click();await wait(1400);}
+    const blockedTasks=(view.mission&&view.mission.tasks||[]).filter(t=>bulkTaskIds.includes(t.id)&&t.status==='blocked');
+    check('bulk tasks blocked',blockedTasks.length===bulkTaskIds.length,blockedTasks.length+'/'+bulkTaskIds.length);
+    view.selectedTasks.clear();
+    view.taskAgentFilter='';view.detailTab='overview';view.render();
+    const searchInput=$('#missionSearch');
+    if(searchInput){
+      searchInput.focus();searchInput.value='__no_such_mission__';
+      searchInput.dispatchEvent(new w.Event('input',{bubbles:true}));
+      await wait(150);
+      check('mission search filters immediately',d.querySelectorAll('.mission-item').length===0);
+      check('mission search keeps focus',d.activeElement===$('#missionSearch'));
+      check('mission search empty state',/没有匹配/.test(($('.mission-side')||{}).textContent||''));
+      view.search='';view.renderSidebarOnly();
+    }
+    view.detailTab='files';view.render();await wait(100);
+    const downloadLink=d.querySelector('.mission-file-dl');
+    check('file download link rendered',!!downloadLink,downloadLink&&downloadLink.getAttribute('href'));
+    view.detailTab='overview';view.render();
     const doc=(mission.artifacts||[]).find(a=>a.name==='brief.md');
     if(doc){
       await view.openArtifact(doc.id);
@@ -141,6 +247,29 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     $('#missionChatForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
     await wait(900);
     check('group message sent',/自检消息/.test($('#missionMessages').textContent));
+    const searchToggle=$('[data-message-search-toggle]');
+    check('message search toggle',!!searchToggle);
+    if(searchToggle){
+      searchToggle.click();await wait(150);
+      const searchBox=$('#missionMessageSearch');
+      check('message search opens',!!searchBox);
+      if(searchBox){
+        searchBox.value='自检消息';
+        searchBox.dispatchEvent(new w.Event('input',{bubbles:true}));
+        await wait(100);
+        const allRows=Array.from(d.querySelectorAll('#missionMessages > *'));
+        const visible=allRows.filter(el=>!el.hidden&&!el.classList.contains('search-hidden'));
+        check('message search filters',visible.length>=1&&visible.length<allRows.length,
+          'visible='+visible.length+' total='+allRows.length);
+        check('message search keeps focus',d.activeElement===searchBox);
+        searchBox.value='__no_match__';
+        searchBox.dispatchEvent(new w.Event('input',{bubbles:true}));
+        await wait(100);
+        check('message search empty state',!!$('.mission-search-empty'));
+        $('[data-message-search-clear]').click();await wait(150);
+        check('message search clears',!$('.mission-search-empty'));
+      }
+    }
 
     const report={
       summary:'需要授权域名预算', done:['完成调研'], next:['购买域名'],
@@ -157,12 +286,59 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     await view.selectMission(mission.id);
     await wait(400);
     check('boss gate rendered',/自检域名预算/.test($('#missionMessages').textContent)&&/花费/.test($('#missionMessages').textContent));
-    const approve=$('[data-approval-decision][data-approval-action="approved"]');
+    const approve=Array.from(d.querySelectorAll('[data-approval-decision][data-approval-action="approved"]')).find(b=>/自检域名预算/.test((b.closest('.mission-approval')||{}).textContent||''));
     check('approval action rendered',!!approve);
-    if(approve){approve.click();await wait(700);}
+    const beforeApprovals=await (await fetch(bridge+'/approvals')).json();
+    const beforePending=(beforeApprovals.approvals||[]).find(a=>a.title==='自检域名预算');
+    const approveButtons=Array.from(d.querySelectorAll('[data-approval-decision][data-approval-action="approved"]')).map(b=>b.getAttribute('data-approval-decision'));
+    check('approval target pending',!!beforePending&&beforePending.status==='pending',
+      beforePending&&(beforePending.id+':'+beforePending.status)+' buttons='+approveButtons.join(',')+' all='+(beforeApprovals.approvals||[]).map(a=>a.id+':'+a.status+':'+a.title).join(','));
+    let approvalCalls=0;
+    const originalResolve=view.resolveApproval.bind(view);
+    view.resolveApproval=function(){approvalCalls++;return originalResolve.apply(null,arguments);};
+    if(approve){approve.click();await wait(1200);}
+    check('approval click handler called',approvalCalls>0,'calls='+approvalCalls+' busy='+view.resolvingApproval+' toast='+(($('#toast')||{}).textContent||''));
     const approvals=await (await fetch(bridge+'/approvals')).json();
     const mine=(approvals.approvals||[]).find(a=>a.title==='自检域名预算');
     check('approval resolved',!!mine&&mine.status==='approved',mine&&mine.status);
+    $('[data-mission-approvals]').click();
+    await wait(700);
+    check('approval inbox filters rendered',d.querySelectorAll('[data-approval-filter]').length===3);
+    const resolvedFilter=d.querySelector('[data-approval-filter="resolved"]');
+    if(resolvedFilter){resolvedFilter.click();await wait(700);}
+    check('resolved approval history loads',/自检域名预算/.test(($('.mission-inbox-list')||{}).textContent||''));
+    check('approval context rendered',!!$('.mission-approval-context'));
+    view.viewMode='chat';view.render();await wait(150);
+
+    const bulkApprovalIds=[];
+    for(const index of [1,2]){
+      const res=await fetch(bridge+'/approvals',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({missionId:mission.id,type:'spend',title:'批量测试 '+index,
+          amount:10+index,currency:'CNY',requestedBy:mission.members[0].id})});
+      if(res.status===201){const data=await res.json();bulkApprovalIds.push((data.approval||{}).id);}
+    }
+    for(let i=0;i<12&&view.busy;i++)await wait(200);
+    await view.refreshAll(false);
+    await wait(500);
+    view.viewMode='approvals';view.approvalFilter='pending';view.render();await wait(200);
+    check('bulk approvals created',bulkApprovalIds.length===2,'ids='+bulkApprovalIds.join(','));
+    check('bulk pending loaded',(view.data.approvals||[]).length>=2,'pending='+(view.data.approvals||[]).length);
+    check('bulk approval toolbar',d.querySelectorAll('[data-approval-bulk]').length===2);
+    const selectAll=d.querySelector('[data-approval-select-all]');
+    check('bulk select all control',!!selectAll);
+    if(selectAll){
+      selectAll.checked=true;selectAll.dispatchEvent(new w.Event('change',{bubbles:true}));
+      await wait(100);
+      const approveBulk=d.querySelector('[data-approval-bulk="approved"]');
+      check('bulk approve enabled',!!approveBulk&&!approveBulk.disabled);
+      if(approveBulk)approveBulk.click();
+      await wait(1600);
+      const history=await (await fetch(bridge+'/approvals')).json();
+      const resolved=(history.approvals||[]).filter(a=>bulkApprovalIds.includes(a.id)&&a.status==='approved');
+      check('bulk approvals resolved',resolved.length===bulkApprovalIds.length,
+        resolved.length+'/'+bulkApprovalIds.length);
+    }
+    view.viewMode='chat';view.render();await wait(150);
 
     $('[data-mission-new="group"]').click();
     await wait(200);
@@ -209,10 +385,24 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       }
     }
 
+    await view.selectMission(mission.id);await wait(400);
+    await view.archiveMission();
+    await wait(700);
+    const archivedDetail=await (await fetch(bridge+'/missions/'+mission.id)).json();
+    check('mission archive',!!archivedDetail.mission&&archivedDetail.mission.archived===true);
+    view.missionFilter='archived';view.render();await wait(150);
+    check('archived filter shows mission',d.querySelectorAll('.mission-item').length>=1);
+    view.missionFilter='all';view.render();
+    await view.duplicateMission();
+    await wait(1000);
+    const copyId=view.mission&&view.mission.id;
+    check('mission duplicate created',!!copyId&&copyId!==mission.id,copyId);
+    check('mission duplicate title',!!view.mission&&/副本|Copy/.test(view.mission.title),view.mission&&view.mission.title);
+    if(copyId){await fetch(bridge+'/missions/'+copyId,{method:'DELETE'});}
     const del=await fetch(bridge+'/missions/'+mission.id,{method:'DELETE'});
     check('mission cleanup',del.status===200);
     const after=await (await fetch(bridge+'/missions')).json();
-    check('mission removed',!(after.missions||[]).some(m=>m.id===mission.id));
+    check('mission removed',!(after.missions||[]).some(m=>m.id===mission.id||m.id===copyId));
     finish();
   }
 })();

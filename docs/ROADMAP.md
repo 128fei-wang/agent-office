@@ -40,6 +40,13 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Agent recommendations, free team selection, per-task executor overrides, auto brand logos, task time/token estimates and actual-usage evaluation.
 - [x] Real-external-agent-first recommendations, editable external job appointments, and built-in/custom avatar selection.
 - [x] Pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat-window styles.
+- [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
+- [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.
+- [x] Per-mission token cap with stop/resume and one-shot auto-retry for failed tasks.
+- [ ] Durable queue/scheduler, checkpoints and idempotent resume.
+- [ ] Cross-mission memory with retrieval, citations and expiry.
+- [ ] Budget-aware model routing and price table.
+- [ ] Agent registry/health and A2A interoperability.
 - [ ] Provider-backed evaluation of task deliverables and independent QA verification.
 - [ ] Estimate calibration from historical actual/estimate variance per role and agent.
 - [ ] Retention, search and export for mission history and uploaded artifacts.
@@ -57,7 +64,7 @@ This is an early open-source prototype, not a production observability or agent-
 - Mission AI discussion/run requires a reachable model service. Local provider gateways are probed; when none is available the rule plan remains, but agents cannot generate AI deliverables.
 - PDF extraction needs `pdftotext`; image OCR needs a vision model or `tesseract`. QR login is an approval gate, not a provider OAuth implementation.
 - Mission data is a local JSON store without search/retention or multi-user authentication.
-- Model API calls are one-shot; no streaming, retries or provider price calculation.
+- Model API calls are one-shot; auto-run retries a failed task once, but there is no streaming, durable checkpoint or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.
 - Simulation evidence (files/lines/diffs/tokens/cost) is synthetic; real external events carry their own fields.

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Animation performance self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head>
+<body><h1>ANIMATION PERFORMANCE SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2800));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const engine=app.engine,renderer=app.renderer;
+    engine.paused=true;
+    renderer.render();
+    await wait(120);
+    const base=engine.world.tasks.length;
+    check('baseline board rendered',$$('.task-card').length>0,'tasks='+base+' cards='+$$('.task-card').length);
+
+    const first=performance.now();
+    renderer.renderBoard();
+    const firstMs=performance.now()-first;
+    const sig=renderer.lastBoardSig;
+    const skipStart=performance.now();
+    for(let i=0;i<20;i++)renderer.renderBoard();
+    const skipMs=performance.now()-skipStart;
+    check('board signature present',!!sig);
+    check('unchanged board skips rebuild',skipMs<120,'20 renders='+skipMs.toFixed(1)+'ms');
+    check('initial board render bounded',firstMs<300,'render='+firstMs.toFixed(1)+'ms');
+
+    const originals=engine.world.tasks.slice();
+    for(let i=0;i<8;i++){
+      originals.forEach(function(task,index){
+        const copy=JSON.parse(JSON.stringify(task));
+        copy.id='stress-'+i+'-'+index;
+        copy.title='压测任务 '+i+'-'+index;
+        engine.world.tasks.push(copy);
+      });
+    }
+    const stressStart=performance.now();
+    renderer.lastBoardSig='';
+    renderer.renderBoard();
+    const stressMs=performance.now()-stressStart;
+    const stressCards=$$('.task-card').length;
+    check('stress board renders',stressCards>=engine.world.tasks.length-2,
+      'tasks='+engine.world.tasks.length+' cards='+stressCards);
+    check('stress board under 500ms',stressMs<500,'render='+stressMs.toFixed(1)+'ms');
+
+    const rosterStart=performance.now();
+    renderer.lastRosterHTML='';
+    renderer.renderRoster();
+    const rosterMs=performance.now()-rosterStart;
+    check('roster under 120ms',rosterMs<120,'render='+rosterMs.toFixed(1)+'ms');
+    finish();
+  }
+})();
+</script></body></html>

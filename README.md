@@ -1,6 +1,6 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -14,6 +14,8 @@
 ![Agent Office](docs/screenshots/office.jpg)
 
 > **Status:** early-stage open-source prototype. 不是生产级可观测平台，也不是真实代码执行沙箱。边界见 [Roadmap](docs/ROADMAP.md)。
+>
+> **第一次使用？** 看 [使用指南](docs/GUIDE.md)。关闭演示：点右上角 **「关闭演示」**，或左侧 设置 → 演示与预设。
 
 ## 快速开始
 
@@ -90,7 +92,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **外部 Agent 接入**：本地 bridge 支持一次性连接码、注册、心跳、事件上报；外部 agent 的 action / skill / tool / file / token / cost 会进入 ledger、Live Feed、Trace Lab 和 OTLP，Team 面板显示 ONLINE / OFFLINE。
 - **任务委派与回写**：在任务抽屉里把待办任务派给外部 Agent；外部 Agent 通过 `GET /assignments` 领取、`PATCH /assignments/<id>` 回写进度/完成/失败，任务板、审计和 Trace 同步更新。
 - **白天 / 夜间**：顶部太阳/月亮按钮或按 `D` 切换主题；白天模式使用暖色纸张面板和日光洗墙，夜间保持指挥中心配色。主题写入 localStorage。
-- **任务工作台**：新建任务即写章程、自动组队和拆解、按技能分配、建任务群；群聊/私聊、文档/图片上传、图片识别、结构化汇报、团队决策和老板审批在同一个工作台完成。
+- **任务工作台**：新建任务即写章程、自动组队和拆解、按技能分配、建任务群；群聊/私聊、文档/图片上传与下载、图片识别、结构化汇报、团队决策和老板审批在同一个工作台完成。任务可按 Agent 过滤并查看当前进度，评审任务可接受、退回、标记阻塞、改派或批量处理；Boss Inbox 显示任务、发起人、时间和审批历史，支持批量审批；对话可搜索，任务可定时执行、复制、归档、导出和删除。`Cmd/Ctrl + K` 可打开全局命令面板，任务进度与审批通过本机 SSE 实时刷新。真实模式保留办公室动画、外部 Agent 工位、真实统计、团队士气和活动流。
 - **只有四类事项找老板**：花费、拍板、扫码登录、授权。技术方案、架构、工具、排期、测试和设计取舍由 Agent 讨论解决；把技术问题甩给老板会被 bridge 拒绝。
 - **不空岗、不等待**：每个成员都有主任务或真实待命巡检；阻塞汇报必须带解决方案/替代路径；任务记录分配理由和覆盖率。
 - **一人公司工作台**：一键生成 8 个 AI 员工、11 个依赖任务、4 个部门频道和每个任务的隔离房间；任务自动派发，依赖完成后自动解锁下一个任务。
@@ -384,6 +386,34 @@ bridge 现在会识别 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPI
 
 创建任务时勾选 **创建后全自动执行（讨论 → 分配 → 执行 → 汇报）**。每个任务顶部还有常驻状态条：讨论、审批、执行、汇报四个阶段一目了然，并明确显示「需要你操作」还是「无需操作」。讨论完成但未启动的任务直接点 **开始执行 N 个任务**；还没有计划的点 **讨论并执行**，一次完成讨论和启动。只有花费、拍板、扫码登录、授权四类老板门禁会暂停，批准后自动继续。详细规则见 [docs/AI_SETUP.md](docs/AI_SETUP.md)。
 
+## 关闭演示与预设：只使用真实 Agent
+
+**设置中心 → 演示与预设**（左侧设置菜单、功能抽屉和工具面板里也有入口）可以一键关闭本地演示：
+
+- 暂停办公室模拟，隐藏 6 个本地预设角色、剧本任务、模拟看板和演示 Agent。
+- 停止并移除演示 Agent（`ext-demo-claude`），保留真实外部 Agent、真实任务、上传文件、审批和汇报。
+- 任务推荐和新建任务只使用已接入的真实外部 Agent，不再回退到系统预设角色。
+- 首页切换成 REAL OPS：显示 AI 状态、进行中的真实任务、真实外部 Agent 和「创建真实任务」入口；外部 Agent 离线只表示没有心跳，仍可由本机 AI 按分配身份执行。可随时恢复演示。
+
+## 任务上下文、Token 上限与自动重试
+
+- **上下文记忆**：AI 讨论和任务执行会读取本任务的上传文件 / OCR 文本、团队决策、已完成任务汇报、证据和已批准门禁。上下文被标记为不可信资料，不能覆盖规则、泄露密钥或绕过审批。
+- **Token 上限**：创建任务时可填写 Token 上限（0 / 留空表示不限）。讨论和任务消耗都会计入；达到上限时自动执行会停止，并在任务评估里给出已用 / 上限；调整后可从命令条继续。
+- **失败重试**：单个任务执行失败会自动重试一次，再失败才中断，失败与重试都会写入任务群和审计记录。
+
+2026 趋势、缺口和下一阶段路线见 [docs/TRENDS.md](docs/TRENDS.md)。
+
+## 任务与动画联动
+
+- 完成庆祝是一次性动画：3 个 tick 后角色回到空闲，继续聊天、喝咖啡、散步、回看板，不会在「庆祝中」定格好几分钟。
+- 工作 / 评审中的角色脚下有任务进度条，团队卡显示 `任务 · NN%`；空闲、聊天、评审也有各自的细微动画。
+- 24 tick 无进展的任务会被看门狗重新指派；没人跟进的会放回看板，并记录到 feed 和审计。
+- 真实任务自动执行时，首页 MISSION LIVE 和热桌卡显示当前任务已运行时间，并提供直接停止按钮。
+- SHIPPED 横幅有「新一轮」按钮，可立即重置当前场景。
+- 真实任务全部完成后，命令条和概览出现 **开启下一轮**：复用团队，带上上一轮交付物、决策和汇报作为上下文，并沿用之前的自动执行方式。
+
+细节与参考案例见 [docs/ANIMATION.md](docs/ANIMATION.md)。
+
 ## MCP 部署
 
 工具面板新增 **MCP 部署**，让 Agent Office 本身作为本地 MCP 服务：
@@ -598,6 +628,11 @@ agent-office/
 ├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
 ├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
 ├── dev-features.html   自检功能抽屉、群聊/单聊弹窗、设置和聊天风格
+├── dev-ai-setup.html   自检 3 步 AI 接入、环境凭据、测试保存和任务自动执行
+├── dev-mission-live.html 自检首页 MISSION LIVE、外部 Agent 热桌和任务气泡
+├── dev-demo-mode.html  自检演示关闭、真实模式、只推荐外部 Agent 和恢复
+├── dev-activity.html   自检任务进度条、完成后动画循环和「新一轮」
+├── dev-guide.html      自检右上角演示开关、使用指南和快捷入口
 ├── trace.css           Trace Lab / Evals / 审批样式
 ├── hiring.css          Add Agent / 热桌样式
 ├── external.css        外部 Agent / 重命名 / 委派样式
@@ -605,6 +640,7 @@ agent-office/
 ├── company.css         一人公司工作台 / 群聊 / 语言样式
 ├── update.css          工具与升级面板样式
 ├── missions.css        任务工作台 / 群聊 / 私聊 / 审批样式
+├── demo-mode.css       演示关闭 / REAL OPS 首页 / 真实任务看板样式
 ├── features.css        功能栏 / 聊天弹窗 / 设置 / 聊天窗口风格样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
@@ -615,10 +651,14 @@ agent-office/
 ├── tests/test_bridge.py bridge 集成测试（stdlib unittest）
 ├── tests/test_updater.py 更新器单元测试
 ├── tests/test_missions.py 任务规划、汇报、审批和文件提取测试
+├── tests/test_context.py 任务上下文、Token 预算和提示安全测试
 ├── docs/PROVIDERS.md   模型 API 配置与故障排查
 ├── docs/TASK_DELEGATION.md 外部任务委派协议与状态机
 ├── docs/COMPANY_OS.md  一人公司模板、群聊、任务隔离
 ├── docs/MISSIONS.md    任务工作台、自动分配、审批、文件与 Agent 协议
+├── docs/TRENDS.md      2026 Agent 平台趋势、差距与本项目路线
+├── docs/ANIMATION.md   任务联动、完成态一次性动画和空转看门狗
+├── docs/GUIDE.md       使用指南：关闭演示、接 Agent、AI、任务与下一轮
 ├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
 ```
@@ -771,7 +811,9 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-features.html` 会验证左侧导航栏、六项功能、添加好友/外部 Agent 入口、群聊弹窗、单聊弹窗、设置中心、AI 设置和 MCP 部署。
 
-bridge 自身的 22 个集成测试、更新器的 14 个单元测试和任务工作台的 9 个单元测试不依赖浏览器：
+`dev-ai-setup.html`、`dev-mission-live.html` 和 `dev-demo-mode.html` 会验证 3 步 AI 接入、首页 MISSION LIVE、演示关闭 / 真实 Agent 模式、真实任务看板和恢复演示。`dev-activity.html` 会验证任务进度到角色进度条、完成后庆祝自动回到日常活动，以及「新一轮」重置。
+
+bridge 自身的 32 个集成测试、更新器的 14 个单元测试、任务工作台的 13 个单元测试和上下文的 1 个单元测试（共 60 个）不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -787,7 +829,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.13.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.18.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

@@ -27,7 +27,7 @@
 4. Add topics:
    `agents`, `multi-agent`, `observability`, `llm`, `agentops`, `opentelemetry`, `simulation`, `pixel-art`, `local-first`, `one-person-company`, `group-chat`, `i18n`.
 5. Upload a screenshot as the social preview (use `docs/screenshots/office.jpg`).
-6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.13.0`).
+6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.18.0`).
 7. Enable Issues and Discussions (recommended).
 8. Enable GitHub Pages with **Source: GitHub Actions** if you want a live UI demo
    (the static office works; external-agent pairing needs a local bridge).

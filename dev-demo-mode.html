@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Demo mode self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>DEMO MODE SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  try { localStorage.setItem('agent-office.demo-mode.v1','on'); } catch (err) {}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),3500));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const demo=w.AgentOffice.DemoMode;
+    check('demo mode exposed',!!demo);
+    check('demo mode starts on',!!demo&&demo.enabled);
+    check('local characters initially visible',$$('.team-card[data-agent]').length>=6);
+    check('demo mode tool in drawer',!!$('[data-feature-action="demo"]'));
+    if(!demo){finish();return;}
+
+    demo.setEnabled(false,{silent:true});
+    await wait(900);
+    check('html marks real mode',d.documentElement.dataset.demo==='off');
+    check('simulation paused',!!app.engine.paused);
+    check('cover visible',!!$('#realModeCover')&&!$('#realModeCover').hidden);
+    check('cover text',/演示已关闭|Demo is off/.test(($('#realModeCover')||{}).textContent||''));
+    check('preset team cards hidden',$$('.team-card[data-agent]').length===0);
+    check('real office agents rendered',$$('.real-agent-desk').length>=1,'desks='+$$('.real-agent-desk').length);
+    check('char layer hidden by css',w.getComputedStyle($('.char-layer')).display==='none');
+    check('top stats show real metrics',w.getComputedStyle($('.top-stats')).display!=='none'&&/\//.test(($('#statTasks')||{}).textContent||''));
+    check('office title becomes real ops',($('#officeName')||{}).textContent==='REAL OPS');
+    check('team subtitle says real mode',/真实模式|Real mode/.test(($('#teamSub')||{}).textContent||''));
+    check('real board rendered',!!$('.real-board'));
+    check('real feed rendered',!!$('.real-feed-list')||!!$('.real-feed-empty'));
+    check('board title changed',($('#boardTitle')||{}).textContent==='REAL BOARD');
+    check('feed title changed',($('#feedTitle')||{}).textContent==='REAL OPS');
+    check('real board empty state or missions',!!$('.real-mission-row')||!!$('.real-board-empty'));
+    check('real mode live panel',!!$('#realModeLive'));
+    check('real mode create action',!!$('#realModeCover [data-real-create-mission]'));
+    check('real mode AI action',!!$('#realModeCover [data-real-open-ai]'));
+    const openFromCover=$('#realModeCover [data-real-open-missions]');
+    if(openFromCover){
+      openFromCover.click();
+      await wait(600);
+      check('cover opens mission center',!!$('#missionLab')&&!$('#missionLab').hidden);
+      app.renderer.missions.close();
+      await wait(150);
+    }
+    const createFromCover=$('#realModeCover [data-real-create-mission]');
+    if(createFromCover){
+      createFromCover.click();
+      await wait(500);
+      check('cover opens mission form',!!$('#missionCreateForm'));
+      app.renderer.missions.close();
+      await wait(150);
+    }
+
+    const coverClose=$('#realModeCover [data-real-cover-close]');
+    check('cover close control',!!coverClose);
+    if(coverClose){
+      coverClose.click();
+      await wait(300);
+      check('cover closes without restoring demo',demo.enabled===false&&$('#realModeCover').hidden);
+      check('cover dismissal persisted',w.localStorage.getItem('agent-office.real-cover-dismissed.v1')==='1');
+      check('real mode stays paused',app.engine.paused===true);
+      check('real panel topbar button visible',!!$('#realOpsBtn')&&!$('#realOpsBtn').hidden);
+      check('closed stage note visible',!!$('#realStageNote')&&!$('#realStageNote').hidden);
+      check('stage note reopens mission center',!!$('#realStageNote [data-real-open-missions]'));
+      check('real morale has value',!/—/.test(($('#teamMorale')||{}).textContent||''),($('#teamMorale')||{}).textContent);
+      check('real top stats visible',w.getComputedStyle($('.top-stats')).display!=='none');
+      check('real stats relabeled',/任务/.test(($('#statLabelTasks')||{}).textContent||''));
+      check('real feed has rows or empty state',!!$('.real-feed-row')||!!$('.real-feed-empty'));
+      const noteClose=$('[data-real-stage-note-close]');
+      if(noteClose){noteClose.click();await wait(100);check('stage note closes',!!$('#realStageNote')&&$('#realStageNote').hidden);}
+      check('real panel button label reopens',/面板/.test($('#realOpsBtn').textContent));
+      $('#realOpsBtn').click();
+      await wait(300);
+      check('real panel button reopens cover',!$('#realModeCover').hidden);
+      check('real panel button label closes',$('#realOpsBtn').getAttribute('aria-expanded')==='true');
+      check('stage note hides when panel opens',!!$('#realStageNote')&&$('#realStageNote').hidden);
+      check('real mode mission center button',!!$('#realMissionBtn')&&!$('#realMissionBtn').hidden);
+      $('#realModeCover [data-real-cover-close]').click();
+      await wait(200);
+    }
+
+    app.renderer.features.settings.open('demo');
+    await wait(120);
+    check('settings demo section',!!$('#settingsDemo'));
+    const toggle=$('[data-settings-demo]');
+    check('settings demo toggle exists',!!toggle);
+    check('settings toggle reflects off',!!toggle&&toggle.checked===false);
+    check('settings clean action',!!$('[data-settings-demo-clean]'));
+    app.renderer.features.settings.close();
+
+    if(app.renderer.update){
+      app.renderer.update.open();
+      await wait(400);
+      check('tools demo block',!!$('.tools-demo'));
+      check('tools demo toggle',!!$('[data-demo-tool="toggle"]'));
+      check('tools demo clean',!!$('[data-demo-tool="clean"]'));
+      app.renderer.update.close();
+    }
+
+    const missions=app.renderer.missions;
+    if(missions){
+      await missions.open();
+      missions.openForm('mission');
+      await wait(1200);
+      check('mission directory real only',(missions.data.agents||[]).length>0?
+        (missions.data.agents||[]).every(a=>a.source==='external'):true,
+        (missions.data.agents||[]).map(a=>a.source).join(','));
+      check('real-only form hint',!!$('.mission-real-mode-note'));
+      check('real-only picker or empty state',!!$('.mission-agent-pick')||!!$('.mission-real-empty'));
+      missions.formMode='';missions.render();
+      missions.close();
+      await wait(200);
+    }
+
+    demo.setEnabled(true,{silent:true});
+    await wait(500);
+    check('html marks demo on',d.documentElement.dataset.demo==='on');
+    check('cover hidden again',!!$('#realModeCover')&&$('#realModeCover').hidden);
+    check('real office agents cleared',$$('.real-agent-desk').length===0);
+    check('preset team cards restored',$$('.team-card[data-agent]').length>=6);
+    check('char layer visible again',w.getComputedStyle($('.char-layer')).display!=='none');
+    check('board title restored',($('#boardTitle')||{}).textContent==='SPRINT BOARD');
+    check('real feed removed on restore',!$('.real-feed-empty')&&!$('.real-feed-list'));
+    check('simulation feed restored',$$('.feed-row').length>0);
+    check('simulation resumed',app.engine.paused===false);
+    try { localStorage.setItem('agent-office.demo-mode.v1','on'); } catch (err) {}
+    finish();
+  }
+})();
+</script></body></html>

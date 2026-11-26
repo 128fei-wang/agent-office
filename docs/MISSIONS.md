@@ -35,6 +35,7 @@ Every mission freezes a charter on creation:
 | acceptance | what counts as done |
 | deadline | optional target date |
 | budget | optional; a positive budget creates a spend approval |
+| tokenBudget | optional hard cap; 0 = unlimited. Discussion + task tokens count |
 | non-goals / constraints | scope guardrails |
 | boss gates | spend, decision, login, authorization |
 | decision rule | the team decides technical topics; the boss only decides the four gates |
@@ -190,6 +191,38 @@ discussion overhead. AI discussion and AI run usage is stored on the mission and
 the report message; report cards show an inline token/latency badge. This is a
 consumption evaluation, not vendor billing.
 
+`tokenBudget` adds a hard guardrail: **Tokens used / cap** is shown in the
+evaluation tab, and auto-run stops before the next task once the total (including
+discussion) reaches the cap. The cap is editable from the evaluation tab via
+`POST /missions/<id>/budget`.
+
+## Context memory
+
+AI discussion and execution receive a context pack built from mission uploads
+and OCR text, decisions, completed reports, evidence and approved gates. It is
+reference material only: the system prompt explicitly says it cannot override
+rules, reveal secrets or create approvals. This makes the mission a working
+memory rather than a sequence of isolated prompts.
+
+## Completion and next round
+
+When every task is done, the mission switches to a completed coverage state:
+`coverage.completed = true`, `idle = []`, and the UI shows “round complete ·
+everyone wrapped up” instead of a false “Agent idle” warning.
+
+The completed mission exposes **Start next round** in the command bar and
+overview. The next round:
+
+- reuses the current members;
+- passes `previousMissionId`;
+- carries the previous deliverable artifacts and embeds previous report
+  summaries and decisions into the new mission description;
+- starts auto-run again only when the previous round had auto-run enabled and a
+  model is available; otherwise it creates a plan that can be started manually.
+
+The API is the normal `POST /missions`; `previousMissionId` and `artifactIds`
+are optional fields.
+
 ## Task states
 
 ```text
@@ -235,7 +268,7 @@ render as cards with separate done / next / risks / solution / evidence fields.
 - **Group chat**: ad-hoc group with any selected members.
 - **DM**: one-to-one with an agent.
 - **Messages**: text, attachments, proposals, reports, approvals and system
-  records. SSE against `/missions/stream?since=N` gives live updates.
+  records. SSE against `/missions/stream?since=N` gives live message plus `overview` revision events (task, progress, auto-run, approval, file and conversation changes).
 - **Files**: document and image attachments are stored outside the static app
   and served through `/files/<id>/raw`.
 - **Private** means a separate conversation and membership check; it is not a
@@ -307,7 +340,7 @@ GET    /missions/<id>
 DELETE /missions/<id>
 POST   /missions/<id>/discuss
 POST   /missions/<id>/tasks/<taskId>/run
-PATCH  /mission-tasks/<id>
+PATCH  /mission-tasks/<id>     # status, assigneeId, progress, blockedReason, title, brief, acceptance, priority, report
 GET    /mission-tasks?agentId=<id>
 
 GET    /conversations?missionId=&kind=

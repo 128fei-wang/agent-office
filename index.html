@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="ai-setup.css" />
   <link rel="stylesheet" href="logos.css" />
   <link rel="stylesheet" href="mission-live.css" />
+  <link rel="stylesheet" href="demo-mode.css" />
 </head>
 <body>
   <div class="boot" id="boot">
@@ -45,10 +46,10 @@
       </div>
 
       <div class="top-stats" aria-label="办公室统计">
-        <div class="stat-chip"><span data-i18n="tasks">任务</span><b id="statTasks">0/0</b></div>
-        <div class="stat-chip"><span data-i18n="meetings">会议</span><b id="statMeetings">0</b></div>
-        <div class="stat-chip"><span data-i18n="messages">消息</span><b id="statMessages">0</b></div>
-        <div class="stat-chip"><span data-i18n="actions">行动</span><b id="statActions">0</b></div>
+        <div class="stat-chip"><span id="statLabelTasks" data-i18n="tasks">任务</span><b id="statTasks">0/0</b></div>
+        <div class="stat-chip"><span id="statLabelMeetings" data-i18n="meetings">会议</span><b id="statMeetings">0</b></div>
+        <div class="stat-chip"><span id="statLabelMessages" data-i18n="messages">消息</span><b id="statMessages">0</b></div>
+        <div class="stat-chip"><span id="statLabelActions" data-i18n="actions">行动</span><b id="statActions">0</b></div>
       </div>
 
       <div class="clock-pill" title="模拟时间">
@@ -67,15 +68,22 @@
           <button type="button" data-speed="2">2×</button>
           <button type="button" data-speed="4">4×</button>
         </div>
+        <button id="resetBtn" class="btn ghost" type="button" data-i18n="reset" title="重置模拟（会确认）">重置</button>
+        <button id="approvalQuickBtn" class="btn approval-quick" type="button" hidden>审批 <b>0</b></button>
+        <button id="demoQuickBtn" class="btn ghost demo-quick" type="button" aria-pressed="true" title="演示模式开关">关闭演示</button>
+        <button id="realOpsBtn" class="btn ghost real-ops-trigger" type="button" hidden
+          aria-expanded="true" title="打开/关闭真实模式面板">真实模式面板</button>
+        <button id="realMissionBtn" class="btn ghost real-mission-trigger" type="button" hidden
+          data-i18n="realModeMissionCenter" title="打开任务中心">任务中心</button>
+        <button id="guideBtn" class="btn ghost guide-trigger" type="button" data-i18n="guideButton" title="使用指南">指南</button>
         <div class="legacy-topbar-actions" hidden>
-          <button id="missionBtn" class="btn mission-trigger" type="button" data-i18n="missions">任务</button>
+          <button id="missionBtn" class="btn mission-trigger" type="button"><span data-i18n="missions">任务</span><b class="mission-btn-badge" id="missionBadge" hidden>0</b></button>
           <button id="companyBtn" class="btn company-trigger" type="button" data-i18n="companyShort">一人公司</button>
           <button id="themeBtn" class="btn ghost theme-toggle" type="button" title="切换到白天模式（D）" aria-label="切换白天/夜间模式" aria-pressed="false"><span class="theme-icon" id="themeIcon">☾</span><span class="theme-label" id="themeLabel" data-i18n="themeNight">夜间</span></button>
           <button id="langBtn" class="btn ghost lang-toggle" type="button" title="Switch language" aria-label="Switch language">EN</button>
           <button id="updateBtn" class="btn ghost update-trigger" type="button" title="工具 / 升级"><span data-i18n="update">工具</span><i class="update-badge" id="updateBadge" hidden></i></button>
           <button id="meetingBtn" class="btn" type="button" data-i18n="meeting">拉个会</button>
           <button id="eventBtn" class="btn" type="button" data-i18n="incident">制造意外</button>
-          <button id="resetBtn" class="btn ghost" type="button" data-i18n="reset">重置</button>
         </div>
       </div>
     </header>
@@ -84,7 +92,7 @@
       <nav class="feature-rail" id="featureRail" aria-label="功能导航">
         <button type="button" class="rail-brand" data-rail-section="all" title="全部功能" aria-label="全部功能">▦</button>
         <div class="rail-groups">
-          <button type="button" data-rail-section="work" title="工作"><b>▤</b><span data-i18n="featureWork">工作</span></button>
+          <button type="button" data-rail-section="work" title="工作"><b>▤</b><span data-i18n="featureWork">工作</span><i class="rail-badge" id="railWorkBadge" hidden>0</i></button>
           <button type="button" data-rail-section="people" title="人脉"><b>＋</b><span data-i18n="featurePeople">人脉</span></button>
           <button type="button" data-rail-section="create" title="创建"><b>▦</b><span data-i18n="featureCreate">创建</span></button>
           <button type="button" data-rail-section="settings" title="设置中心"><b>⚙</b><span data-i18n="featureSettings">设置</span></button>
@@ -143,24 +151,59 @@
               <div class="office-layer" id="officeLayer"></div>
               <div class="char-layer" id="charLayer"></div>
               <div class="confetti-layer" id="confettiLayer"></div>
-              <div class="done-banner" id="doneBanner">
-                <b>SHIPPED</b>
-                <span id="doneText">目标达成</span>
+            </div>
+            <div class="done-banner" id="doneBanner" role="status" aria-live="polite">
+              <b id="doneGate">SHIPPED</b>
+              <span id="doneText">目标达成</span>
+              <div class="done-actions">
+                <button type="button" class="done-new" id="newSprintBtn" data-i18n="newSprint">新一轮 →</button>
+                <button type="button" class="done-new done-audit" id="doneAuditBtn">查看审计 →</button>
               </div>
             </div>
             <div class="hud-corners" aria-hidden="true">
               <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
             </div>
             <div class="inspector" id="inspector"></div>
-            <div class="stage-hint" id="stageHint" data-i18n="stageHint">点击 agent / 任务查看轨迹 · A 审计 · L 行动 · T Trace</div>
+            <div class="stage-hint" id="stageHint" data-i18n="stageHint">点击角色查看进度与轨迹 · A 审计 · T Trace</div>
+            <div class="real-mode-cover" id="realModeCover" hidden>
+              <div class="real-mode-card">
+                <button type="button" class="real-cover-close" data-real-cover-close
+                  aria-label="关闭面板，保留真实模式" title="关闭面板（保留真实模式）">×</button>
+                <div class="real-mode-kicker"><span>REAL AGENTS ONLY</span><em id="realModeCount">0 agents</em></div>
+                <h3 data-i18n="realModeTitle">演示已关闭</h3>
+                <p data-i18n="realModeDesc">本地模拟角色、剧本任务和演示 Agent 已停止。任务中心只使用真实外部 Agent。</p>
+                <p class="real-mode-note" data-i18n="realModeOfflineNote">外部 Agent 离线只表示没有心跳；创建任务后仍可由本机 AI 按分配身份执行。要真实外部执行，请启动对应连接器。</p>
+                <div class="real-mode-live" id="realModeLive"></div>
+                <div class="real-mode-agents" id="realModeAgents"></div>
+                <div class="real-mode-actions">
+                  <button type="button" class="primary" data-real-create-mission data-i18n="realModeCreateMission">创建真实任务</button>
+                  <button type="button" data-real-open-missions data-i18n="realModeOpenMissions">打开任务中心</button>
+                  <button type="button" data-real-open-external data-i18n="realModeManageAgents">管理外部 Agent</button>
+                  <button type="button" data-real-open-ai data-i18n="realModeAiSetup">接入 AI</button>
+                  <button type="button" data-real-guide data-i18n="guideButton">使用指南</button>
+                  <button type="button" data-real-restore data-i18n="realModeRestore">恢复演示</button>
+                </div>
+              </div>
+            </div>
+            <div class="real-stage-note" id="realStageNote" hidden>
+              <button type="button" class="real-stage-note-close" data-real-stage-note-close
+                aria-label="关闭提示" title="关闭提示">×</button>
+              <span>REAL OPS</span>
+              <b data-i18n="realStagePaused">本地模拟已暂停</b>
+              <p data-i18n="realStageHint">真实任务在右侧看板；打开任务中心处理审批、汇报和交付物。</p>
+              <div>
+                <button type="button" class="primary" data-real-open-missions data-i18n="realModeOpenMissions">打开任务中心</button>
+                <button type="button" data-real-cover-open data-i18n="realModeOpenPanel">真实模式面板</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="panel feed-panel">
           <div class="panel-head feed-head">
             <div>
-              <h2>LIVE FEED</h2>
-              <p data-i18n="feedSub">对话、任务与会议纪要</p>
+              <h2 id="feedTitle">LIVE FEED</h2>
+              <p id="feedSub" data-i18n="feedSub">对话、任务与会议纪要</p>
             </div>
             <div class="feed-telemetry" aria-hidden="true">
               <span>LOAD</span>
@@ -184,7 +227,7 @@
       <aside class="panel board-panel">
         <div class="panel-head">
           <div>
-            <h2>SPRINT BOARD</h2>
+            <h2 id="boardTitle">SPRINT BOARD</h2>
             <p id="boardSub">目标：加载中…</p>
           </div>
           <div class="goal-ring" id="goalRing"><b>0%</b></div>
@@ -226,6 +269,8 @@
         <div class="feature-grid">
           <button type="button" data-feature-action="tools"><b>⚙</b><span data-i18n="featureTools">工具</span><em>TOOLS</em></button>
           <button type="button" data-feature-action="settings"><b>☷</b><span data-i18n="featureSettings">设置</span><em>SETTINGS</em></button>
+          <button type="button" data-feature-action="demo"><b>◌</b><span data-i18n="settingsDemo">演示与预设</span><em>MODE</em></button>
+          <button type="button" data-feature-action="guide"><b>?</b><span data-i18n="guideButton">使用指南</span><em>GUIDE</em></button>
         </div>
       </section>
       <section class="feature-group feature-comms">
@@ -239,7 +284,9 @@
     </div>
   </aside>
   <div class="chat-hub-root" id="chatHubRoot"></div>
-  <div class="feature-modal-root" id="featureModalRoot"></div>
+  <div class="feature-modal-root" id="featureModalRoot" hidden></div>
+  <div class="guide-modal-root" id="guideModalRoot" hidden></div>
+  <div class="command-root" id="commandRoot" hidden aria-hidden="true"></div>
 
   <div class="company-lab" id="companyLab" hidden aria-hidden="true"></div>
   <div class="mission-lab" id="missionLab" hidden aria-hidden="true"></div>
@@ -257,6 +304,7 @@
   <script src="src/i18n.js"></script>
   <script src="src/sprites.js"></script>
   <script src="src/logos.js"></script>
+  <script src="src/demo-mode.js"></script>
   <script src="src/engine.js"></script>
   <script src="src/fx.js"></script>
   <script src="src/trace.js"></script>

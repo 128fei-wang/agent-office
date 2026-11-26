@@ -20,7 +20,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
   (async function run(){
     try{
       const desk=document.getElementById('desk');
-      await load(desk,'index.html?intro=0&ticks=10&theme=night');
+      await load(desk,'index.html?noStream=1&intro=0&ticks=10&theme=night');
       const d=desk.contentDocument,w=desk.contentWindow;
       check('desktop app exposed',!!w.AgentOfficeApp);
       check('night theme initial',d.documentElement.dataset.theme==='night',d.documentElement.dataset.theme);
@@ -40,7 +40,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       check('day restored for mobile',d.documentElement.dataset.theme==='day');
 
       const mobile=document.getElementById('mobile');
-      await load(mobile,'index.html?intro=0&ticks=10');
+      await load(mobile,'index.html?noStream=1&intro=0&ticks=10');
       const md=mobile.contentDocument,mw=mobile.contentWindow;
       check('mobile app exposed',!!mw.AgentOfficeApp);
       check('mobile inherits day theme',md.documentElement.dataset.theme==='day',md.documentElement.dataset.theme);

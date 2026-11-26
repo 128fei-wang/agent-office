@@ -29,6 +29,35 @@
     return String(stored || AO.BRIDGE_DEFAULT || "http://127.0.0.1:8787").replace(/\/+$/, "");
   }
 
+  const OTHER_MODALS = [
+    ".feature-modal-root:not([hidden])",
+    ".guide-modal-root:not([hidden])",
+    ".external-modal:not([hidden])",
+    ".mission-lab:not([hidden])",
+    ".update-modal:not([hidden])",
+    ".company-lab:not([hidden])",
+    ".trace-lab:not([hidden])",
+    ".command-root:not([hidden])",
+    ".chat-window",
+    "#detailDrawer.open"
+  ].join(", ");
+
+  function syncAppInert() {
+    const app = document.getElementById("app");
+    if (!app) return;
+    const hasModal = !!document.querySelector(OTHER_MODALS + ", .ai-setup-root:not([hidden])");
+    app.inert = hasModal;
+  }
+
+  function focusable(root) {
+    return Array.from(root.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+      'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(function (node) {
+      return node.offsetParent !== null;
+    });
+  }
+
   class AISetup {
     constructor(root) {
       this.root = root;
@@ -103,7 +132,24 @@
         }
       });
       document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && self.root && !self.root.hidden) self.close();
+        if (!self.root || self.root.hidden) return;
+        if (event.key === "Escape") {
+          self.close();
+          return;
+        }
+        if (event.key === "Tab") {
+          const nodes = focusable(self.root);
+          if (!nodes.length) return;
+          const first = nodes[0];
+          const last = nodes[nodes.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
       });
       document.addEventListener("agent-office:lang", function () {
         if (self.root && !self.root.hidden) self.render();
@@ -123,6 +169,7 @@
       this.root.hidden = false;
       this.root.setAttribute("aria-hidden", "false");
       document.body.classList.add("ai-setup-open");
+      syncAppInert();
       this.render();
       this.focusClose();
       await this.load();
@@ -133,6 +180,7 @@
       this.root.hidden = true;
       this.root.setAttribute("aria-hidden", "true");
       document.body.classList.remove("ai-setup-open");
+      syncAppInert();
       if (this.previousFocus && typeof this.previousFocus.focus === "function") {
         try { this.previousFocus.focus(); } catch (err) {}
       }

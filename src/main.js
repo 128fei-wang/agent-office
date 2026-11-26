@@ -87,6 +87,7 @@
     window.addEventListener(
       "keydown",
       function (e) {
+        if (e.key === "Tab") return;
         e.preventDefault();
         e.stopPropagation();
         finish();
@@ -102,6 +103,11 @@
   const engine = new AO.Engine(
     startScenario && AO.SCENARIOS[startScenario] ? startScenario : "launch"
   );
+  let pausedByDemo = false;
+  if (AO.DemoMode && !AO.DemoMode.enabled) {
+    engine.paused = true;
+    pausedByDemo = true;
+  }
   const renderer = new AO.Renderer(engine);
 
   const startSpeed = Number(params.get("speed")) || 1;
@@ -122,6 +128,10 @@
   const themeIcon = document.getElementById("themeIcon");
   const themeLabel = document.getElementById("themeLabel");
   const langBtn = document.getElementById("langBtn");
+  const guideBtn = document.getElementById("guideBtn");
+  const demoQuickBtn = document.getElementById("demoQuickBtn");
+  const realOpsBtn = document.getElementById("realOpsBtn");
+  const realMissionBtn = document.getElementById("realMissionBtn");
   const companyBtn = document.getElementById("companyBtn");
   const missionBtn = document.getElementById("missionBtn");
   const THEME_KEY = "agent-office.theme.v1";
@@ -167,15 +177,20 @@
 
   focusBtn.addEventListener("click", toggleFocus);
 
+  function syncHud() {
+    const readout = document.querySelector(".hud-readout");
+    if (!readout) return;
+    const on = renderer.fx ? renderer.fx.enabled : false;
+    readout.classList.toggle("off", !on);
+    const real = AO.DemoMode && !AO.DemoMode.enabled;
+    const em = readout.querySelector("em");
+    if (em) em.textContent = engine.paused && !real ? "PAUSED" : (on ? "ONLINE" : "OFFLINE");
+  }
+
   function setFxState(on) {
     if (!fxBtn) return;
     fxBtn.classList.toggle("active", on);
-    const readout = document.querySelector(".hud-readout");
-    if (readout) {
-      readout.classList.toggle("off", !on);
-      const em = readout.querySelector("em");
-      if (em) em.textContent = on ? "ONLINE" : "OFFLINE";
-    }
+    syncHud();
   }
 
   if (fxBtn) {
@@ -196,7 +211,15 @@
   function setPlayLabel() {
     playBtn.textContent = engine.paused ? AO.t("resume") : AO.t("pause");
     playBtn.classList.toggle("is-paused", engine.paused);
-    document.body.classList.toggle("sim-paused", engine.paused);
+    const real = AO.DemoMode && !AO.DemoMode.enabled;
+    document.body.classList.toggle("sim-paused", engine.paused && !real);
+    syncHud();
+    const dot = document.querySelector(".team-panel .live-dot");
+    if (dot) {
+      dot.classList.toggle("paused", engine.paused && !real);
+      dot.title = real ? "真实模式 · 本地模拟已停止" :
+        engine.paused ? "模拟已暂停" : "模拟运行中";
+    }
   }
 
   function setLangLabel() {
@@ -206,6 +229,56 @@
     langBtn.setAttribute("aria-label", langBtn.title);
   }
   setLangLabel();
+
+  function syncDemoQuick() {
+    if (!demoQuickBtn) return;
+    const on = !AO.DemoMode || AO.DemoMode.enabled;
+    demoQuickBtn.textContent = AO.t(on ? "demoQuickOn" : "demoQuickOff");
+    demoQuickBtn.title = AO.t(on ? "demoQuickOnTitle" : "demoQuickOffTitle");
+    demoQuickBtn.classList.toggle("is-real", !on);
+    demoQuickBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    if (realMissionBtn) realMissionBtn.hidden = on;
+    if (realOpsBtn) {
+      const dismissed = !!(AO.DemoMode && AO.DemoMode.coverDismissed);
+      realOpsBtn.hidden = on;
+      realOpsBtn.textContent = AO.t(dismissed ? "realModeOpenPanel" : "realModeClosePanel");
+      realOpsBtn.title = dismissed ?
+        AO.t("realModeOpenPanelTitle") : AO.t("realModeClosePanelTitle");
+      realOpsBtn.setAttribute("aria-expanded", dismissed ? "false" : "true");
+      realOpsBtn.classList.toggle("is-dismissed", dismissed);
+    }
+  }
+
+  function openGuide() {
+    if (renderer && renderer.features && renderer.features.guide) {
+      renderer.features.guide.open();
+    }
+  }
+
+  syncDemoQuick();
+  if (demoQuickBtn) {
+    demoQuickBtn.addEventListener("click", function () {
+      if (!AO.DemoMode) return;
+      const next = !AO.DemoMode.enabled;
+      AO.DemoMode.setEnabled(next);
+      renderer.toast(AO.t(next ? "demoModeOn" : "demoModeOff"));
+    });
+  }
+  if (guideBtn) guideBtn.addEventListener("click", openGuide);
+  if (realMissionBtn) {
+    realMissionBtn.addEventListener("click", function () {
+      if (renderer.missions) renderer.missions.open();
+    });
+  }
+  if (realOpsBtn) {
+    realOpsBtn.addEventListener("click", function () {
+      if (AO.DemoMode) AO.DemoMode.toggleCover();
+      syncDemoQuick();
+    });
+  }
+  document.addEventListener("agent-office:demo-change", syncDemoQuick);
+  document.addEventListener("agent-office:cover-change", syncDemoQuick);
+
   if (langBtn) {
     langBtn.addEventListener("click", function () {
       AO.setLang(AO.lang === "en" ? "zh" : "en", true);
@@ -218,6 +291,7 @@
   }
   document.addEventListener("agent-office:lang", function () {
     setLangLabel();
+    syncDemoQuick();
     setPlayLabel();
     applyTheme(document.documentElement.dataset.theme === "day" ? "day" : "night", false);
     renderer.render();
@@ -246,9 +320,16 @@
     schedule();
   }
 
-  function resetTo(scenarioId) {
+  function resetTo(scenarioId, options) {
+    const opts = options || {};
+    const real = AO.DemoMode && !AO.DemoMode.enabled;
+    if (opts.confirm && engine.world.tick > 0 && !real) {
+      const ok = window.confirm("重置会清空当前模拟进度（tick " +
+        engine.world.tick + "），确定继续？");
+      if (!ok) return false;
+    }
     engine.reset(scenarioId);
-    engine.paused = false;
+    engine.paused = real ? true : (opts.keepPaused ? engine.paused : false);
     renderer.build();
     renderer.setMoveDuration(Math.max(120, Math.round(engine.stepMs * 0.86)));
     setPlayLabel();
@@ -256,6 +337,7 @@
       renderer.fit();
     });
     schedule();
+    return true;
   }
 
   playBtn.addEventListener("click", function () {
@@ -285,17 +367,46 @@
   });
 
   document.getElementById("resetBtn").addEventListener("click", function () {
-    resetTo(engine.scenarioId);
+    resetTo(engine.scenarioId, { confirm: true });
   });
 
+  const newSprintBtn = document.getElementById("newSprintBtn");
+  if (newSprintBtn) {
+    newSprintBtn.addEventListener("click", function () {
+      resetTo(engine.scenarioId);
+      renderer.toast(AO.t("newSprint"));
+    });
+  }
+
+  const doneAuditBtn = document.getElementById("doneAuditBtn");
+  if (doneAuditBtn) {
+    doneAuditBtn.addEventListener("click", function () {
+      renderer.switchBoardView("audit");
+      renderer.toast(AO.t("doneOpenAudit") || "已打开审计面板");
+    });
+  }
+
   scenarioSelect.addEventListener("change", function () {
-    resetTo(scenarioSelect.value);
+    if (resetTo(scenarioSelect.value, { confirm: true }) === false) {
+      scenarioSelect.value = engine.scenarioId;
+    }
   });
 
   document.addEventListener("keydown", function (e) {
     const tag = (e.target && e.target.tagName) || "";
     if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA") return;
     if (tag === "BUTTON" && (e.code === "Space" || e.key === "Enter")) return;
+    const modalOpen = document.querySelector(
+      ".feature-modal-root:not([hidden]), .guide-modal-root:not([hidden]), " +
+      ".external-modal:not([hidden]), .mission-lab:not([hidden]), " +
+      ".update-modal:not([hidden]), .ai-setup-root:not([hidden]), .chat-window, " +
+      ".company-lab:not([hidden]), .trace-lab:not([hidden]), .command-root:not([hidden]), #detailDrawer.open"
+    );
+    if (modalOpen) return;
+    const realMode = AO.DemoMode && !AO.DemoMode.enabled;
+    if (realMode && ["Space", "1", "2", "4", "m", "M", "e", "E", "a", "A",
+      "l", "L", "c", "C", "t", "T"].indexOf(
+      e.code === "Space" ? "Space" : e.key) >= 0) return;
     if (e.code === "Space") {
       e.preventDefault();
       playBtn.click();
@@ -331,6 +442,8 @@
       }
     } else if (e.key === "u" || e.key === "U") {
       if (renderer.update) renderer.update.toggle();
+    } else if (e.key === "?") {
+      openGuide();
     }
   });
 
@@ -355,6 +468,20 @@
       if (renderer.missions) renderer.missions.open();
     });
   }
+  const approvalQuickBtn = document.getElementById("approvalQuickBtn");
+  if (approvalQuickBtn) {
+    approvalQuickBtn.addEventListener("click", function () {
+      const view = renderer.missions;
+      if (!view) return;
+      Promise.resolve(view.open()).then(function () {
+        view.viewMode = "approvals";
+        view.detailTab = "approvals";
+        view.approvalFilter = "pending";
+        view.render();
+        view.loadApprovalHistory();
+      }).catch(function () {});
+    });
+  }
   const companyView = AO.CompanyView ? new AO.CompanyView(engine, renderer, renderer.external) : null;
   renderer.company = companyView;
   const updateCenter = AO.UpdateCenter ? new AO.UpdateCenter(renderer) : null;
@@ -374,6 +501,28 @@
   const missionLive = AO.MissionLive ? new AO.MissionLive(renderer) : null;
   renderer.missionLive = missionLive;
   AO.missionLive = missionLive;
+
+  document.addEventListener("agent-office:demo-change", function (event) {
+    const enabled = event.detail && event.detail.enabled;
+    if (!enabled) {
+      if (!engine.paused) {
+        engine.paused = true;
+        pausedByDemo = true;
+      }
+      if (renderer.drawerMode && renderer.drawerMode !== "external") {
+        renderer.closeDrawer();
+      }
+      if (renderer.boardView === "audit") renderer.switchBoardView("board");
+    } else if (pausedByDemo) {
+      engine.paused = false;
+      pausedByDemo = false;
+    }
+    setPlayLabel();
+    renderer.render();
+    if (renderer.external) renderer.external.refresh();
+    if (missionView && missionView.refreshOverview) missionView.refreshOverview();
+  });
+
   setPlayLabel();
   scenarioSelect.value = engine.scenarioId;
   applySpeed(startSpeed);
@@ -392,6 +541,10 @@
     window.setTimeout(function () { renderer.aiSetup.open(); }, 120);
   }
   if (params.get("features") === "1" && featureShell) featureShell.drawer.open();
+  if (params.get("guide") === "1" && featureShell) featureShell.guide.open();
+  if (params.get("command") === "1" && featureShell) {
+    window.setTimeout(function () { featureShell.command.open(); }, 200);
+  }
   if (params.get("chat") === "group" && featureShell) featureShell.chat.openGroupPicker();
   if (params.get("chat") === "direct" && featureShell) featureShell.chat.openDirectPicker();
   if ((params.get("trace") === "1" || params.get("trace") === "evals") && renderer.traceLab) {

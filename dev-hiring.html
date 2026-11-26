@@ -28,7 +28,7 @@
         document.body.setAttribute("data-result", failed ? "fail" : "pass");
       }
       const f = document.getElementById("f");
-      f.src = "index.html?intro=0&ticks=0";
+      f.src = "index.html?noStream=1&intro=0&ticks=0";
       f.addEventListener("load", function () {
         window.setTimeout(function () {
           try {
@@ -134,7 +134,7 @@
             // persistence: a second page should load the two hires and their hot desks
             const f2 = document.createElement("iframe");
             f2.style.cssText = "position:fixed;left:-3600px;top:0;width:1440px;height:900px;border:0";
-            f2.src = "index.html?intro=0&ticks=0&persist=1";
+            f2.src = "index.html?noStream=1&intro=0&ticks=0&persist=1";
             document.body.appendChild(f2);
             f2.addEventListener("load", function () {
               window.setTimeout(function () {

@@ -15,6 +15,22 @@
     if(!app){finish();return;}
     const shell=app.renderer.features;
     check('feature shell constructed',!!shell&&!!shell.drawer&&!!shell.chat&&!!shell.settings&&!!shell.rail);
+    check('command palette constructed',!!shell.command);
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}));
+    await wait(200);
+    check('command palette opens',!!$('#commandRoot')&&!$('#commandRoot').hidden);
+    check('command palette focused',d.activeElement===$('#commandInput'));
+    const commandInput=$('#commandInput');
+    if(commandInput){
+      commandInput.value='任务中心';
+      commandInput.dispatchEvent(new w.Event('input',{bubbles:true}));
+      await wait(150);
+      check('command palette filters',$$('.command-item').length>=1);
+      check('command palette result',/任务中心/.test($('.command-list').textContent));
+    }
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    await wait(120);
+    check('command palette closes',!!$('#commandRoot')&&$('#commandRoot').hidden);
     check('feature rail in left panel',!!$('#featureRail')&&$$('#featureRail [data-rail-section]').length>=4);
     const railFont=w.getComputedStyle($('#featureRail [data-rail-section] span')).fontSize;
     check('rail labels readable',parseFloat(railFont)>=9,railFont);
@@ -102,6 +118,13 @@
     // settings + chat style
     shell.settings.open();await wait(200);
     check('settings modal opens',!!$('.feature-settings'));
+    check('density controls',$$('[data-settings-density]').length===2);
+    const compactDensity=$('[data-settings-density="compact"]');
+    if(compactDensity){compactDensity.click();await wait(120);}
+    check('compact density applies',d.documentElement.dataset.density==='compact');
+    const comfyDensity=$('[data-settings-density="comfortable"]');
+    if(comfyDensity){comfyDensity.click();await wait(120);}
+    check('comfortable density applies',d.documentElement.dataset.density==='comfortable');
     const style=$('[data-settings-style]');
     check('chat style control',!!style);
     if(style){style.value='wechat';style.dispatchEvent(new w.Event('change',{bubbles:true}));await wait(120);check('chat style persisted',w.localStorage.getItem('agent-office.chat.style.v1')==='wechat');}

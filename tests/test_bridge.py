@@ -31,6 +31,7 @@ def free_port():
 
 class MockProviderHandler(BaseHTTPRequestHandler):
     seen = []
+    flaky_until = None
 
     def log_message(self, fmt, *args):
         pass
@@ -70,10 +71,29 @@ class MockProviderHandler(BaseHTTPRequestHandler):
             "payload": payload,
         })
         prompt_text = json.dumps(payload, ensure_ascii=False)
+        if "FLAKY_ONCE" in prompt_text:
+            now = time.time()
+            if MockProviderHandler.flaky_until is None:
+                MockProviderHandler.flaky_until = now + 1.0
+            if now < MockProviderHandler.flaky_until:
+                body = json.dumps({"error": "transient mock failure"}).encode("utf-8")
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         mission_report = "deliverable" in prompt_text
-        needs_approval = "NEEDS_APPROVAL" in prompt_text and "需求边界与验收" in prompt_text
+        incomplete_report = "INCOMPLETE_REPORT" in prompt_text
+        needs_approval = "NEEDS_APPROVAL" in prompt_text and "任务：需求边界与验收" in prompt_text
         invalid_gate = "INVALID_GATE" in prompt_text and not needs_approval
-        report_text = json.dumps({
+        if incomplete_report:
+            report_text = json.dumps({
+                "summary": "Partial mock report",
+                "deliverable": "# Partial deliverable",
+            }, ensure_ascii=False)
+        else:
+            report_text = json.dumps({
             "summary": "Mock agent report", "done": ["mock step"],
             "next": ["review"], "risks": ["mock risk"],
             "solution": "mock fallback and verification", "evidence": ["mock"],
@@ -155,6 +175,7 @@ class BridgeTest(unittest.TestCase):
         env["MOONSHOT_API_KEY"] = "test-env-kimi"
         env["AGENT_OFFICE_KIMI_BASE_URL"] = "http://127.0.0.1:%d/v1" % cls.mock_port
         env["AGENT_OFFICE_KIMI_MODEL"] = "mock-kimi-env"
+        env["BRIDGE_STATE_DIR"] = cls.tmp.name
         env["BRIDGE_STATE"] = str(Path(cls.tmp.name) / "bridge-state.json")
         env["BRIDGE_PROVIDERS"] = str(providers_path)
         env["AGENT_OFFICE_UPDATE_API"] = (
@@ -460,6 +481,90 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
         self.assertEqual(latest["stats"]["done"], len(latest["tasks"]))
         self.assertTrue(any(t.get("report") for t in latest["tasks"]))
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_honours_token_budget(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Budgeted auto mission",
+            "description": "Build and verify a landing page with independent QA.",
+            "acceptance": "Execution stops before an unbounded token spend.",
+            "autoDiscuss": False,
+            "autoRun": True,
+            "tokenBudget": 5,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 20
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "stopped", "error"):
+                break
+            time.sleep(0.2)
+        auto = latest.get("autoRun") or {}
+        self.assertEqual(auto.get("status"), "stopped", latest)
+        self.assertIn("token budget", auto.get("error", ""))
+        self.assertGreater(auto.get("tokensUsed", 0), 0)
+        self.assertTrue(any(t["status"] == "done" for t in latest["tasks"]), latest)
+        self.assertEqual(latest["tokenBudget"], 5)
+        status, updated = self.request("/missions/%s/budget" % mission_id, "POST", {
+            "tokenBudget": 100000,
+        })
+        self.assertEqual(status, 200, updated)
+        self.assertEqual(updated["mission"]["tokenBudget"], 100000)
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_retries_a_transient_failure(self):
+        MockProviderHandler.flaky_until = None
+        status, data = self.request("/missions", "POST", {
+            "title": "Retry auto mission",
+            "description": "FLAKY_ONCE: build and verify a landing page with QA.",
+            "acceptance": "A transient provider failure is retried and the mission completes.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 35
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "error", "stopped", "waiting_boss"):
+                break
+            time.sleep(0.25)
+        auto = latest.get("autoRun") or {}
+        self.assertEqual(auto.get("status"), "done", latest)
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        _, messages = self.request("/conversations/%s/messages" % latest["conversationId"])
+        self.assertTrue(any("自动重试一次" in (m.get("text") or "") for m in messages["messages"]),
+                        messages["messages"])
+        self.request("/missions/%s" % mission_id, "DELETE")
+
+    def test_mission_autorun_repairs_partial_ai_report(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Partial report auto mission",
+            "description": "INCOMPLETE_REPORT: produce a weekly report and deliver it.",
+            "acceptance": "A partial model report is repaired and all tasks complete.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 25
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "error", "stopped", "waiting_boss"):
+                break
+            time.sleep(0.2)
+        self.assertEqual((latest.get("autoRun") or {}).get("status"), "done", latest)
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        reports = [t.get("report") or {} for t in latest["tasks"]]
+        self.assertTrue(any(any("自动补齐" in risk for risk in (r.get("risks") or []))
+                            for r in reports))
         self.request("/missions/%s" % mission_id, "DELETE")
 
     def test_mission_autorun_drops_invalid_boss_gate(self):

@@ -14,6 +14,7 @@ mission member must have primary or standby coverage.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import html
 import json
 import os
@@ -29,6 +30,14 @@ from pathlib import Path
 BOSS_GATES = ("spend", "decision", "login", "authorization")
 REPORT_FIELDS = ("summary", "done", "next", "risks", "solution")
 TASK_STATUSES = ("queued", "assigned", "in_progress", "review", "blocked", "done")
+TASK_PROGRESS_DEFAULT = {
+    "queued": 5,
+    "assigned": 15,
+    "in_progress": 45,
+    "review": 85,
+    "blocked": 35,
+    "done": 100,
+}
 MAX_TEXT = 12000
 
 ROLE_EFFORT = {
@@ -50,7 +59,7 @@ BRAND_LOGOS = {
     "WorkBuddy": "assets/logos/workbuddy.svg",
     "Gemini": "assets/logos/gemini.svg",
     "DeepSeek": "assets/logos/deepseek.svg",
-    "Doubao": "assets/logos/doubao.svg",
+    "Doubao": "assets/logos/doubao-mark.svg",
     "Kimi": "assets/logos/kimi.svg",
     "Qwen": "assets/logos/qwen.svg",
     "Ollama": "assets/logos/ollama.svg",
@@ -495,6 +504,8 @@ class MissionStore:
         out = dict(task)
         out["report"] = task.get("report")
         out["overdue"] = False
+        if "progress" not in out:
+            out["progress"] = TASK_PROGRESS_DEFAULT.get(task.get("status"), 0)
         return out
 
     def mission_evaluation(self, mission):
@@ -549,12 +560,18 @@ class MissionStore:
                 "estimatedTokens": sum(int((t.get("estimate") or {}).get("tokens") or 0) for t in mine),
                 "actualTokens": sum(int((t.get("actual") or {}).get("tokens") or 0) for t in mine),
             })
+        token_budget = int(mission.get("tokenBudget") or 0)
+        total_tokens = actual_tokens + discussion_tokens
         return {
             "estimatedMinutes": estimated_minutes,
             "estimatedTokens": estimated_tokens,
             "actualMinutes": actual_minutes,
             "actualDurationMs": actual_duration_ms,
             "actualTokens": actual_tokens,
+            "tokenBudget": token_budget,
+            "totalTokens": total_tokens,
+            "tokenBudgetRemaining": (max(0, token_budget - total_tokens)
+                                     if token_budget else None),
             "remainingMinutes": remaining_minutes,
             "elapsedMinutes": elapsed_minutes,
             "discussionTokens": discussion_tokens,
@@ -574,7 +591,10 @@ class MissionStore:
         review = sum(1 for t in tasks if t.get("status") == "review")
         blocked = sum(1 for t in tasks if t.get("status") == "blocked")
         load = self._workload(mission)
-        idle = [a for a in mission.get("members", []) if load.get(a.get("id"), 0) == 0]
+        all_done = bool(tasks) and done >= len(tasks)
+        idle = [] if all_done else [
+            a for a in mission.get("members", []) if load.get(a.get("id"), 0) == 0
+        ]
         approvals = [a for a in self.data["approvals"] if a.get("missionId") == mission.get("id")]
         pending = [a for a in approvals if a.get("status") == "pending"]
         out = {
@@ -585,6 +605,10 @@ class MissionStore:
             "priority": mission.get("priority"),
             "status": mission.get("status"),
             "budget": mission.get("budget"),
+            "tokenBudget": mission.get("tokenBudget", 0),
+            "memberScope": mission.get("memberScope", "mixed"),
+            "previousMissionId": mission.get("previousMissionId", ""),
+            "archived": bool(mission.get("archivedAt")),
             "currency": mission.get("currency"),
             "deadline": mission.get("deadline"),
             "createdAt": mission.get("createdAt"),
@@ -598,6 +622,7 @@ class MissionStore:
                 "assigned": len(mission.get("members", [])) - len(idle),
                 "idle": [a.get("id") for a in idle],
                 "noIdle": len(idle) == 0,
+                "completed": all_done,
             },
             "stats": {
                 "tasks": len(tasks),
@@ -664,6 +689,13 @@ class MissionStore:
         acceptance = _text(body.get("acceptance"), 4000)
         if not acceptance:
             acceptance = "所有子任务通过验收；关键风险有解决方案；交付物和证据可追溯。"
+        real_only = bool(body.get("realOnly"))
+        if real_only:
+            directory = [a for a in directory if a.get("source") == "external"]
+            if not directory:
+                raise MissionError(
+                    "real-agent mode has no external agent; connect one first",
+                    "no_external_agents", 409)
         members = choose_agents(directory, _list(body.get("memberIds")), description)
         if not members:
             raise MissionError("no agents are available", "no_agents", 409)
@@ -672,6 +704,17 @@ class MissionStore:
             budget = max(0.0, float(body.get("budget") or 0))
         except (TypeError, ValueError):
             budget = 0.0
+        token_budget = 0
+        try:
+            token_budget = max(0, min(2000000, int(float(body.get("tokenBudget") or 0))))
+        except (TypeError, ValueError, OverflowError):
+            token_budget = 0
+        schedule_at = _text(body.get("scheduleAt"), 40)
+        if schedule_at:
+            try:
+                datetime.datetime.fromisoformat(schedule_at.replace("Z", ""))
+            except ValueError:
+                raise MissionError("scheduleAt must be an ISO date-time", "bad_schedule", 400)
         mission_id = _mid("msn")
         conversation = {
             "id": _mid("conv"),
@@ -714,6 +757,9 @@ class MissionStore:
             "priority": str(body.get("priority") or "P1")[:8],
             "status": "active",
             "budget": budget,
+            "tokenBudget": token_budget,
+            "memberScope": "external" if real_only else "mixed",
+            "previousMissionId": _text(body.get("previousMissionId"), 80),
             "currency": str(body.get("currency") or "CNY")[:8],
             "deadline": _text(body.get("deadline"), 40),
             "language": "en" if str(body.get("language") or "").lower().startswith("en") else "zh",
@@ -731,12 +777,16 @@ class MissionStore:
                            "startedAt": "", "finishedAt": "", "provider": "", "error": ""},
             "autoRun": {
                 "enabled": auto_run,
-                "status": "pending" if auto_run else "off",
+                "status": ("scheduled" if schedule_at else "pending") if auto_run else "off",
+                "scheduledAt": schedule_at if auto_run else "",
                 "provider": "",
                 "currentTaskId": "",
                 "currentTaskTitle": "",
+                "currentTaskStartedAt": "",
                 "completed": 0,
                 "total": 0,
+                "tokensUsed": 0,
+                "tokenBudget": token_budget,
                 "startedAt": "",
                 "finishedAt": "",
                 "error": "",
@@ -788,9 +838,10 @@ class MissionStore:
             "id": "recommendation",
         }
         tasks = self._plan_tasks(temp)
+        real_only = bool(body.get("realOnly"))
         external = [a for a in directory if a.get("source") == "external"]
-        candidates = external or list(directory)
-        scope = "external" if external else "system"
+        candidates = external if real_only else (external or list(directory))
+        scope = "external" if (external or real_only) else "system"
         load = {}
         for mission in self.data["missions"]:
             if mission.get("status") == "done":
@@ -851,13 +902,21 @@ class MissionStore:
         suggested = suggested[:8]
         preferred = {key: value for key, value in preferred.items() if value in suggested}
         english = str(body.get("language") or "").lower().startswith("en")
-        if scope == "external":
-            note = ("Recommendations use connected external agents only, ranked by their editable role, "
-                    "skills, online state and current load. Adjust an appointment in the external agent "
-                    "drawer, or select a system role manually."
-                    if english else
-                    "优先从真实外部 Agent 中推荐：已结合各自可编辑的职务、技能、在线状态和当前负载。"
-                    "可继续在外部 Agent 详情里调整职务，或手动勾选系统角色。")
+        if real_only and not candidates:
+            note = ("Real-agent mode is on, but no external agent is connected. "
+                    "Connect one before creating a mission." if english else
+                    "真实模式已开启，但还没有接入外部 Agent。请先接入，再创建任务。")
+        elif scope == "external":
+            if english:
+                note = ("Real-agent mode: only connected external agents are used, ranked by their editable "
+                        "role, skills, online state and current load." if real_only else
+                        "Recommendations prioritise connected external agents, ranked by their editable role, "
+                        "skills, online state and current load. You can also select a system role manually.")
+            else:
+                note = ("真实模式：只使用已接入的真实外部 Agent，已结合职务、技能、在线状态和当前负载。"
+                        if real_only else
+                        "优先从真实外部 Agent 中推荐：已结合各自可编辑的职务、技能、在线状态和当前负载。"
+                        "可继续在外部 Agent 详情里调整职务，或手动勾选系统角色。")
         else:
             note = ("No connected external agent is available, so system roles are used until one connects."
                     if english else
@@ -868,6 +927,7 @@ class MissionStore:
             "preferredExecutors": preferred,
             "scope": scope,
             "candidateCount": len(candidates),
+            "requiresExternal": real_only,
             "notes": note,
         }
 
@@ -1199,6 +1259,7 @@ class MissionStore:
             status = "review"
         task["report"] = report
         task["status"] = status
+        task["progress"] = TASK_PROGRESS_DEFAULT.get(status, 90)
         task["updatedAt"] = now_iso()
         _mark_task_actual(task, status)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
@@ -1241,15 +1302,34 @@ class MissionStore:
         status = str(body.get("status") or "")
         if status and status not in TASK_STATUSES:
             raise MissionError("unknown task status", "bad_status", 400)
+        for field, limit in (("title", 200), ("brief", 4000), ("acceptance", 2000)):
+            if body.get(field) is not None:
+                value = _text(body.get(field), limit)
+                if field == "title" and len(value) < 2:
+                    raise MissionError("task title is too short", "bad_title", 400)
+                task[field] = value
+        if body.get("priority") is not None:
+            task["priority"] = _text(body.get("priority"), 8) or task.get("priority")
         if status:
             task["status"] = status
+            task["progress"] = TASK_PROGRESS_DEFAULT.get(status, task.get("progress", 0))
             _mark_task_actual(task, status)
+        if body.get("progress") is not None:
+            try:
+                progress = int(body.get("progress"))
+            except (TypeError, ValueError):
+                raise MissionError("progress must be a number", "bad_progress", 400)
+            task["progress"] = max(0, min(100, progress))
         if body.get("assigneeId"):
             member = next((m for m in mission["members"] if m["id"] == body["assigneeId"]), None)
             if not member:
                 raise MissionError("assignee is not a mission member", "bad_assignee", 400)
             task["assigneeId"] = member["id"]
             task["assigneeName"] = member.get("titleZh") or member.get("name")
+        if body.get("blockedReason") is not None:
+            task["blockedReason"] = str(body.get("blockedReason") or "")[:500]
+        if status and status != "blocked":
+            task.pop("blockedReason", None)
         task["updatedAt"] = now_iso()
         mission["updatedAt"] = now_iso()
         if status == "done":
@@ -1299,6 +1379,20 @@ class MissionStore:
         mission["updatedAt"] = now_iso()
         self._save()
         return dict(autorun)
+
+    def update_token_budget(self, mission_id, value):
+        mission = self.find_mission(mission_id)
+        if not mission:
+            raise MissionError("mission not found", "not_found", 404)
+        try:
+            budget = max(0, min(2000000, int(float(value or 0))))
+        except (TypeError, ValueError, OverflowError):
+            raise MissionError("tokenBudget must be a number", "bad_budget", 400)
+        mission["tokenBudget"] = budget
+        mission.setdefault("autoRun", {})["tokenBudget"] = budget
+        mission["updatedAt"] = now_iso()
+        self._save()
+        return self.get_mission(mission_id)
 
     def messages_since(self, since=0):
         rows = [m for m in self.data["messages"] if int(m.get("seq") or 0) > int(since)]
@@ -1542,8 +1636,39 @@ class MissionStore:
     def get_conversation(self, conversation_id):
         return self.public_conversation(self.find_conversation(conversation_id))
 
+    def revision(self):
+        """Cheap change token for real-time overview streams."""
+        missions = []
+        for mission in self.data["missions"]:
+            auto = mission.get("autoRun") or {}
+            missions.append([
+                mission.get("id"),
+                mission.get("status"),
+                mission.get("updatedAt"),
+                auto.get("status"),
+                auto.get("currentTaskId"),
+                auto.get("currentAgentId"),
+                auto.get("completed"),
+                auto.get("tokensUsed"),
+                auto.get("error"),
+                [[t.get("id"), t.get("status"), t.get("progress"),
+                  t.get("updatedAt"), t.get("assigneeId")]
+                 for t in mission.get("tasks", [])],
+            ])
+        approvals = [[a.get("id"), a.get("status"), a.get("resolvedAt"),
+                      a.get("createdAt")] for a in self.data["approvals"]]
+        conversations = [[c.get("id"), c.get("updatedAt"),
+                          (c.get("lastMessage") or {}).get("seq")]
+                         for c in self.data["conversations"]]
+        artifacts = [[a.get("id"), a.get("createdAt")]
+                     for a in self.data["artifacts"][-80:]]
+        payload = json.dumps([missions, approvals, conversations, artifacts],
+                             ensure_ascii=False, sort_keys=True)
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:20]
+
     def snapshot(self):
         return {
+            "revision": self.revision(),
             "missions": [self.public_mission(m, summary=True) for m in self.data["missions"]],
             "conversations": self.list_conversations(),
             "approvals": [self.public_approval(a) for a in self.data["approvals"]
@@ -1562,6 +1687,15 @@ class MissionStore:
             else:
                 keep.append(artifact)
         self.data["artifacts"] = keep
+
+    def set_archived(self, mission_id, archived=True):
+        mission = self.find_mission(mission_id)
+        if not mission:
+            return None
+        mission["archivedAt"] = now_iso() if archived else ""
+        mission["updatedAt"] = now_iso()
+        self._save()
+        return self.public_mission(mission, summary=True)
 
     def delete_mission(self, mission_id):
         mission = self.find_mission(mission_id)

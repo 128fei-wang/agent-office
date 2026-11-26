@@ -106,6 +106,7 @@
       this.boardView = "board";
       this.drawerMode = null;
       this.drawerId = null;
+      this.drawerHistory = [];
       this.lastFocus = null;
       this.toastEl = document.getElementById("toast");
       this.toastTimer = null;
@@ -195,7 +196,18 @@
       });
       this.charLayer.addEventListener("click", function (e) {
         const el = e.target.closest(".agent");
-        if (el) self.select(el.getAttribute("data-id"));
+        if (!el) return;
+        const id = el.getAttribute("data-id");
+        if (window.matchMedia("(max-width: 720px)").matches) self.openAgentDrawer(id);
+        else self.select(id);
+      });
+      this.charLayer.addEventListener("keydown", function (e) {
+        const el = e.target.closest(".agent");
+        if (!el || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        const id = el.getAttribute("data-id");
+        if (window.matchMedia("(max-width: 720px)").matches) self.openAgentDrawer(id);
+        else self.select(id);
       });
       this.inspector.addEventListener("click", function (e) {
         if (e.target.closest("[data-close]")) {
@@ -210,7 +222,9 @@
           return;
         }
         const detail = e.target.closest("[data-open-agent]");
-        if (detail) self.openAgentDrawer(detail.getAttribute("data-open-agent"));
+        if (detail) { self.openAgentDrawer(detail.getAttribute("data-open-agent")); return; }
+        const openTask = e.target.closest("[data-open-task]");
+        if (openTask) self.openTaskDrawer(openTask.getAttribute("data-open-task"));
       });
       this.boardTabs.addEventListener("click", function (e) {
         const btn = e.target.closest("[data-view]");
@@ -233,12 +247,21 @@
           self.closeDrawer();
           return;
         }
+        if (e.target.closest("[data-drawer-back]")) {
+          self.drawerBack();
+          return;
+        }
         if (e.target.closest("[data-refresh-drawer]")) {
           const top = self.drawer.scrollTop;
           self.renderDrawer();
           self.drawer.scrollTop = top;
           const again = self.drawer.querySelector("[data-refresh-drawer]");
           if (again) again.focus({ preventScroll: true });
+          return;
+        }
+        const heartbeat = e.target.closest("[data-ext-heartbeat]");
+        if (heartbeat) {
+          if (self.external) self.external.testHeartbeat(heartbeat.getAttribute("data-ext-heartbeat"), heartbeat);
           return;
         }
         const renameLocal = e.target.closest("[data-rename-local]");
@@ -303,6 +326,15 @@
           self.closeDrawer();
           return;
         }
+        const missionTaskBtn = e.target.closest("[data-open-mission-task]");
+        if (missionTaskBtn) {
+          self.openMissionTask(
+            missionTaskBtn.getAttribute("data-mission-id"),
+            missionTaskBtn.getAttribute("data-open-mission-task"),
+            missionTaskBtn.getAttribute("data-mission-agent")
+          );
+          return;
+        }
         const taskBtn = e.target.closest("[data-open-task]");
         if (taskBtn) {
           self.openTaskDrawer(taskBtn.getAttribute("data-open-task"));
@@ -326,7 +358,27 @@
         self.closeDrawer();
       });
       document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape" && self.drawerMode) self.closeDrawer();
+        if (!self.drawerMode) return;
+        if (e.key === "Escape") {
+          self.closeDrawer();
+          return;
+        }
+        if (e.key === "Tab" && !self.drawer.hidden) {
+          const nodes = Array.from(self.drawer.querySelectorAll(
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )).filter(function (node) { return node.offsetParent !== null; });
+          if (!nodes.length) return;
+          const first = nodes[0];
+          const last = nodes[nodes.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       });
       document.getElementById("feedFilters").addEventListener("click", function (e) {
         const btn = e.target.closest("[data-filter]");
@@ -340,7 +392,7 @@
     }
 
     switchBoardView(view) {
-      this.boardView = view === "audit" ? "audit" : "board";
+      this.boardView = this.demoOff() ? "board" : (view === "audit" ? "audit" : "board");
       this.board.hidden = this.boardView !== "board";
       this.auditView.hidden = this.boardView !== "audit";
       if (this.boardTabs) {
@@ -362,6 +414,7 @@
       this.charEls = {};
       this.lastMessageId = 0;
       this.lastLedgerSig = 0;
+      this.lastBoardSig = "";
       this.wasDone = false;
       this.doneSeen = new Set(
         this.world.tasks.filter(function (t) { return t.status === "done"; })
@@ -763,6 +816,8 @@
         el.setAttribute("data-id", a.id);
         el.style.zIndex = String(100 + Math.round(a.y));
         el.style.setProperty("--role", role.color);
+        el.tabIndex = 0;
+        el.setAttribute("role", "button");
         el.innerHTML =
           '<div class="agent-hit"></div>' +
           '<div class="agent-shadow"></div>' +
@@ -774,7 +829,8 @@
           AO.spriteSVG(a, 44) +
           "</div></div>" +
           '<div class="nametag"><i style="background:' + role.color + '"></i><span>' +
-          a.name + "</span></div>";
+          a.name + "</span></div>" +
+          '<div class="agent-progress"><i></i></div>';
         this.charLayer.appendChild(el);
         this.charEls[a.id] = el;
       });
@@ -810,29 +866,101 @@
       const y = (vh - AO.STAGE.h * scale) / 2;
       this.stage.style.transform =
         "translate(" + x + "px," + y + "px) scale(" + scale + ")";
+      const hitScale = scale > 0 && scale < 0.92
+        ? Math.min(3, 0.92 / scale)
+        : 1;
+      this.stage.style.setProperty("--hit-scale", hitScale.toFixed(3));
     }
 
     setMoveDuration(ms) {
       this.stage.style.setProperty("--move", ms + "ms");
     }
 
+    demoOff() {
+      return !!(AO.DemoMode && !AO.DemoMode.enabled);
+    }
+
     render(force) {
-      this.updateCharacters();
-      this.updateDesks();
-      if (this.fx) {
-        this.fx.update(this.selectedId);
-        this.detectBursts();
+      const real = this.demoOff();
+      if (!real) {
+        this.updateCharacters();
+        this.updateDesks();
+        if (this.fx) {
+          this.fx.update(this.selectedId);
+          this.detectBursts();
+        }
       }
       this.renderRoster();
-      if (this.boardView === "audit") this.renderAudit();
+      if (!real && this.boardView === "audit") this.renderAudit();
       else this.renderBoard();
       this.renderHeader();
       this.renderTelemetry();
       this.renderWhiteboard();
-      this.renderInspector();
+      if (!real) this.renderInspector();
       this.renderFeed(!!force);
-      this.updateMeetingRoom();
+      if (!real) this.updateMeetingRoom();
+      if (this.drawerMode && !this.drawer.hidden) this.syncDrawerLive();
       if (this.traceLab) this.traceLab.refresh();
+    }
+
+    drawerSignature() {
+      if (!this.drawerMode) return "";
+      const w = this.world;
+      if (this.drawerMode === "task") {
+        const task = this.engine.taskById(this.drawerId);
+        if (!task) return "gone";
+        return [
+          "task", task.id, task.status, task.progress, task.assignee || "",
+          task.reviewerId || "", task.reworkCount,
+          task.checks.map(function (c) { return c.id + ":" + c.status; }).join(","),
+          w.ledger.length, task.externalResult || "",
+          (task.externalEvidence || []).join("|")
+        ].join("~");
+      }
+      if (this.drawerMode === "external") {
+        const agent = this.external ? this.external.agentById(this.drawerId) : null;
+        if (!agent) return "gone";
+        return [
+          "external", agent.name, agent.status, agent.eventCount || 0,
+          (agent.skills || []).join("|"), agent.roleOverride || "",
+          agent.avatar || "", agent.avatarText || "", agent.avatarColor || "",
+          JSON.stringify(this.external.missionTasksFor(agent.id) || []),
+          JSON.stringify(this.external.assignmentsFor(agent.id) || [])
+        ].join("~");
+      }
+      const agent = this.engine.agentById(this.drawerId);
+      if (!agent) return "gone";
+      const task = this.engine.tasksForAgent
+        ? this.engine.tasksForAgent(agent.id)
+        : w.tasks.filter(function (t) { return t.assignee === agent.id; });
+      return [
+        "agent", agent.name, agent.state, agent.taskId || "", agent.energy,
+        agent.mood, w.ledger.length,
+        task.map(function (t) { return t.id + ":" + t.status + ":" + t.progress; }).join(",")
+      ].join("~");
+    }
+
+    syncDrawerLive() {
+      const sig = this.drawerSignature();
+      if (sig === this.drawerSig) return;
+      const activeTag = document.activeElement && document.activeElement.tagName;
+      if (this.drawer.contains(document.activeElement) &&
+          (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT")) {
+        return;
+      }
+      const scroll = this.drawer.scrollTop;
+      const focusables = Array.from(this.drawer.querySelectorAll(
+        "button, a[href], input, select, textarea"
+      ));
+      const focusIndex = focusables.indexOf(document.activeElement);
+      this.renderDrawer();
+      this.drawer.scrollTop = scroll;
+      if (focusIndex >= 0) {
+        const next = Array.from(this.drawer.querySelectorAll(
+          "button, a[href], input, select, textarea"
+        ))[focusIndex];
+        if (next) next.focus({ preventScroll: true });
+      }
     }
 
     detectBursts() {
@@ -892,6 +1020,12 @@
         el.classList.add("state-" + a.state);
         el.classList.toggle("flip", !!a.flip);
         el.classList.toggle("selected", a.id === this.selectedId);
+        const charTask = a.taskId ? this.engine.taskById(a.taskId) : null;
+        const charLabel = a.name + " · " +
+          (AO.STATE_LABELS[a.state] || a.state) +
+          (charTask ? " · " + charTask.title + " " + Math.round(charTask.progress || 0) + "%" : "");
+        if (el.title !== charLabel) el.title = charLabel;
+        if (el.getAttribute("aria-label") !== charLabel) el.setAttribute("aria-label", charLabel);
 
         const badge = el.querySelector(".agent-badge");
         if (badge) {
@@ -908,36 +1042,62 @@
             bubble.classList.remove("show");
           }
         }
+
+        const task = a.taskId ? this.engine.taskById(a.taskId) : null;
+        const live = this.missionActivity && this.missionActivity.localAgentId === a.id;
+        const progress = el.querySelector(".agent-progress");
+        if (progress) {
+          const show = !this.demoOff() && !live && !!task &&
+            (a.state === "working" || a.state === "reviewing");
+          progress.classList.toggle("show", show);
+          const bar = progress.querySelector("i");
+          if (bar) {
+            const pct = a.state === "reviewing" ? 100 :
+              Math.max(0, Math.min(100, Number(task && task.progress) || 0));
+            bar.style.width = show ? pct + "%" : "0%";
+          }
+          progress.title = show && task ? task.title + " · " +
+            (a.state === "reviewing" ? "评审中" : Math.round(task.progress) + "%") : "";
+        }
       });
     }
 
     renderRoster() {
       const w = this.world;
+      const real = this.demoOff();
       let html = "";
-      w.agents.forEach((a) => {
-        const role = AO.ROLES[a.role];
-        const task = a.taskId ? this.engine.taskById(a.taskId) : null;
-        const live = this.missionActivity && this.missionActivity.localAgentId === a.id;
-        const stateLabel = live ? AO.t("missionLiveRunning") : (AO.STATE_LABELS[a.state] || a.state);
-        const detail = live ? (this.missionActivity.taskTitle || AO.t("missionLiveRunning")) :
-          (task ? task.title : (a.intent || a.activity || ""));
-        html +=
-          '<button class="team-card state-' + a.state +
-          (live ? " mission-active" : "") +
-          (a.id === this.selectedId ? " selected" : "") +
-          '" data-agent="' + a.id + '" style="--role:' + role.color + '" title="' +
-          esc(live ? (this.missionActivity.missionTitle + " · " + detail) : a.trait) + '">' +
-          '<span class="team-avatar">' + AO.spriteSVG(a, 26) + "</span>" +
-          '<span class="team-main">' +
-          '<span class="team-line"><b>' + esc(a.name) + "</b>" +
-          '<em class="role-pill">' + role.short + "</em></span>" +
-          '<span class="team-state"><i class="state-dot ' + a.state + '"></i>' +
-          stateLabel + " · " + detail + "</span>" +
-          '<span class="energy"><i style="width:' + Math.round(a.energy) + '%"></i></span>' +
-          "</span>" +
-          '<span class="team-mood" title="士气">' + Math.round(a.mood) + "</span>" +
-          "</button>";
-      });
+      if (!real) {
+        w.agents.forEach((a) => {
+          const role = AO.ROLES[a.role];
+          const task = a.taskId ? this.engine.taskById(a.taskId) : null;
+          const live = this.missionActivity && this.missionActivity.localAgentId === a.id;
+          const stateLabel = live ? AO.t("missionLiveRunning") : (AO.STATE_LABELS[a.state] || a.state);
+          const pct = task ? Math.round(task.progress || 0) : null;
+          const detail = live ? (this.missionActivity.taskTitle || AO.t("missionLiveRunning")) :
+            (task ? task.title :
+              (a.intent || a.activity || ""));
+          html +=
+            '<button class="team-card state-' + a.state +
+            (live ? " mission-active" : "") +
+            (a.id === this.selectedId ? " selected" : "") +
+            '" data-agent="' + a.id + '" style="--role:' + role.color + '" title="' +
+            esc(live ? (this.missionActivity.missionTitle + " · " + detail) : a.trait) + '">' +
+            '<span class="team-avatar">' + AO.spriteSVG(a, 26) + "</span>" +
+            '<span class="team-main">' +
+            '<span class="team-line"><b>' + esc(a.name) + "</b>" +
+            '<em class="role-pill">' + role.short + "</em></span>" +
+            '<span class="team-state"><i class="state-dot ' + a.state + '"></i>' +
+            stateLabel + " · " + detail + "</span>" +
+            '<span class="energy"><i style="width:' + Math.round(a.energy) + '%"></i></span>' +
+            "</span>" +
+            (pct != null ?
+              '<span class="team-mood task-pct" title="任务进度 ' + pct + '% · 士气 ' +
+              Math.round(a.mood) + '">' + pct + "%</span>" :
+              '<span class="team-mood" title="士气 ' + Math.round(a.mood) + '">' +
+              Math.round(a.mood) + "</span>") +
+            "</button>";
+        });
+      }
       const ext = this.external ? this.external.agents : [];
       if (ext.length) {
         html += '<div class="team-external-title"><span>EXTERNAL AGENTS</span><b>' +
@@ -982,27 +1142,152 @@
             '<span class="team-mood">⌁</span></button>';
         });
       }
-      this.teamList.innerHTML = html;
+      if (real && !ext.length && !waitingPairs.length) {
+        html += '<div class="team-real-empty"><b>' + esc(AO.t("realModeTeamTitle")) +
+          '</b><p>' + esc(AO.t("realModeTeamEmpty")) + '</p>' +
+          '<button type="button" data-real-open-external>' +
+          esc(AO.t("realModeAddAgent")) + '</button></div>';
+      }
+      if (html !== this.lastRosterHTML) {
+        const buttons = Array.from(this.teamList.querySelectorAll("button"));
+        const focusIndex = buttons.indexOf(document.activeElement);
+        const scroll = this.teamList.scrollTop;
+        this.teamList.innerHTML = html;
+        this.lastRosterHTML = html;
+        this.teamList.scrollTop = scroll;
+        if (focusIndex >= 0) {
+          const next = this.teamList.querySelectorAll("button")[focusIndex];
+          if (next) next.focus({ preventScroll: true });
+        }
+      }
 
-      const morale =
-        w.agents.reduce((sum, a) => sum + a.mood, 0) / Math.max(1, w.agents.length);
-      document.getElementById("teamMorale").textContent = Math.round(morale) + " / 100";
-      document.getElementById("moraleBar").style.width = morale + "%";
+      let morale;
+      if (real) {
+        const ext = (this.external && this.external.agents) || [];
+        const online = ext.filter(function (agent) { return agent.status === "online"; }).length;
+        const live = this.missionLive || AO.missionLive;
+        const overview = live && live.lastOverview;
+        const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+        const progress = missions.length ?
+          missions.reduce(function (sum, mission) {
+            return sum + Number((mission.stats || {}).progress || 0);
+          }, 0) / missions.length : 0;
+        const active = missions.filter(function (mission) {
+          return Number((mission.stats || {}).progress || 0) < 100;
+        }).length;
+        const onlineRatio = ext.length ? online / ext.length : 0;
+        morale = Math.min(100, 40 + onlineRatio * 25 + progress * 0.35 + (active ? 10 : 0));
+      } else {
+        morale = w.agents.reduce((sum, a) => sum + a.mood, 0) / Math.max(1, w.agents.length);
+      }
+      const moraleEl = document.getElementById("teamMorale");
+      if (moraleEl) {
+        moraleEl.textContent = Math.round(morale) + " / 100";
+        moraleEl.title = real ? AO.t("realMoraleHint") : "";
+      }
+      const moraleBar = document.getElementById("moraleBar");
+      if (moraleBar) {
+        moraleBar.style.width = morale + "%";
+        moraleBar.title = real ? AO.t("realMoraleHint") : "";
+      }
       const teamSub = document.getElementById("teamSub");
       if (teamSub) {
         const hot = AO.DESKS.filter((d) => d.hot &&
           !w.agents.some((a) => a.deskId === d.id)).length;
         const extCount = this.external ? this.external.agents.length : 0;
         const waiting = this.external ? this.external.pendingPairs().length : 0;
-        teamSub.textContent = w.agents.length + " " + AO.t("local") +
-          (extCount ? " · " + extCount + " " + AO.t("external") : "") +
-          (waiting ? " · " + waiting + " " + AO.t("waiting") : "") +
-          " · " + (hot ? hot + " " + AO.t("hotDesk") : AO.t("hotDeskFull"));
+        if (real) {
+          teamSub.textContent = AO.t("realModeTeamSub", {
+            count: extCount,
+            online: this.external ? this.external.agents.filter((a) => a.status === "online").length : 0
+          });
+        } else {
+          teamSub.textContent = w.agents.length + " " + AO.t("local") +
+            (extCount ? " · " + extCount + " " + AO.t("external") : "") +
+            (waiting ? " · " + waiting + " " + AO.t("waiting") : "") +
+            " · " + (hot ? hot + " " + AO.t("hotDesk") : AO.t("hotDeskFull"));
+        }
       }
+      const teamHint = document.querySelector(".team-panel .hint");
+      if (teamHint) {
+        const hintText = AO.t(real ? "realModeTeamHint" : "teamHint");
+        if (teamHint.textContent !== hintText) teamHint.textContent = hintText;
+      }
+      if (AO.DemoMode && AO.DemoMode.refreshCover) AO.DemoMode.refreshCover();
+    }
+
+    renderRealBoard() {
+      if (!this.board) return;
+      this.boardView = "board";
+      this.board.hidden = false;
+      if (this.auditView) this.auditView.hidden = true;
+      if (this.boardTabs) {
+        this.boardTabs.querySelectorAll("[data-view]").forEach((button) => {
+          const on = button.getAttribute("data-view") === "board";
+          button.classList.toggle("active", on);
+          button.setAttribute("aria-selected", on ? "true" : "false");
+        });
+      }
+      const live = this.missionLive || AO.missionLive;
+      const overview = (live && live.lastOverview) || null;
+      const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+      const rows = missions.map((mission) => {
+        const auto = mission.autoRun || {};
+        const stats = mission.stats || {};
+        const status = auto.status || "off";
+        const done = Number(auto.completed || stats.done || 0);
+        const total = Number(auto.total || stats.tasks || 0);
+        const progress = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        const autoLabel = this.autorunShort(status);
+        const detail = [autoLabel, done + "/" + total];
+        if (stats.approvals) detail.push(stats.approvals + " " + AO.t("missionApprovals"));
+        if (auto.currentTaskTitle) detail.push(auto.currentTaskTitle);
+        return '<button type="button" class="real-mission-row" data-real-mission="' +
+          esc(mission.id) + '"><i class="real-mission-dot ' + esc(status) + '"></i>' +
+          '<span class="real-mission-copy"><b>' + esc(mission.title || mission.id) +
+          '</b><span>' + esc(detail.join(" · ")) + '</span></span>' +
+          '<em>' + progress + '%</em></button>';
+      }).join("");
+      const loading = !overview;
+      const empty = !loading && !missions.length ?
+        '<div class="real-board-empty"><b>' + esc(AO.t("realModeBoardEmpty")) + '</b>' +
+        '<p>' + esc(AO.t("realModeBoardEmptyHint")) + '</p>' +
+        '<button type="button" data-real-create-mission>' +
+        esc(AO.t("realModeCreateMission")) + '</button></div>' : "";
+      const loadingHtml = loading ?
+        '<div class="real-board-empty"><b>正在读取真实任务…</b><p>等待本地 bridge 返回 Missions 数据。</p></div>' : "";
+      this.board.innerHTML = '<div class="real-board"><div class="real-board-head">' +
+        '<span>REAL OPERATIONS</span><b>' + esc(AO.t("realModeBoardTitle")) + '</b><em>' +
+        missions.length + '</em></div>' + (rows || loadingHtml || empty) + '</div>';
+    }
+
+    autorunShort(status) {
+      const map = {
+        running: "missionLiveRunning",
+        discussing: "missionLiveDiscussing",
+        waiting_boss: "missionLiveWaiting",
+        queued: "missionLiveQueued",
+        scheduled: "missionAutoRunScheduled",
+        done: "missionLiveDone",
+        stopped: "missionAutoRunStopped",
+        error: "missionAutoRunError"
+      };
+      return map[status] ? AO.t(map[status]) : AO.t("missionAutoRunOff");
     }
 
     renderBoard() {
+      if (this.demoOff()) {
+        this.renderRealBoard();
+        return;
+      }
       const w = this.world;
+      const signature = w.tasks.map(function (task) {
+        return [task.id, task.status, Math.round(Number(task.progress || 0) / 5) * 5,
+          task.assignee, task.reviewerId, task.priority,
+          task.checks.map(function (check) { return check.status; }).join("")].join(":");
+      }).join("|");
+      if (signature === this.lastBoardSig && this.board.childElementCount) return;
+      this.lastBoardSig = signature;
       const scroll = this.board.scrollTop;
       const groups = [
         {
@@ -1034,7 +1319,7 @@
           '<div class="board-head"><span>' + group.label + "</span><b>" +
           group.tasks.length + "</b></div>";
         if (!group.tasks.length) {
-          html += '<div class="board-empty">—</div>';
+          html += '<div class="board-empty">' + esc(AO.t("boardEmpty")) + '</div>';
         } else {
           group.tasks
             .slice()
@@ -1060,7 +1345,9 @@
                 role.color + '"></i><span class="task-title">' + esc(t.title) + "</span>" +
                 (t.external ? '<em class="external-chip">EXT</em>' : "") +
                 (blocked ? '<em class="blocked-chip">阻塞</em>' : "") + "</div>" +
-                '<div class="task-meta"><span>' + esc(meta) + "</span><span>" +
+                '<div class="task-meta"><span>' +
+                (assignee ? '<i class="task-owner">' + AO.spriteSVG(assignee, 13) + "</i>" : "") +
+                esc(meta) + "</span><span>" +
                 Math.round(t.progress) + "%</span></div>" +
                 '<div class="task-bar"><i style="width:' + Math.round(t.progress) +
                 '%;background:' + role.color + '"></i></div>' +
@@ -1076,8 +1363,14 @@
         }
         html += "</div>";
       });
+      const boardCards = Array.from(this.board.querySelectorAll("[data-task]"));
+      const boardFocus = boardCards.indexOf(document.activeElement);
       this.board.innerHTML = html;
       this.board.scrollTop = scroll;
+      if (boardFocus >= 0) {
+        const next = this.board.querySelectorAll("[data-task]")[boardFocus];
+        if (next) next.focus({ preventScroll: true });
+      }
     }
 
     renderAudit(force) {
@@ -1519,6 +1812,7 @@
       const task = this.engine.taskById(taskId);
       if (!task) return;
       if (this.drawer.hidden) this.lastFocus = document.activeElement;
+      else if (this.drawerMode) this.drawerHistory.push({ mode: this.drawerMode, id: this.drawerId });
       this.drawerMode = "task";
       this.drawerId = taskId;
       this.drawer.hidden = false;
@@ -1527,6 +1821,11 @@
       this.drawer.setAttribute("aria-hidden", "false");
       this.drawer.setAttribute("aria-modal", "true");
       document.body.classList.add("drawer-open");
+      if (task.assignee && this.engine.agentById(task.assignee)) {
+        this.selectedId = task.assignee;
+        this.renderInspector();
+        this.updateCharacters();
+      }
       this.renderDrawer();
       this.drawer.scrollTop = 0;
       const close = this.drawer.querySelector("[data-drawer-close]");
@@ -1537,6 +1836,7 @@
       const agent = this.engine.agentById(agentId);
       if (!agent) return;
       if (this.drawer.hidden) this.lastFocus = document.activeElement;
+      else if (this.drawerMode) this.drawerHistory.push({ mode: this.drawerMode, id: this.drawerId });
       this.drawerMode = "agent";
       this.drawerId = agentId;
       this.drawer.hidden = false;
@@ -1555,6 +1855,7 @@
       const agent = this.external ? this.external.agentById(agentId) : null;
       if (!agent) return;
       if (this.drawer.hidden) this.lastFocus = document.activeElement;
+      else if (this.drawerMode) this.drawerHistory.push({ mode: this.drawerMode, id: this.drawerId });
       this.drawerMode = "external";
       this.drawerId = agentId;
       this.drawer.hidden = false;
@@ -1567,6 +1868,19 @@
       this.drawer.scrollTop = 0;
       const close = this.drawer.querySelector("[data-drawer-close]");
       if (close) close.focus({ preventScroll: true });
+      if (this.external) this.external.loadMissionTasks(agentId);
+    }
+
+    async openMissionTask(missionId, taskId, agentId) {
+      if (!this.missions || !missionId) return;
+      this.closeDrawer();
+      try {
+        await this.missions.open();
+        await this.missions.selectMission(missionId);
+        this.missions.taskAgentFilter = agentId || "";
+        this.missions.detailTab = "tasks";
+        this.missions.render();
+      } catch (err) {}
     }
 
     closeDrawer() {
@@ -1574,6 +1888,7 @@
       const wasOpen = !this.drawer.hidden;
       this.drawerMode = null;
       this.drawerId = null;
+      this.drawerHistory = [];
       this.drawer.classList.remove("open");
       this.drawer.hidden = true;
       this.drawer.setAttribute("aria-hidden", "true");
@@ -1656,6 +1971,23 @@
         }
         this.drawer.innerHTML = this.agentDrawerHTML(agent);
       }
+      if (this.drawerHistory.length) {
+        const head = this.drawer.querySelector(".drawer-head");
+        if (head) {
+          head.insertAdjacentHTML("afterbegin",
+            '<button type="button" class="drawer-back" data-drawer-back aria-label="返回">‹</button>');
+        }
+      }
+      this.drawerSig = this.drawerSignature();
+    }
+
+    drawerBack() {
+      const previous = this.drawerHistory.pop();
+      if (!previous) return;
+      this.drawerMode = null;
+      if (previous.mode === "task") this.openTaskDrawer(previous.id);
+      else if (previous.mode === "agent") this.openAgentDrawer(previous.id);
+      else if (previous.mode === "external") this.openExternalDrawer(previous.id);
     }
 
     traceEventHTML(e, task) {
@@ -1711,6 +2043,7 @@
         return !a.managed && (a.status === "online" || a.provider || a.runtime);
       }) : [];
       const role = AO.ROLES[task.role] || { color: "#55d6c2", label: task.role };
+      const pct = AO.taskProgressPercent(task);
       const done = task.checks.filter((c) => c.status === "done").length;
       const risk = task.checks.filter((c) => c.status === "risk").length;
       const missed = task.checks.filter((c) => c.status === "missed").length;
@@ -1793,8 +2126,11 @@
       } else if (task.status === "review") {
         callout = '<div class="drawer-callout">评审中，' + pending +
           " 项基础工作等待验证。</div>";
-      } else if (task.status === "in_progress" || task.status === "blocked") {
-        callout = '<div class="drawer-callout">工作中，已覆盖 ' + done + "/" +
+      } else if (task.status === "blocked") {
+        callout = '<div class="drawer-callout warn">已阻塞：' +
+          esc(task.blockedReason || "等待依赖或人工处理") + "。当前进度 " + pct + "%。</div>";
+      } else if (task.status === "in_progress") {
+        callout = '<div class="drawer-callout">工作中，当前进度 ' + pct + "%，已覆盖 " + done + "/" +
           task.checks.length + " 项基础工作。</div>";
       }
 
@@ -1850,6 +2186,10 @@
         '<span class="role-chip" style="--role:' + role.color + '">' + esc(role.label) + "</span>" +
         '<span class="prio-chip">P' + task.priority + "</span>" +
         '<span class="prio-chip">' + done + "/" + task.checks.length + " 基础工作</span></div>" +
+        '<div class="drawer-task-progress"><i><u style="width:' + pct + '%"></u></i>' +
+        "<b>" + pct + "%</b><em>" +
+        (task.status === "blocked" ? "已阻塞" : pct >= 100 ? "已完成" : "当前进度") +
+        "</em></div>" +
         "</div>" +
         '<div class="drawer-body">' +
         '<div class="drawer-meta">' +
@@ -1887,6 +2227,10 @@
     externalDrawerHTML(agent) {
       const events = this.external.eventsFor(agent.id);
       const assignments = this.external.assignmentsFor(agent.id);
+      const missionTasks = this.external.missionTasksFor(agent.id).slice().sort(function (a, b) {
+        const rank = { in_progress: 0, review: 1, assigned: 2, queued: 3, blocked: 4, done: 9 };
+        return (rank[a.status] == null ? 5 : rank[a.status]) - (rank[b.status] == null ? 5 : rank[b.status]);
+      });
       const online = agent.status === "online";
       const meta = this.external.meta || { roles: [], avatars: [] };
       const roleValue = String(agent.roleOverride || "");
@@ -1936,15 +2280,32 @@
           assignment.status === "failed" ? "失败" :
           assignment.status === "cancelled" ? "取消" :
           assignment.status === "in_progress" ? "进行中" : "已派发";
+        const assignmentPct = Math.max(0, Math.min(100, Math.round(assignment.progress || 0)));
         assignmentHtml += '<button type="button" class="agent-event" ' +
           (task ? 'data-open-task="' + task.id + '"' : 'disabled') + ">" +
-          '<span class="ae-time">' + Math.round(assignment.progress || 0) + '%</span>' +
+          '<span class="ae-time">' + assignmentPct + '%</span>' +
           '<span class="ae-copy"><b>' + esc(assignment.taskTitle || assignment.taskId) + "</b><em>" +
-          esc(state + " · " + (assignment.updatedAt || "")) + "</em></span>" +
+          esc(state + " · " + (assignment.updatedAt || "")) + "</em>" +
+          '<span class="assignment-progress"><i><u style="width:' + assignmentPct +
+          '%"></u></i></span></span>' +
           "<span class='ae-kind'>⇢</span></button>";
       });
       if (!assignmentHtml) {
         assignmentHtml = '<div class="drawer-empty">还没有委托任务。打开一个待办任务，选择这个外部 Agent 派发。</div>';
+      }
+      let missionTaskHtml = "";
+      missionTasks.forEach(function (task) {
+        const pct = AO.taskProgressPercent(task);
+        const status = AO.taskStatusLabel(task.status) || task.status;
+        missionTaskHtml += '<button type="button" class="agent-mission-task" data-open-mission-task="' +
+          esc(task.id) + '" data-mission-id="' + esc(task.missionId) +
+          '" data-mission-agent="' + esc(agent.id) + '"><span><b>' +
+          esc(task.missionTitle || task.missionId) + '</b><em>' + esc(task.title) +
+          ' · ' + esc(status) + '</em></span><strong>' + pct + '%</strong>' +
+          '<i><u style="width:' + pct + '%"></u></i></button>';
+      });
+      if (!missionTaskHtml) {
+        missionTaskHtml = '<div class="drawer-empty">' + esc(AO.t("externalNoMissionTasks")) + '</div>';
       }
       return '<div class="drawer-head">' +
         '<button type="button" class="drawer-close" data-drawer-close aria-label="关闭">×</button>' +
@@ -1992,6 +2353,8 @@
           : "") +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>SKILLS</h3></div>' +
         '<div class="drawer-chips">' + (skills || '<span class="drawer-muted">未声明</span>') + "</div></div>" +
+        '<div class="drawer-section"><div class="drawer-section-head"><h3>' + esc(AO.t("externalMissionTasks")) + '</h3>' +
+        "<span>" + missionTasks.length + " 个</span></div>" + missionTaskHtml + "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>委托任务</h3>' +
         "<span>" + assignments.length + " 个</span></div>" + assignmentHtml + "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>最近外部事件</h3>' +
@@ -2001,6 +2364,7 @@
         esc(agent.id) + '/heartbeat</code>。事件会进入 ledger、Trace Lab 和任务轨迹。</p></div>' +
         '<div class="drawer-section"><div class="drawer-actions" style="display:flex;gap:5px">' +
         '<button type="button" class="dep-chip" data-ext-refresh>刷新状态</button>' +
+        '<button type="button" class="dep-chip" data-ext-heartbeat="' + esc(agent.id) + '">测试心跳</button>' +
         '<button type="button" class="dep-chip" data-ext-diagnose>诊断修复</button>' +
         '<button type="button" class="dep-chip" data-ext-remove="' + agent.id + '">移除外部 Agent</button>' +
         "</div></div></div>";
@@ -2018,6 +2382,8 @@
       const files = Object.keys(agent.filesTouched).map((k) => agent.filesTouched[k])
         .sort((a, b) => b.count - a.count);
       const events = w.ledger.filter((e) => e.agentId === agent.id).slice(-12).reverse();
+      const currentTask = agent.taskId ? this.engine.taskById(agent.taskId) : null;
+      const currentPct = currentTask ? AO.taskProgressPercent(currentTask) : 0;
       const maxUse = Math.max(1, ...Object.values(agent.skillUse), 1);
 
       let skills = "";
@@ -2035,11 +2401,13 @@
       let taskHtml = "";
       tasks.forEach((t) => {
         const checks = t.checks.filter((c) => c.status === "done").length;
+        const pct = AO.taskProgressPercent(t);
         taskHtml += '<button type="button" class="agent-task" data-open-task="' + t.id + '">' +
           '<span class="agent-task-dot ' + t.status + '"></span><span><b>' +
           esc(t.title) + "</b><em>" + (AO.taskStatusLabel(t.status) || t.status) +
           " · " + checks + "/" + t.checks.length + " 基础工作</em></span>" +
-          '<span class="agent-task-pct">' + Math.round(t.progress) + "%</span></button>";
+          '<span class="agent-task-pct">' + pct + "%</span>" +
+          '<i class="agent-task-bar"><u style="width:' + pct + '%"></u></i></button>';
       });
       if (!taskHtml) taskHtml = '<div class="drawer-empty">还没有负责任务。</div>';
 
@@ -2090,9 +2458,12 @@
         "<div><b>" + reworks + "</b><span>返工</span></div>" +
         "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>当前焦点</h3></div>' +
-        (agent.taskId && this.engine.taskById(agent.taskId)
-          ? '<button type="button" class="agent-focus" data-open-task="' + agent.taskId + '">' +
-            esc((this.engine.taskById(agent.taskId) || {}).title || "") + " →</button>"
+        (currentTask
+          ? '<button type="button" class="agent-focus" data-open-task="' + currentTask.id + '">' +
+            '<span><b>' + esc(currentTask.title) + '</b><em>' +
+            esc(AO.taskStatusLabel(currentTask.status) || currentTask.status) + " · " +
+            currentPct + '%</em></span><strong>' + currentPct + '%</strong></button>' +
+            '<div class="agent-focus-bar"><i><u style="width:' + currentPct + '%"></u></i></div>'
           : '<div class="drawer-muted">' + esc(agent.activity || "空闲") + "</div>") +
         "</div>" +
         '<div class="drawer-section"><div class="drawer-section-head"><h3>技能矩阵</h3>' +
@@ -2144,15 +2515,78 @@
         occupancy.classList.toggle("in", inside);
         occupancy.title = inside ? "老板在办公室" : "老板外出";
       }
-      document.getElementById("officeName").textContent = w.officeName;
-      const scenarioLabel = w.scenarioId === "incident"
-        ? AO.t("scenarioIncident")
-        : AO.t("scenarioLaunch");
-      document.getElementById("officeSub").textContent =
-        "DAY " + w.day + " · " + scenarioLabel;
+      const real = this.demoOff();
+      const officeName = document.getElementById("officeName");
+      const officeSub = document.getElementById("officeSub");
+      const boardTitle = document.getElementById("boardTitle");
+      const boardSub = document.getElementById("boardSub");
+      const feedTitle = document.getElementById("feedTitle");
+      const feedSub = document.getElementById("feedSub");
+      if (real) {
+        const extCount = this.external ? this.external.agents.length : 0;
+        const online = this.external ? this.external.agents.filter((a) => a.status === "online").length : 0;
+        const live = this.missionLive || AO.missionLive;
+        const overview = live && live.lastOverview;
+        const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+        const taskTotal = missions.reduce(function (sum, m) {
+          return sum + Number((m.stats || {}).tasks || 0);
+        }, 0);
+        const taskDone = missions.reduce(function (sum, m) {
+          return sum + Number((m.stats || {}).done || 0);
+        }, 0);
+        const active = missions.filter(function (m) {
+          return Number((m.stats || {}).progress || 0) < 100;
+        }).length;
+        const pending = (overview && overview.approvals ? overview.approvals.length : 0) ||
+          missions.reduce(function (sum, m) {
+            return sum + Number((m.stats || {}).approvals || 0);
+          }, 0);
+        const setStat = function (id, value) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = value;
+        };
+        setStat("statLabelTasks", AO.t("realStatDone"));
+        setStat("statLabelMeetings", AO.t("realStatActive"));
+        setStat("statLabelMessages", AO.t("realStatApprovals"));
+        setStat("statLabelActions", AO.t("realStatOnline"));
+        setStat("statTasks", taskDone + "/" + taskTotal);
+        setStat("statMeetings", active + "/" + missions.length);
+        setStat("statMessages", String(pending));
+        setStat("statActions", online + "/" + extCount);
+        if (officeName) officeName.textContent = "REAL OPS";
+        if (officeSub) officeSub.textContent = AO.t("realModeOfficeSub", {
+          total: extCount, online: online
+        });
+        if (boardTitle) boardTitle.textContent = "REAL BOARD";
+        if (boardSub) boardSub.textContent = AO.t("realModeBoardSub");
+        if (feedTitle) feedTitle.textContent = "REAL OPS";
+        if (feedSub) feedSub.textContent = AO.t("realModeFeedSub");
+      } else {
+        const resetStat = function (id, key) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = AO.t(key);
+        };
+        resetStat("statLabelTasks", "tasks");
+        resetStat("statLabelMeetings", "meetings");
+        resetStat("statLabelMessages", "messages");
+        resetStat("statLabelActions", "actions");
+        if (officeName) officeName.textContent = w.officeName;
+        const scenarioLabel = w.scenarioId === "incident"
+          ? AO.t("scenarioIncident")
+          : AO.t("scenarioLaunch");
+        if (officeSub) officeSub.textContent =
+          "DAY " + w.day + " · " + scenarioLabel;
+        if (boardTitle) boardTitle.textContent = "SPRINT BOARD";
+        if (boardSub) boardSub.textContent = AO.t("goal") + ": " + w.goal;
+        if (feedTitle) feedTitle.textContent = "LIVE FEED";
+        if (feedSub) feedSub.textContent = AO.t("feedSub");
+      }
       const neon = document.getElementById("neonSign");
       if (neon) neon.textContent = w.neon;
-      document.getElementById("boardSub").textContent = AO.t("goal") + ": " + w.goal;
+      const traceBtn = document.getElementById("traceBtn");
+      if (traceBtn) traceBtn.hidden = real;
+      const fxBtn = document.getElementById("fxBtn");
+      if (fxBtn) fxBtn.hidden = real;
 
       const ring = document.getElementById("goalRing");
       ring.style.setProperty("--p", String(pct));
@@ -2169,8 +2603,26 @@
       }
 
       const banner = document.getElementById("doneBanner");
+      const gate = this.engine.releaseGate();
+      const gateLabels = {
+        pass: "SHIPPED · GATE PASS",
+        approved: "SHIPPED · EXCEPTIONS",
+        conditional: "SHIPPED · CONDITIONAL",
+        blocked: "DONE · RELEASE BLOCKED",
+        rejected: "DONE · REVIEW REJECTED"
+      };
       banner.classList.toggle("show", w.done);
-      document.getElementById("doneText").textContent = w.finishText;
+      banner.classList.toggle("warn", gate.key !== "pass" && gate.key !== "approved");
+      const gateEl = document.getElementById("doneGate");
+      if (gateEl) gateEl.textContent = gateLabels[gate.key] || "DONE";
+      document.getElementById("doneText").textContent = w.finishText + " · " + gate.label;
+      ["newSprintBtn", "doneAuditBtn"].forEach(function (id) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = !w.done;
+        btn.tabIndex = w.done ? 0 : -1;
+        btn.setAttribute("aria-hidden", w.done ? "false" : "true");
+      });
 
       this.stage.classList.toggle("is-done", w.done);
       if (w.done && !this.wasDone) this.burstConfetti();
@@ -2223,6 +2675,7 @@
       this.inspector.classList.remove("is-empty");
       const role = AO.ROLES[a.role];
       const task = a.taskId ? this.engine.taskById(a.taskId) : null;
+      const taskPct = task ? AO.taskProgressPercent(task) : 0;
       const memories = a.memory.slice(-5).reverse();
       let memHtml = "";
       memories.forEach((m) => {
@@ -2246,8 +2699,15 @@
         '<label>士气 <i><b style="width:' + Math.round(a.mood) +
         '%;background:#f2b544"></b></i></label>' +
         "</div>" +
-        '<div class="inspector-task"><span>当前</span><b>' +
-        (task ? task.title : a.activity || "空闲") + "</b></div>" +
+        (task
+          ? '<button type="button" class="inspector-task is-link" data-open-task="' + task.id +
+            '" title="打开任务轨迹"><span>当前</span><b>' + esc(task.title) + "</b><em>" +
+            esc(AO.taskStatusLabel(task.status) || task.status) + " · " + taskPct +
+            "% ↗</em></button>"
+          : '<div class="inspector-task"><span>当前</span><b>' +
+            esc(a.activity || "空闲") + "</b></div>") +
+        (task ? '<div class="inspector-task-progress"><i><u style="width:' + taskPct +
+          '%"></u></i></div>' : "") +
         '<div class="inspector-memory"><span>最近记忆</span><ul>' + memHtml + "</ul></div>" +
         '<button class="inspector-detail" type="button" data-open-agent="' + a.id +
         '">完整档案 · 技能 / 文件 / 轨迹 →</button>';
@@ -2255,6 +2715,42 @@
 
     renderFeed(force) {
       const w = this.world;
+      if (this.demoOff()) {
+        const live = this.missionLive || AO.missionLive;
+        const overview = live && live.lastOverview;
+        const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+        if (!missions.length) {
+          this.feedList.innerHTML = '<div class="real-feed-empty"><b>REAL OPERATIONS ONLY</b>' +
+            '<p>' + esc(AO.t("realModeFeedText")) + '</p>' +
+            '<button type="button" data-real-open-missions>' +
+            esc(AO.t("realModeOpenMissions")) + '</button></div>';
+        } else {
+          const rows = missions.slice(0, 8).map((mission) => {
+            const auto = mission.autoRun || {};
+            const stats = mission.stats || {};
+            const status = auto.status || "off";
+            const progress = Number(stats.progress || 0);
+            const detail = [this.autorunShort(status), progress + "%"];
+            if (stats.approvals) detail.push(stats.approvals + " " + AO.t("missionApprovals"));
+            if (auto.currentTaskTitle) detail.push(auto.currentTaskTitle);
+            return '<button type="button" class="real-feed-row status-' + esc(status) +
+              '" data-real-mission="' + esc(mission.id) + '"><i class="real-mission-dot ' +
+              esc(status) + '"></i><span><b>' + esc(mission.title || mission.id) + '</b><em>' +
+              esc(detail.join(" · ")) + '</em></span><strong>' +
+              esc(progress + "%") + '</strong></button>';
+          }).join("");
+          this.feedList.innerHTML = '<div class="real-feed-list"><div class="real-feed-head"><span>' +
+            esc(AO.t("realModeFeedActive")) + '</span><b>' + missions.length + '</b></div>' +
+            rows + '<button type="button" class="real-feed-open" data-real-open-missions>' +
+            esc(AO.t("realModeOpenMissions")) + '</button></div>';
+        }
+        this.lastMessageId = 0;
+        return;
+      }
+      if (this.feedList.querySelector(".real-feed-empty, .real-feed-list")) {
+        this.feedList.innerHTML = "";
+        this.lastMessageId = 0;
+      }
       if (this.feedFilter === "ledger") {
         this.renderLedgerFeed(!!force);
         return;
@@ -2287,6 +2783,13 @@
         fragment.appendChild(row);
       });
       this.feedList.appendChild(fragment);
+      if (!this.feedList.childElementCount) {
+        const empty = document.createElement("div");
+        empty.className = "feed-empty";
+        empty.textContent = AO.t(this.feedFilter === "chat" ? "feedEmptyChat" :
+          this.feedFilter === "meeting" ? "feedEmptyMeeting" : "feedEmpty");
+        this.feedList.appendChild(empty);
+      }
       this.feedList.scrollTop = this.feedList.scrollHeight;
     }
 

@@ -31,7 +31,7 @@
         document.body.setAttribute("data-result", failed ? "fail" : "pass");
       }
       const f = document.getElementById("f");
-      f.src = "index.html?intro=0&ticks=" + encodeURIComponent(ticks) +
+      f.src = "index.html?noStream=1&intro=0&ticks=" + encodeURIComponent(ticks) +
         "&scenario=" + encodeURIComponent(scenario);
       f.addEventListener("load", function () {
         window.setTimeout(function () {

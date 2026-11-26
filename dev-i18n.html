@@ -14,7 +14,7 @@
   function load(src){return new Promise(resolve=>{f.addEventListener('load',()=>setTimeout(resolve,2400),{once:true});f.src=src;});}
   (async function run(){
     try{
-      await load('index.html?intro=0&ticks=10&lang=zh&theme=day');
+      await load('index.html?noStream=1&intro=0&ticks=10&lang=zh&theme=day');
       let d=f.contentDocument,w=f.contentWindow;
       check('app exposed',!!w.AgentOfficeApp);
       check('initial lang zh',d.documentElement.lang==='zh-CN',d.documentElement.lang);
@@ -36,7 +36,7 @@
       check('company roles English',/CHIEF OF STAFF/.test(d.getElementById('companyShell').textContent));
       d.querySelector('[data-company-close]').click();
       await wait(100);
-      await load('index.html?intro=0&ticks=0&theme=day');
+      await load('index.html?noStream=1&intro=0&ticks=0&theme=day');
       d=f.contentDocument;w=f.contentWindow;
       check('language survives reload',d.documentElement.lang==='en',d.documentElement.lang);
       d.getElementById('langBtn').click();await wait(300);

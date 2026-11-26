@@ -103,6 +103,7 @@
       this.agents = [];
       this.meta = FALLBACK_META;
       this.assignments = [];
+      this.missionTasks = {};
       this.providers = [];
       this.providerBusy = {};
       this.providerConfigError = "";
@@ -530,6 +531,24 @@
       }).slice(0, 8);
     }
 
+    missionTasksFor(id) {
+      return (this.missionTasks && this.missionTasks[id]) || [];
+    }
+
+    async loadMissionTasks(id) {
+      if (!this.bridgeOnline || !id) return;
+      try {
+        const data = await this.request("/mission-tasks?agentId=" + encodeURIComponent(id), {}, 8000);
+        this.missionTasks[id] = data.tasks || [];
+        if (this.renderer && this.renderer.drawerMode === "external" &&
+            this.renderer.drawerId === id) {
+          const top = this.renderer.drawer.scrollTop;
+          this.renderer.renderDrawer();
+          this.renderer.drawer.scrollTop = top;
+        }
+      } catch (err) {}
+    }
+
     assignmentForTask(taskId) {
       return (this.assignments || []).find(function (assignment) {
         return assignment.taskId === taskId &&
@@ -707,7 +726,29 @@
       }
     }
 
-    async remove(id) {
+    async testHeartbeat(id, button) {
+      if (!id || this.heartbeatBusy) return;
+      this.heartbeatBusy = id;
+      if (button) { button.disabled = true; button.textContent = "测试中…"; }
+      try {
+        await this.request("/agents/" + encodeURIComponent(id) + "/heartbeat", {
+          method: "POST",
+          body: JSON.stringify({ note: "Agent Office UI heartbeat" })
+        }, 8000);
+        this.renderer.toast("心跳成功 · " + id);
+        await this.refresh();
+        if (this.renderer.drawerMode === "external" && this.renderer.drawerId === id) {
+          this.renderer.renderDrawer();
+        }
+      } catch (err) {
+        this.renderer.toast("心跳失败 · " + String(err.message || err));
+        if (button) { button.disabled = false; button.textContent = "测试心跳"; }
+      } finally {
+        this.heartbeatBusy = null;
+      }
+    }
+
+    async remove(id, quiet) {
       const agent = this.agentById(id);
       this.profiles = this.profiles.filter(function (p) { return p.id !== id; });
       writeJson(EXT_KEY, this.profiles);
@@ -716,7 +757,9 @@
           await this.request("/agents/" + encodeURIComponent(id), { method: "DELETE" });
         } catch (err) {}
       }
-      this.renderer.toast((agent ? agent.name : "外部 agent") + " 已移除 · 历史事件保留");
+      if (!quiet) {
+        this.renderer.toast((agent ? agent.name : "外部 agent") + " 已移除 · 历史事件保留");
+      }
       this.refresh();
     }
 
