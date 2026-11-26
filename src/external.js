@@ -502,7 +502,7 @@
     notifyRoster() {
       const sig = this.agents.map(function (a) {
         return a.id + ":" + a.name + ":" + (a.roleOverride || a.role || "") + ":" +
-          (a.avatar || "auto") + ":" + (a.logoText || "") + ":" +
+          (a.avatar || "auto") + ":" + (a.logoText || "") + ":" + (a.logoUrl || "") + ":" +
           a.status + ":" + (a.eventCount || 0);
       }).join("|") + "|" + this.bridgeOnline + "|" + this.demo + "|" +
         this.pendingPairs().map(function (p) { return p.code + ":" + p.status; }).join(",");
@@ -984,11 +984,10 @@
         const detail = [role || a.role, a.brand, a.runtime || "external", a.model,
           (a.eventCount || 0) + " events", a.demo ? "DEMO" : "",
           a.managed ? "API" : ""].filter(Boolean).join(" · ");
-        const mark = a.logoText || "⇢";
         return '<div class="ext-item"><span class="ext-logo' +
-          (a.logoSource === "preset" ? " emoji" : "") + '" style="--c:' +
+          (a.logoSource === "preset" ? " emoji" : "") + AO.logoClass(a) + '" style="--c:' +
           esc(a.logoColor || "#b58cff") + '" title="' + esc(a.brand || "External agent") + '">' +
-          esc(mark) + '</span><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
+          AO.logoMarkHTML(a) + '</span><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
           '<div class="ext-item-copy"><b>' + esc(a.name) + '</b><em>' + esc(detail) + "</em></div>" +
           '<div class="ext-item-actions"><button type="button" data-ext-open="' + esc(a.id) +
           '" title="职务与头像">⚙</button><button type="button" data-ext-rename="' + esc(a.id) +

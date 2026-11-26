@@ -65,6 +65,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat popup** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **Real brand logos** | **Live mission in the office** |
+| ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
 | **AI setup in 3 steps** | **Test & enable** |
 | ![AI connect](docs/screenshots/ai-connect.jpg) | ![AI test](docs/screenshots/ai-connect-test.jpg) |
 | **AI settings in Tools** | **MCP deployment** |
@@ -338,7 +340,7 @@ Open **TASKS** in the top bar or use `?missions=1`.
 - **New task** — description, acceptance, priority, deadline, budget and document/image attachments.
 - **Real external-agent recommendations first** — if any external agents are connected, the recommendation pool contains only those real agents; built-in AI roles are used only when no external agent exists. The normal system division remains available and manually selectable, and each task can have its own executor.
 - **Editable appointment** — in an external agent's drawer, choose system auto-assignment or chief/product/design/engineer/QA/growth/content/video/operator. The choice is persisted and used by recommendation and assignment; leaving it on auto keeps the skill-based inference.
-- **Brand, built-in and custom avatars** — Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI are detected from the agent name/runtime; unknown agents get generated initials. Pick a built-in avatar (bot, fox, owl, cat, rocket, star, ghost, alien, spark, builder, lead) or set custom initials and a color.
+- **Real brand logos, built-in and custom avatars** — Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI show bundled offline SVG logos; unknown agents fall back to initials. Pick a built-in avatar (bot, fox, owl, cat, rocket, star, ghost, alien, spark, builder, lead) or set custom initials and a color.
 - **Recommendation + per-task executors** — cards show role, skills, match score and estimated time/tokens. Recommendations rank by skills, appointed role, online state and current load, return a top-3 per task, and default every task to a concrete external executor when available.
 - **Auto plan** — dependency-aware tasks and a recorded reason for every assignment; each member gets a primary or useful standby task, so nobody idles.
 - **Task group / group chat / DM** — each mission opens its own group; ad-hoc groups and one-to-one DMs are available too.
@@ -377,7 +379,7 @@ Open **Tools → AI model service → Connect AI in 3 steps**, or use **AI setti
 
 The bridge now recognises `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` and similar environment variables, so credentials no longer appear missing just because they use a gateway-style variable name. Keys are written only to `~/.agent-office/providers.json` (mode `0600`) and never enter browser storage, task records, logs or the repo.
 
-When creating a mission, enable **Run automatically after creation (discuss → assign → execute → report)**. Every mission also has a persistent command bar showing Discuss, Approvals, Execute and Report, plus whether you need to act. A mission with a finished discussion but no execution gets **Start N tasks**; a mission with no plan gets **Discuss & run** in one click. Only spend, decision, login and authorization gates pause the run; approving resumes it. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
+While a mission runs, the home office shows a **MISSION LIVE** HUD, the executing agent logo, task, progress, a hot-desk work card and an active state on the matching team card. The mission page also has the persistent four-stage command bar. When you open the mission, every mission also has a persistent command bar showing Discuss, Approvals, Execute and Report, plus whether you need to act. A mission with a finished discussion but no execution gets **Start N tasks**; a mission with no plan gets **Discuss & run** in one click. Only spend, decision, login and authorization gates pause the run; approving resumes it. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
 
 ## MCP deployment
 

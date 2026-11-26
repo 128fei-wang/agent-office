@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><title>Mission live self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style></head>
+<body><h1>MISSION LIVE SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  const f=document.getElementById('f');f.src='index.html?intro=0&ticks=0&noStream=1&theme=night&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),3500));
+  async function run(){
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app);
+    if(!app){finish();return;}
+    const live=w.AgentOffice.missionLive;
+    check('mission live constructed',!!live);
+    if(!live){finish();return;}
+    live.stop();
+    await wait(200);
+
+    const ext=app.renderer.external.agents||[];
+    const codex=ext.find(a=>/codex/i.test(a.name))||ext[0];
+    check('external logo mapped',!!codex&&!!codex.logoUrl,/codex|openai|claude|workbuddy/.test(codex&&codex.logoUrl||''));
+    check('logo path is Pages-safe',!!codex&&!!codex.logoUrl&&codex.logoUrl.charAt(0)!=='/',codex&&codex.logoUrl);
+    check('external logo image rendered',!!$('.external-card img[src*="logos/"]')&&$$('.external-card img').some(i=>i.naturalWidth>0));
+    check('workbuddy logo mapped',ext.some(a=>/workbuddy/i.test(a.name)&&/workbuddy/.test(a.logoUrl||'')));
+    check('workbuddy logo image',$$('.external-card img').some(i=>/workbuddy/.test(i.getAttribute('src')||'')&&i.naturalWidth>0));
+
+    live.applyOverview({missions:[{
+      id:'msn-live-test',title:'发布新版落地页',status:'active',members:codex?[codex]:[],
+      stats:{tasks:7,done:2,approvals:0},
+      autoRun:{status:'running',currentTaskId:'t1',currentTaskTitle:'实现与技术方案',
+        currentAgentId:codex&&codex.id,currentAgentName:codex&&codex.name,currentRole:'engineer',
+        completed:2,total:7}
+    }]});
+    await wait(150);
+    const hud=$('.mission-live-hud');
+    check('hud opens on homepage',!!hud&&!hud.hidden&&/MISSION LIVE/.test(hud.textContent));
+    check('hud shows task',/实现与技术方案/.test((hud||{}).textContent||''));
+    check('hud shows progress',/2\/7/.test((hud||{}).textContent||''));
+    check('office external chip',!!$('.mission-desk-chip')&&$('.mission-desk-chip').textContent.trim().length>0);
+    check('team card marks working',!!$('.external-card.mission-active')&&/实现与技术方案/.test($('.external-card.mission-active').textContent));
+
+    live.applyOverview({missions:[{
+      id:'msn-live-local',title:'本地角色任务',status:'active',
+      members:[{id:'msn-engineer',name:'Engineer',titleZh:'工程师',role:'engineer',source:'role'}],
+      stats:{tasks:7,done:1,approvals:0},
+      autoRun:{status:'running',currentTaskId:'t2',currentTaskTitle:'工程实现与自测',
+        currentAgentId:'msn-engineer',currentAgentName:'工程师',currentRole:'engineer',
+        completed:1,total:7}
+    }]});
+    await wait(150);
+    check('local agent bubble',!!$('.agent.mission-busy')&&!!$('.agent.mission-busy .mission-task-bubble'));
+
+    live.applyOverview({missions:[]});
+    await wait(100);
+    check('hud clears',!!$('.mission-live-hud')&&$('.mission-live-hud').hidden);
+    check('chip clears',!$('.mission-desk-chip'));
+    check('team activity clears',!$('.team-card.mission-active'));
+    finish();
+  }
+})();
+</script></body></html>

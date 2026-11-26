@@ -89,6 +89,43 @@ Plan ready: 7 tasks waiting. First up: requirements review.
 The bar is intentionally the single run control. The overview auto-run card is
 informational, so users do not have to hunt through tabs to find the next step.
 
+## Homepage office activity
+
+Mission Control is not a separate window from the office. While an auto-run is
+active, the home page shows:
+
+- a **MISSION LIVE** HUD with mission, current task, agent, progress and whether
+  the founder needs to act;
+- the executing external agent's brand logo as a floating card at a hot desk;
+- an animated task bubble and aura on the matching local role character;
+- a highlighted team card with `任务执行中 · <task>` and the task progress.
+
+The office HUD is read-only; the **Open mission** button jumps back to the
+mission command bar. This makes automation visible without opening Mission
+Control.
+
+## External agent logos
+
+Known external agent brands are mapped to bundled SVG assets under
+`assets/logos/`:
+
+| Brand | Asset |
+| --- | --- |
+| Codex | `codex.svg` |
+| Claude | `claude.svg` |
+| WorkBuddy | `workbuddy.svg` |
+| Gemini | `gemini.svg` |
+| DeepSeek | `deepseek.svg` |
+| Doubao | `doubao.svg` |
+| Kimi | `kimi.svg` |
+| Qwen | `qwen.svg` |
+| Ollama | `ollama.svg` |
+| OpenAI | `openai.svg` |
+
+Avatars set to auto detect the logo; preset avatars and custom initials still
+override it. An external agent may also provide a safe `logoUrl` (bundled path
+or HTTPS URL). If an image fails to load, the original initials are used.
+
 ## Security
 
 - Keys are written only to `~/.agent-office/providers.json` with mode `0600`

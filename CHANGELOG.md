@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.13.0] - 2026-11-26
+
+### Added
+- **Real external-agent logos**: Codex, Claude, WorkBuddy, Gemini, DeepSeek, Doubao, Kimi, Qwen, Ollama and OpenAI auto-detect bundled SVG brand logos; preset/custom avatars still override. Codex uses its own mark and WorkBuddy uses its cat brand mark. Unknown agents fall back to initials; a safe custom `logoUrl` is supported.
+- **Mission live in the office**: while auto-run is active, the home page shows a MISSION LIVE HUD, the executing agent logo at a hot desk, an animated task bubble on the matching local character, and a highlighted team card with task/progress.
+- **Brand logo assets and docs**: bundled offline logos under `assets/logos/`, with attribution, plus a mission-live browser self-check.
+
+### Changed
+- Version bumped to 1.13.0.
+- README, AI setup docs and self-checks cover brand logos and home-office mission activity.
+
 ## [1.12.1] - 2026-11-26
 
 ### Fixed

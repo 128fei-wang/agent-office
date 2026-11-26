@@ -371,6 +371,9 @@
   renderer.features = featureShell;
 
   renderer.build();
+  const missionLive = AO.MissionLive ? new AO.MissionLive(renderer) : null;
+  renderer.missionLive = missionLive;
+  AO.missionLive = missionLive;
   setPlayLabel();
   scenarioSelect.value = engine.scenarioId;
   applySpeed(startSpeed);

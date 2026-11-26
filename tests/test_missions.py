@@ -68,11 +68,13 @@ class MissionTest(unittest.TestCase):
         }, "external")
         self.assertEqual(external["brand"], "Codex")
         self.assertEqual(external["logoText"], "CX")
+        self.assertEqual(external["logoUrl"], "assets/logos/codex.svg")
         workbuddy = missions.normalize_agent({
             "id": "ext-wb", "name": "Demo Worker · WorkBuddy", "runtime": "workbuddy",
         }, "external")
         self.assertEqual(workbuddy["brand"], "WorkBuddy")
         self.assertEqual(workbuddy["logoText"], "WB")
+        self.assertEqual(workbuddy["logoUrl"], "assets/logos/workbuddy.svg")
         unknown = missions.normalize_agent({
             "id": "ext-zed", "name": "Zed Worker", "runtime": "http",
         }, "external")

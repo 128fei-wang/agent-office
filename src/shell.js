@@ -215,7 +215,9 @@
         conversations.forEach((c) => (c.members || []).forEach((m) => directIds.add(m.id)));
         const agents = (agentsRes.agents || []).map((a) =>
           '<button type="button" class="chat-pick-row" data-chat-agent="' + esc(a.id) + '">' +
-          '<span class="chat-pick-avatar">' + esc(initials(a.titleZh || a.name)) + '</span>' +
+          '<span class="chat-pick-avatar' + AO.logoClass(a) + '" style="--c:' +
+          esc(a.logoColor || "#55d6c2") + '">' +
+          (a.logoUrl ? AO.logoMarkHTML(a) : esc(initials(a.titleZh || a.name))) + '</span>' +
           '<span class="chat-pick-copy"><b>' + esc(a.titleZh || a.name) +
           '</b><em>' + esc(a.roleLabelZh || a.role || "") + ' · ' +
           esc((a.skills || []).slice(0, 2).join(" · ")) + (directIds.has(a.id) ? " · 已有对话" : "") +
@@ -322,8 +324,10 @@
       const title = c.kind === "direct" ? (member.titleZh || member.name || c.title) : (c.title || this.t("chatGroupTitle"));
       this.setView('<div class="chat-hub-backdrop chat-window-backdrop" data-chat-close></div>' +
         '<section class="chat-window style-' + esc(readChatStyle()) + '">' +
-        '<header class="chat-window-head"><div class="chat-window-id"><span class="chat-window-avatar">' +
-        (c.kind === "direct" ? esc(initials(member.titleZh || member.name)) : "群") +
+        '<header class="chat-window-head"><div class="chat-window-id"><span class="chat-window-avatar' +
+        AO.logoClass(c.kind === "direct" ? member : null) + '" style="--c:' +
+        esc(member.logoColor || "#55d6c2") + '">' +
+        (c.kind === "direct" ? (member.logoUrl ? AO.logoMarkHTML(member) : esc(initials(member.titleZh || member.name))) : "群") +
         '</span><div><b>' + esc(title) + '</b><span>' +
         (c.kind === "direct" ? esc(member.roleLabelZh || "DIRECT") : (c.members || []).length + " MEMBERS") +
         ' · <em class="chat-style-label">' + esc(readChatStyle().toUpperCase()) + '</em>' +
@@ -362,7 +366,10 @@
       const text = message.type === "report" && message.meta && message.meta.report
         ? message.meta.report.summary : (message.text || "");
       return '<div class="chat-bubble-row ' + (mine ? "mine" : "theirs") + '">' +
-        '<span class="chat-bubble-avatar">' + esc(mine ? "ME" : initials(member.titleZh || message.senderName || "?")) + '</span>' +
+        '<span class="chat-bubble-avatar' + AO.logoClass(!mine ? member : null) + '" style="--c:' +
+        esc(member.logoColor || "#55d6c2") + '">' +
+        (mine ? "ME" : (member.logoUrl ? AO.logoMarkHTML(member) : esc(initials(member.titleZh || message.senderName || "?")))) +
+        '</span>' +
         '<div class="chat-bubble"><div class="chat-bubble-meta"><b>' +
         esc(mine ? this.t("chatYou") : (member.titleZh || message.senderName || "Agent")) +
         '</b><span>' + esc(fmtTime(message.createdAt)) + '</span></div>' +

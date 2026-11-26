@@ -917,13 +917,16 @@
       w.agents.forEach((a) => {
         const role = AO.ROLES[a.role];
         const task = a.taskId ? this.engine.taskById(a.taskId) : null;
-        const stateLabel = AO.STATE_LABELS[a.state] || a.state;
-        const detail = task ? task.title : (a.intent || a.activity || "");
+        const live = this.missionActivity && this.missionActivity.localAgentId === a.id;
+        const stateLabel = live ? AO.t("missionLiveRunning") : (AO.STATE_LABELS[a.state] || a.state);
+        const detail = live ? (this.missionActivity.taskTitle || AO.t("missionLiveRunning")) :
+          (task ? task.title : (a.intent || a.activity || ""));
         html +=
           '<button class="team-card state-' + a.state +
+          (live ? " mission-active" : "") +
           (a.id === this.selectedId ? " selected" : "") +
           '" data-agent="' + a.id + '" style="--role:' + role.color + '" title="' +
-          esc(a.trait) + '">' +
+          esc(live ? (this.missionActivity.missionTitle + " · " + detail) : a.trait) + '">' +
           '<span class="team-avatar">' + AO.spriteSVG(a, 26) + "</span>" +
           '<span class="team-main">' +
           '<span class="team-line"><b>' + esc(a.name) + "</b>" +
@@ -941,22 +944,28 @@
           ext.length + "</b></div>";
         ext.forEach((a) => {
           const online = a.status === "online";
-          const mark = a.logoText || "⇢";
           const roleName = AO.lang === "en" ? a.roleLabelEn : a.roleLabelZh;
-          html += '<button class="team-card external-card" data-external="' + a.id +
-            '" title="' + esc((a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent")) + '">' +
+          const live = this.missionActivity && this.missionActivity.external &&
+            this.missionActivity.agentId === a.id;
+          const liveProgress = live && this.missionActivity.total ?
+            Math.min(100, Math.round((this.missionActivity.done / this.missionActivity.total) * 100)) : 0;
+          html += '<button class="team-card external-card' + (live ? " mission-active" : "") +
+            '" data-external="' + a.id +
+            '" title="' + esc(live ? (this.missionActivity.missionTitle + " · " + this.missionActivity.taskTitle) :
+              (a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent")) + '">' +
             '<span class="ext-glyph' + (a.logoText ? " brand-mark" : "") +
-            (a.logoSource === "preset" ? " emoji" : "") +
-            '" style="--c:' + esc(a.logoColor || "#b58cff") + '">' + esc(mark) + '</span>' +
+            (a.logoSource === "preset" ? " emoji" : "") + AO.logoClass(a) +
+            '" style="--c:' + esc(a.logoColor || "#b58cff") + '">' + AO.logoMarkHTML(a) + '</span>' +
             '<span class="team-main"><span class="team-line"><b>' + esc(a.name) +
             '</b><em class="role-pill ext">EXT</em></span>' +
-            '<span class="team-state"><i class="state-dot ' + (online ? "online" : "offline") +
-            '"></i>' + esc(roleName || a.role || "operator") + " · " +
-            esc(a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
-            " · " + (a.eventCount || 0) + " ev</span>" +
+            '<span class="team-state"><i class="state-dot ' + (live ? "mission" : (online ? "online" : "offline")) +
+            '"></i>' + (live ? esc(AO.t("missionLiveRunning") + " · " + (this.missionActivity.taskTitle || "")) :
+              esc(roleName || a.role || "operator") + " · " +
+              esc(a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
+              " · " + (a.eventCount || 0) + " ev") + '</span>' +
             '<span class="energy ext-bar"><i style="width:' +
-            (online ? "100" : "18") + '%"></i></span></span>' +
-            '<span class="team-mood">⇢</span></button>';
+            (live ? liveProgress : (online ? "100" : "18")) + '%"></i></span></span>' +
+            '<span class="team-mood">' + (live ? esc(liveProgress + "%") : "⇢") + '</span></button>';
         });
       }
       const waitingPairs = this.external ? this.external.pendingPairs() : [];
@@ -1942,8 +1951,8 @@
         '<div class="drawer-kicker">EXTERNAL AGENT · ' +
         esc(agent.brand || agent.runtime || "external") + "</div>" +
         '<h2>' + (agent.logoText ? '<span class="ext-drawer-logo' +
-          (agent.logoSource === "preset" ? " emoji" : "") + '" style="--c:' +
-          esc(agent.logoColor || "#b58cff") + '">' + esc(agent.logoText) + "</span>" : "") +
+          (agent.logoSource === "preset" ? " emoji" : "") + AO.logoClass(agent) + '" style="--c:' +
+          esc(agent.logoColor || "#b58cff") + '">' + AO.logoMarkHTML(agent) + "</span>" : "") +
         esc(agent.name) + "</h2>" +
         '<p class="drawer-desc">' + esc(agent.note || "外部 agent 通过本地 bridge 接入。") + "</p>" +
         '<div class="drawer-chips"><span class="status-chip ' + (online ? "done" : "blocked") + '">' +

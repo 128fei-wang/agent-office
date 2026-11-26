@@ -626,10 +626,11 @@
       const color = (agent && (agent.logoColor || agent.color)) || "#7cb7ff";
       const title = (agent && agent.brand) ? agent.brand : name;
       const emoji = agent && agent.avatar && agent.avatar !== "auto" && agent.avatar !== "custom";
+      const logoAgent = agent || { logoText: text, logoUrl: "" };
       return '<span class="mission-avatar ' + (extraClass || '') +
-        (emoji ? ' avatar-emoji' : '') +
+        (emoji ? ' avatar-emoji' : '') + AO.logoClass(logoAgent) +
         '" style="--c:' + esc(color) + '" title="' + esc(title) + '">' +
-        esc(text) + '</span>';
+        AO.logoMarkHTML(logoAgent) + '</span>';
     }
 
     messageAvatar(message) {
@@ -965,8 +966,9 @@
           fmtTokens(delta) + '</em></div>';
       }).join("");
       const agents = (ev.agents || []).map((agent) =>
-        '<div class="mission-agent-cost">' + (agent.logoText ? '<span class="mission-avatar" style="--c:' +
-          esc(agent.logoColor || "#7cb7ff") + '">' + esc(agent.logoText) + '</span>' : '') +
+        '<div class="mission-agent-cost">' + (agent.logoText ? '<span class="mission-avatar' +
+          AO.logoClass(agent) + '" style="--c:' +
+          esc(agent.logoColor || "#7cb7ff") + '">' + AO.logoMarkHTML(agent) + '</span>' : '') +
           '<b>' + esc(agent.name) + '</b><span>' + agent.tasks + ' ' + esc(this.t("missionTasksLower")) +
           '</span><span>' + fmtDuration(agent.estimatedMinutes) + ' / ' +
           fmtDuration(agent.actualMinutes, agent.actualDurationMs) +

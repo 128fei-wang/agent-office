@@ -1,0 +1,31 @@
+/* Brand logos for known external agents */
+.has-brand-logo { position: relative; overflow: hidden; }
+.brand-logo-img {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+}
+.brand-logo-fallback {
+  display: inline-block;
+  font-style: normal;
+  line-height: 1;
+  pointer-events: none;
+}
+.logo-loaded .brand-logo-fallback { display: none; }
+.ext-logo.has-brand-logo,
+.ext-glyph.has-brand-logo,
+.ext-drawer-logo.has-brand-logo,
+.mission-avatar.has-brand-logo,
+.chat-pick-avatar.has-brand-logo,
+.chat-window-avatar.has-brand-logo { background: color-mix(in srgb, var(--c, #b58cff) 8%, rgba(8, 14, 20, 0.72)); }
+html[data-theme="day"] .ext-logo.has-brand-logo,
+html[data-theme="day"] .ext-glyph.has-brand-logo,
+html[data-theme="day"] .ext-drawer-logo.has-brand-logo,
+html[data-theme="day"] .mission-avatar.has-brand-logo,
+html[data-theme="day"] .chat-pick-avatar.has-brand-logo,
+html[data-theme="day"] .chat-window-avatar.has-brand-logo { background: #fffaf2; }

@@ -806,6 +806,11 @@ def clean_agent_updates(body):
         if color and not re.fullmatch(r"#[0-9a-fA-F]{3,8}", color):
             raise ValueError("avatarColor must be a hex color")
         out["avatarColor"] = color
+    if "logoUrl" in body:
+        logo = str(body.get("logoUrl") or "").strip()
+        if logo and not re.fullmatch(r"(/?assets/logos/[A-Za-z0-9_.-]+|https://[^\s<>\"']+)", logo):
+            raise ValueError("logoUrl must be an https URL or a bundled logo path")
+        out["logoUrl"] = logo[:500]
     return out
 
 
@@ -847,6 +852,7 @@ def mission_agent_directory():
             "avatar": agent.get("avatar") or "auto",
             "avatarText": agent.get("avatarText") or "",
             "avatarColor": agent.get("avatarColor") or "",
+            "logoUrl": agent.get("logoUrl") or "",
         })
     seen = set()
     unique = []
@@ -1185,6 +1191,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     completed=_mission_done_count(mission),
                     total=len(mission.get("tasks", [])),
                     currentTaskId="", currentTaskTitle="",
+                    currentAgentId="", currentAgentName="", currentRole="",
                 )
         if auto_error:
             _autorun_message(mission_id, auto_error)
@@ -1208,6 +1215,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     MISSION_STORE.set_autorun(
                         mission_id, status="stopped", finishedAt=now_iso(),
                         currentTaskId="", currentTaskTitle="",
+                        currentAgentId="", currentAgentName="", currentRole="",
                         error="",
                     )
                 _autorun_message(mission_id, "AI 全自动执行已停止；已完成的汇报和交付物会保留。")
@@ -1223,6 +1231,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     MISSION_STORE.set_autorun(
                         mission_id, status="done", completed=done, total=len(tasks),
                         currentTaskId="", currentTaskTitle="", finishedAt=now_iso(),
+                        currentAgentId="", currentAgentName="", currentRole="",
                         error="",
                     )
                     mission["status"] = "done"
@@ -1233,6 +1242,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     MISSION_STORE.set_autorun(
                         mission_id, status="waiting_boss", completed=done,
                         total=len(tasks), currentTaskId="", currentTaskTitle="",
+                        currentAgentId="", currentAgentName="", currentRole="",
                         error="", finishedAt="",
                     )
                     should_finish = True
@@ -1264,6 +1274,9 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                             mission_id, status="running", completed=done, total=len(tasks),
                             currentTaskId=task.get("id", ""),
                             currentTaskTitle=task.get("title", ""),
+                            currentAgentId=task.get("assigneeId", ""),
+                            currentAgentName=task.get("assigneeName", ""),
+                            currentRole=task.get("role", ""),
                             provider=preferred or candidates[0], error="", finishedAt="",
                         )
             if should_finish:
@@ -1296,6 +1309,9 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                         completed=_mission_done_count(mission),
                         total=len((mission or {}).get("tasks", [])),
                         currentTaskId=task["id"], currentTaskTitle=task.get("title", ""),
+                        currentAgentId=task.get("assigneeId", ""),
+                        currentAgentName=task.get("assigneeName", ""),
+                        currentRole=task.get("role", ""),
                     )
                 elif raw_task and raw_task.get("status") == "review":
                     MISSION_STORE.update_task(task["id"], {"status": "done"})
@@ -1359,6 +1375,7 @@ def start_mission_autorun(mission_id, preferred="", force_discuss=False):
             mission_id, enabled=True, status="queued", provider=preferred,
             completed=completed, total=len(tasks), startedAt=now_iso(),
             finishedAt="", error="", currentTaskId="", currentTaskTitle="",
+            currentAgentId="", currentAgentName="", currentRole="",
         )
     thread = threading.Thread(
         target=_run_mission_autorun, args=(mission_id, preferred, force_discuss), daemon=True
@@ -1382,6 +1399,7 @@ def stop_mission_autorun(mission_id):
             MISSION_STORE.set_autorun(
                 mission_id, status="stopped", finishedAt=now_iso(),
                 currentTaskId="", currentTaskTitle="", error="",
+                currentAgentId="", currentAgentName="", currentRole="",
             )
     return MISSION_STORE.find_mission(mission_id).get("autoRun", {})
 

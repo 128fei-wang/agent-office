@@ -43,10 +43,23 @@ ROLE_EFFORT = {
     "operator": (60, 7000),
 }
 
+BRAND_LOGOS = {
+    "Codex": "assets/logos/codex.svg",
+    "OpenAI": "assets/logos/openai.svg",
+    "Claude": "assets/logos/claude.svg",
+    "WorkBuddy": "assets/logos/workbuddy.svg",
+    "Gemini": "assets/logos/gemini.svg",
+    "DeepSeek": "assets/logos/deepseek.svg",
+    "Doubao": "assets/logos/doubao.svg",
+    "Kimi": "assets/logos/kimi.svg",
+    "Qwen": "assets/logos/qwen.svg",
+    "Ollama": "assets/logos/ollama.svg",
+}
+
 BRAND_PATTERNS = [
-    (r"codex", "Codex", "CX", "#d7f7e6"),
+    (r"codex", "Codex", "CX", "#10A37F"),
     (r"claude|anthropic", "Claude", "C", "#e8a07e"),
-    (r"workbuddy|work buddy|混元|hunyuan|hy3", "WorkBuddy", "WB", "#ffb45e"),
+    (r"workbuddy|work buddy|混元|hunyuan|hy3", "WorkBuddy", "WB", "#0EC8A9"),
     (r"gemini|google", "Gemini", "✦", "#b9a6ff"),
     (r"deepseek", "DeepSeek", "DS", "#7fa7ff"),
     (r"doubao|豆包|volcengine|ark", "Doubao", "豆", "#7fb4ff"),
@@ -115,6 +128,17 @@ def _safe_color(value, fallback="#b58cff"):
     return fallback
 
 
+def _safe_logo_url(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if re.match(r"^/?assets/logos/[A-Za-z0-9_.-]+$", text):
+        return text
+    if re.match(r"^https://[^\s<>\"']+$", text):
+        return text[:500]
+    return ""
+
+
 def logo_info(row, source="role"):
     name = str(row.get("name") or row.get("titleEn") or row.get("titleZh") or "")
     runtime = str(row.get("runtime") or row.get("provider") or "")
@@ -126,7 +150,7 @@ def logo_info(row, source="role"):
         if preset and avatar not in ("auto", "custom"):
             return {
                 "brand": preset["labelEn"], "logoText": preset["glyph"],
-                "logoColor": preset["color"], "avatar": avatar,
+                "logoColor": preset["color"], "avatar": avatar, "logoUrl": "",
             }
         if avatar == "custom":
             letters = "".join(part[0] for part in re.split(r"[\s·._-]+", name) if part)[:2]
@@ -134,14 +158,18 @@ def logo_info(row, source="role"):
             return {
                 "brand": "Custom avatar", "logoText": text.upper(),
                 "logoColor": _safe_color(row.get("avatarColor") or row.get("color")),
-                "avatar": "custom",
+                "avatar": "custom", "logoUrl": _safe_logo_url(row.get("logoUrl")),
             }
         for pattern, brand, mark, color in BRAND_PATTERNS:
             if re.search(pattern, haystack):
-                return {"brand": brand, "logoText": mark, "logoColor": color, "avatar": "auto"}
+                return {
+                    "brand": brand, "logoText": mark, "logoColor": color,
+                    "avatar": "auto", "logoUrl": _safe_logo_url(row.get("logoUrl")) or BRAND_LOGOS.get(brand, ""),
+                }
         letters = "".join(part[0] for part in re.split(r"[\s·._-]+", name) if part)[:2]
         return {"brand": "External agent", "logoText": letters.upper() or "EX",
-                "logoColor": row.get("color") or "#7cb7ff", "avatar": "auto"}
+                "logoColor": row.get("color") or "#7cb7ff", "avatar": "auto",
+                "logoUrl": _safe_logo_url(row.get("logoUrl"))}
     labels = {
         "chief": "CH", "product": "PR", "copy": "CO", "design": "DE",
         "engineer": "EN", "qa": "QA", "growth": "GR", "video": "VI",
@@ -151,6 +179,7 @@ def logo_info(row, source="role"):
         "brand": str(row.get("titleEn") or row.get("brand") or role or "Agent"),
         "logoText": labels.get(role, (role[:2] or "AI").upper()),
         "logoColor": row.get("color") or "#7cb7ff",
+        "logoUrl": "",
     }
 
 
@@ -510,6 +539,7 @@ class MissionStore:
                 "name": member.get("titleZh") or member.get("name"),
                 "logoText": member.get("logoText"),
                 "logoColor": member.get("logoColor"),
+                "logoUrl": member.get("logoUrl") or "",
                 "brand": member.get("brand"),
                 "tasks": len(mine),
                 "open": sum(1 for t in mine if t.get("status") != "done"),

@@ -1,0 +1,219 @@
+/* Live Mission Control activity inside the office */
+.mission-live-hud {
+  position: absolute;
+  z-index: 8;
+  left: 10px;
+  bottom: 10px;
+  width: 270px;
+  padding: 8px 9px 7px;
+  border: 1px solid rgba(85, 214, 194, 0.36);
+  border-radius: 6px;
+  background: rgba(5, 13, 19, 0.9);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+.mission-live-hud[hidden] { display: none !important; }
+.mission-live-hud.status-waiting_boss { border-color: rgba(242, 181, 68, 0.45); }
+.mission-live-hud.status-done { border-color: rgba(123, 216, 143, 0.42); }
+.mission-live-hud.status-discussing,
+.mission-live-hud.status-queued { border-color: rgba(181, 140, 255, 0.42); }
+.mlh-top { display: flex; align-items: center; gap: 6px; }
+.mlh-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 0.8px;
+}
+.mlh-live i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 7px rgba(85, 214, 194, 0.9);
+  animation: mlh-pulse 1.2s ease-in-out infinite;
+}
+.status-waiting_boss .mlh-live { color: var(--amber); }
+.status-waiting_boss .mlh-live i { background: var(--amber); box-shadow: 0 0 7px rgba(242, 181, 68, 0.9); }
+.status-done .mlh-live { color: #7bd88f; }
+.status-done .mlh-live i { background: #7bd88f; box-shadow: 0 0 7px rgba(123, 216, 143, 0.9); animation: none; }
+.mlh-top > b {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mlh-row { display: flex; align-items: center; gap: 7px; margin-top: 7px; min-width: 0; }
+.mlh-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--c, #55d6c2) 38%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c, #55d6c2) 12%, rgba(8, 14, 20, 0.8));
+  color: var(--c, #55d6c2);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.mlh-copy { flex: 1; min-width: 0; }
+.mlh-copy b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 8.5px;
+  font-weight: 600;
+}
+.mlh-copy p {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 7px;
+}
+.mlh-count {
+  flex: none;
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 7px;
+  font-style: normal;
+}
+.mlh-bar { height: 3px; margin: 7px 0 5px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.08); }
+.mlh-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #55d6c2, #b8fff2); transition: width 0.4s ease; }
+.status-waiting_boss .mlh-bar i { background: var(--amber); }
+.status-done .mlh-bar i { background: #7bd88f; }
+.mlh-foot { display: flex; align-items: center; gap: 6px; }
+.mlh-foot span { flex: 1; color: var(--muted-2); font-size: 6.3px; }
+.status-waiting_boss .mlh-foot span { color: var(--amber); }
+.mlh-foot button {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid rgba(85, 214, 194, 0.32);
+  border-radius: 3px;
+  background: rgba(85, 214, 194, 0.08);
+  color: var(--cyan);
+  font: inherit;
+  font-size: 6.3px;
+  cursor: pointer;
+}
+.mlh-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(85, 214, 194, 0.2);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: mlh-spin 0.8s linear infinite;
+}
+@keyframes mlh-pulse { 0%,100% { opacity: 0.45; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
+@keyframes mlh-spin { to { transform: rotate(360deg); } }
+
+.mission-live-layer { position: absolute; inset: 0; z-index: 680; pointer-events: none; overflow: hidden; }
+.mission-desk-chip {
+  position: absolute;
+  width: 154px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  border: 1px solid rgba(85, 214, 194, 0.42);
+  border-radius: 5px;
+  background: rgba(7, 17, 24, 0.94);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42), 0 0 16px rgba(85, 214, 194, 0.12);
+  transform: translateX(-50%);
+  animation: mdc-float 3s ease-in-out infinite;
+}
+.mission-desk-chip.status-waiting_boss { border-color: rgba(242, 181, 68, 0.55); }
+.mission-desk-chip.status-done { border-color: rgba(123, 216, 143, 0.5); }
+.mdc-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--c, #b58cff) 42%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--c, #b58cff) 12%, rgba(8, 14, 20, 0.8));
+  color: var(--c, #b58cff);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.mdc-copy { min-width: 0; flex: 1; }
+.mdc-copy b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eef6ff; font-size: 7.5px; }
+.mdc-copy em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; color: #9fb9ca; font-size: 6.3px; font-style: normal; }
+.mdc-dots { display: flex; gap: 2px; flex: none; }
+.mdc-dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--cyan); animation: mdc-dot 1s ease-in-out infinite; }
+.mdc-dots i:nth-child(2) { animation-delay: 0.15s; }
+.mdc-dots i:nth-child(3) { animation-delay: 0.3s; }
+.status-waiting_boss .mdc-dots i { background: var(--amber); }
+.status-done .mdc-dots i { background: #7bd88f; animation: none; }
+@keyframes mdc-float { 0%,100% { margin-top: 0; } 50% { margin-top: -3px; } }
+@keyframes mdc-dot { 0%,100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+
+.agent.mission-busy .agent-aura {
+  box-shadow: 0 0 0 2px rgba(85, 214, 194, 0.38), 0 0 18px rgba(85, 214, 194, 0.36);
+}
+.agent.mission-busy .agent-ring { opacity: 0.75; }
+.mission-task-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: 47px;
+  z-index: 400;
+  width: max-content;
+  max-width: 160px;
+  transform: translateX(-50%);
+  padding: 5px 7px;
+  border: 1px solid rgba(85, 214, 194, 0.45);
+  border-radius: 4px;
+  background: rgba(7, 17, 24, 0.95);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.36);
+  pointer-events: none;
+}
+.mission-task-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 7px;
+  height: 7px;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgba(7, 17, 24, 0.95);
+  border-right: 1px solid rgba(85, 214, 194, 0.45);
+  border-bottom: 1px solid rgba(85, 214, 194, 0.45);
+}
+.mission-task-bubble b { display: block; color: var(--cyan); font-size: 7px; font-weight: 600; }
+.mission-task-bubble span { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d6e6f1; font-size: 6.5px; }
+
+.team-card.mission-active {
+  border-color: rgba(85, 214, 194, 0.48) !important;
+  box-shadow: inset 0 0 0 1px rgba(85, 214, 194, 0.08), 0 0 16px rgba(85, 214, 194, 0.08);
+}
+.team-card.mission-active .team-state { color: var(--cyan); }
+.team-card.mission-active .state-dot { background: var(--cyan); box-shadow: 0 0 6px rgba(85, 214, 194, 0.8); animation: mlh-pulse 1.2s ease-in-out infinite; }
+.team-card.mission-active .energy i { background: linear-gradient(90deg, #55d6c2, #b8fff2); }
+
+html[data-theme="day"] .mission-live-hud { background: rgba(255, 250, 242, 0.95); border-color: #a8dcd2; }
+html[data-theme="day"] .mission-live-hud.status-waiting_boss { border-color: #e5c98f; }
+html[data-theme="day"] .mlh-copy b { color: #25323b; }
+html[data-theme="day"] .mlh-copy p { color: #556b76; }
+html[data-theme="day"] .mission-desk-chip { background: rgba(255, 250, 242, 0.96); }
+html[data-theme="day"] .mdc-copy b { color: #25323b; }
+html[data-theme="day"] .mdc-copy em { color: #556b76; }
+html[data-theme="day"] .mission-task-bubble { background: #fffaf2; }
+html[data-theme="day"] .mission-task-bubble::after { background: #fffaf2; }
+html[data-theme="day"] .mission-task-bubble span { color: #40515b; }
+
+@media (max-width: 620px) {
+  .mission-live-hud { left: 6px; right: 6px; bottom: 6px; width: auto; }
+  .mission-live-hud .mlh-copy b { font-size: 8px; }
+}

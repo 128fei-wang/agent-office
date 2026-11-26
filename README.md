@@ -65,6 +65,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat popup** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **真实品牌 Logo** | **首页任务联动** |
+| ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
 | **AI 三步接入** | **测试并启用** |
 | ![AI connect](docs/screenshots/ai-connect.jpg) | ![AI test](docs/screenshots/ai-connect-test.jpg) |
 | **工具内 AI 状态** | **MCP 部署** |
@@ -339,7 +341,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **新建任务**：填写描述、验收标准、优先级、截止日期、预算，上传文档/图片。
 - **真实外部 Agent 优先推荐**：只要已接入真实外部 Agent，推荐池就只使用这些 Agent，不再用默认系统角色占位；没有外部 Agent 时才回退到系统角色。系统默认分工仍然保留，内置角色仍可手动勾选，也可以按任务逐个指定执行 Agent。
 - **可编辑职务任命**：外部 Agent 详情里可选择“系统自动分工”或总协调、产品、设计、工程、QA、增长、内容、视频、执行等职务；选择后推荐和任务分配按这个职务匹配，未设置时保持原来的技能推断逻辑。
-- **品牌 / 自定义头像**：Codex、Claude、WorkBuddy、Gemini、DeepSeek、豆包、Kimi、Qwen、Ollama、OpenAI 等自动识别品牌；未知 Agent 自动生成缩写。也可以从系统内置头像（机器人、狐狸、猫头鹰、猫、火箭、星星、幽灵、像素怪、闪光、工匠、负责人）中选择，或自定义 1–2 个字符和颜色。
+- **真实品牌 Logo / 自定义头像**：Codex、Claude、WorkBuddy、Gemini、DeepSeek、豆包、Kimi、Qwen、Ollama、OpenAI 等自动显示对应品牌 Logo（内置 SVG，离线可用）；未知 Agent 回退到缩写。也可以从系统内置头像（机器人、狐狸、猫头鹰、猫、火箭、星星、幽灵、像素怪、闪光、工匠、负责人）中选择，或自定义 1–2 个字符和颜色。
 - **推荐与逐任务执行者**：候选卡显示职务、技能、匹配度和预计耗时/token；系统按技能、职务、在线状态和当前负载给出每个任务的 Top 3，并默认落到具体外部执行者。
 - **自动组队与拆解**：按技能选人、生成依赖任务、记录分配理由；每个成员都有主任务或真实待命巡检，避免空岗。
 - **任务群 / 群聊 / 私聊**：任务自动建群；也可以单独建群或和任一 Agent 私聊。
@@ -785,7 +787,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.12.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.13.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
