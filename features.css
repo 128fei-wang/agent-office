@@ -27,68 +27,108 @@
   font-size: 11px;
   line-height: 1;
 }
-.feature-quickbar {
+.feature-fold {
   flex: none;
-  padding: 7px 8px 6px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel-2);
+  margin: 7px 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
 }
-.feature-quick-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.feature-fold-head {
+  width: 100%;
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.feature-fold.is-open .feature-fold-head { border-bottom-color: var(--line-soft); }
+.feature-fold-head:hover { background: rgba(85, 214, 194, 0.06); }
+.feature-fold-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(85, 214, 194, 0.32);
+  border-radius: 5px;
+  color: var(--cyan);
+  font-size: 12px;
+}
+.feature-fold-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.feature-fold-copy b { font-size: 10.5px; font-weight: 600; }
+.feature-fold-copy em { color: var(--muted-2); font-size: 8px; font-style: normal; }
+.feature-fold-chevron {
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 13px;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+.feature-fold:not(.is-open) .feature-fold-chevron { transform: rotate(180deg); }
+.feature-fold-body { padding: 6px; }
+.feature-fold-body[hidden] { display: none !important; }
+.feature-quick-groups { display: flex; flex-direction: column; gap: 5px; }
 .feature-quick-group {
   min-width: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  padding: 5px;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 4px 5px;
   border: 1px solid var(--line-soft);
   border-radius: 5px;
 }
 .feature-quick-group > span {
-  grid-column: 1 / -1;
   color: var(--muted-2);
   font-family: var(--mono);
-  font-size: 6.2px;
-  letter-spacing: 0.5px;
+  font-size: 8px;
+  letter-spacing: 0.2px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .feature-quick-group button {
   min-width: 0;
-  height: 30px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 0 2px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 3px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.025);
   color: var(--text);
   cursor: pointer;
 }
-.feature-quick-group button:hover { border-color: rgba(85, 214, 194, 0.42); background: rgba(85, 214, 194, 0.08); }
-.feature-quick-group button b { color: var(--cyan); font-family: var(--mono); font-size: 9px; font-weight: 500; }
-.feature-quick-group button em { color: var(--muted); font-style: normal; font-size: 6.2px; }
+.feature-quick-group button:hover { border-color: rgba(85, 214, 194, 0.45); background: rgba(85, 214, 194, 0.09); }
+.feature-quick-group button b { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.feature-quick-group button em { color: var(--muted); font-style: normal; font-size: 9px; white-space: nowrap; }
 .feature-style-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 5px;
-  margin-top: 5px;
+  margin-top: 6px;
   color: var(--muted-2);
-  font-size: 6.4px;
+  font-size: 8px;
 }
 .feature-style-buttons { display: flex; gap: 3px; }
 .feature-style-buttons button {
-  height: 22px;
+  height: 25px;
   padding: 0 7px;
   border: 1px solid var(--line-soft);
   border-radius: 3px;
   background: transparent;
   color: var(--muted-2);
   font-family: var(--mono);
-  font-size: 6.3px;
+  font-size: 8px;
   cursor: pointer;
 }
 .feature-style-buttons button.active { border-color: rgba(85, 214, 194, 0.5); background: rgba(85, 214, 194, 0.1); color: var(--cyan); }

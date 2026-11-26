@@ -415,8 +415,14 @@
       this.btn = document.getElementById("featureBtn");
       this.quick = document.getElementById("featureQuickBar");
       this.styleButtons = document.getElementById("featureStyleButtons");
+      this.fold = document.getElementById("featureFold");
+      this.foldToggle = document.getElementById("featureFoldToggle");
+      this.foldBody = document.getElementById("featureQuickBar");
+      let foldOpen = true;
+      try { foldOpen = localStorage.getItem("agent-office.feature-fold.v1") !== "0"; } catch (err) {}
       this.bind();
       this.syncStyle();
+      this.setFold(foldOpen);
     }
 
     open() {
@@ -437,6 +443,9 @@
       const self = this;
       if (this.btn) this.btn.addEventListener("click", function () { self.open(); });
       if (this.backdrop) this.backdrop.addEventListener("click", function () { self.close(); });
+      if (this.foldToggle) this.foldToggle.addEventListener("click", function () {
+        self.setFold(!(self.fold && self.fold.classList.contains("is-open")));
+      });
       if (this.quick) this.quick.addEventListener("click", function (event) {
         const action = event.target.closest("[data-feature-action]");
         if (action) { self.run(action.getAttribute("data-feature-action")); return; }
@@ -459,6 +468,14 @@
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") self.close();
       });
+    }
+
+    setFold(open) {
+      this.foldOpen = !!open;
+      if (this.fold) this.fold.classList.toggle("is-open", this.foldOpen);
+      if (this.foldBody) this.foldBody.hidden = !this.foldOpen;
+      if (this.foldToggle) this.foldToggle.setAttribute("aria-expanded", this.foldOpen ? "true" : "false");
+      try { localStorage.setItem("agent-office.feature-fold.v1", this.foldOpen ? "1" : "0"); } catch (err) {}
     }
 
     syncStyle() {

@@ -25,6 +25,11 @@
     check('create group/task',/创建群组/.test($('#featureDrawer').textContent)&&/创建任务/.test($('#featureDrawer').textContent));
     check('settings center',/设置中心/.test($('#featureDrawer').textContent)&&/工具/.test($('#featureDrawer').textContent));
     check('functions pinned at top',!!$('#featureQuickBar')&&$$('#featureQuickBar [data-feature-action]').length>=6);
+    const foldToggle=$('#featureFoldToggle');
+    check('fold control',!!foldToggle);
+    if(foldToggle){foldToggle.click();await wait(120);check('fold collapses',!!$('#featureQuickBar')&&$('#featureQuickBar').hidden);foldToggle.click();await wait(120);check('fold expands',!!$('#featureQuickBar')&&!$('#featureQuickBar').hidden);}
+    const quickFont=w.getComputedStyle($('#featureQuickBar [data-feature-action] em')).fontSize;
+    check('function labels readable',parseFloat(quickFont)>=8,quickFont);
     const topQq=$('#featureQuickBar [data-chat-style="qq"]');
     check('top chat style switch',!!topQq);
     if(topQq){topQq.click();await wait(120);check('top chat style saves',w.localStorage.getItem('agent-office.chat.style.v1')==='qq');}

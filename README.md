@@ -359,7 +359,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **创建**：创建群组、任务管理 / 创建任务。
 - **设置中心**：工具、设置。
 
-每项都有顶部快捷按钮；点右上角 **☰** 可展开完整功能抽屉。顶部还有 **聊天窗口风格** 切换：
+功能栏本身支持点击标题折叠/展开；点右上角 **☰** 可展开完整功能抽屉。顶部还有 **聊天窗口风格** 切换：
 
 - **Agent**：Agent Office 默认外观。
 - **QQ**：紧凑聊天窗口、蓝色标题栏和气泡。
@@ -760,7 +760,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.9.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.9.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

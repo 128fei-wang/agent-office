@@ -358,7 +358,7 @@ The TEAM panel pins six actions at the top in three groups:
 - **Create** — create a group, task manager / create a task.
 - **Settings center** — tools, settings.
 
-Every action also has a top quick button; the **☰** button opens the full function drawer. The top bar includes a **chat window style** switch:
+The function bar title folds or expands it; the **☰** button opens the full function drawer. The top bar includes a **chat window style** switch:
 
 - **Agent** — the default Agent Office look.
 - **QQ** — compact window, blue header and bubbles.

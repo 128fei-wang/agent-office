@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1] - 2026-11-26
+
+### Changed
+- Reworked the top-left functions into a readable, collapsible drawer: larger labels, grouped rows, a clear header with fold state, and persisted open/closed state.
+- All six actions remain clickable and open their existing modals, Mission Control forms or chat popups; the full ☰ drawer is still available.
+- The chat-style switch remains in the expanded drawer and the QQ/WeChat popup header.
+
 ## [1.9.0] - 2026-11-26
 
 ### Added
