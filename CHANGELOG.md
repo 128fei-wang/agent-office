@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.10.1] - 2026-11-26
+
+### Changed
+- **One navigation source**: the topbar now only holds scenario, play/pause and speed. Task center, one-person company, meetings, incidents, reset, tools, theme and language moved into the left rail.
+- Added a **Work** rail group; theme and language now sit in the Settings flyout, and update availability also shows on the Settings rail icon.
+- Widened the rail and enlarged its labels for readability.
+- Added `docs/LAYOUT.md` with GitHub peer research and layout rules, plus `docs/MCP.md` with endpoint, protocol, tools and limits; both are linked from the READMEs.
+- Updated browser self-checks and the Function rail screenshot.
+- Version bumped to 1.10.1.
+
 ## [1.10.0] - 2026-11-26
 
 ### Added

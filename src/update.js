@@ -263,6 +263,8 @@
       if (!this.badge) return;
       const available = !!(this.data && this.data.updateAvailable);
       this.badge.hidden = !available;
+      const railTools = document.querySelector('#featureRail [data-rail-section="settings"]');
+      if (railTools) railTools.classList.toggle("has-update", available);
       if (this.btn) {
         this.btn.classList.toggle("has-update", available);
         this.btn.title = available

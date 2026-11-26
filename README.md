@@ -1,6 +1,6 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -355,12 +355,13 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 左侧新增独立 **功能导航栏**，图标从上到下为：
 
+- **工作**：任务中心、一人公司、拉会、制造意外、重置模拟。
 - **人脉**：添加好友（本地 Agent）、添加外部 Agent。
 - **创建**：创建群组、任务管理 / 创建任务。
-- **设置**：工具（含 AI / MCP 部署）、设置。
+- **设置**：工具（含 AI / MCP 部署）、设置、主题、语言。
 - **消息**：群聊弹窗、单聊弹窗。
 
-点击任一图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
+顶部栏只保留场景选择、暂停/速度等运行控制，不再重复任务、公司、工具、主题、语言等入口。点击左侧图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
 
 - **Agent**：Agent Office 默认外观。
 - **QQ**：紧凑聊天窗口、蓝色标题栏和气泡。
@@ -782,7 +783,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.10.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.10.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

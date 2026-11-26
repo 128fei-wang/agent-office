@@ -17,7 +17,12 @@
     check('feature shell constructed',!!shell&&!!shell.drawer&&!!shell.chat&&!!shell.settings&&!!shell.rail);
     check('feature rail in left panel',!!$('#featureRail')&&$$('#featureRail [data-rail-section]').length>=4);
     const railFont=w.getComputedStyle($('#featureRail [data-rail-section] span')).fontSize;
-    check('rail labels readable',parseFloat(railFont)>=7,railFont);
+    check('rail labels readable',parseFloat(railFont)>=9,railFont);
+    check('topbar decluttered',!$('#missionBtn').offsetParent&&!$('#companyBtn').offsetParent&&!$('#updateBtn').offsetParent&&!$('#themeBtn').offsetParent);
+    const workRail=$('#featureRail [data-rail-section="work"]');
+    check('work rail',!!workRail);
+    if(workRail){workRail.click();await wait(150);}
+    check('work actions',/任务中心/.test($('#railFlyout').textContent)&&/一人公司/.test($('#railFlyout').textContent)&&/拉个会/.test($('#railFlyout').textContent));
     const peopleRail=$('#featureRail [data-rail-section="people"]');
     if(peopleRail){peopleRail.click();await wait(200);}
     check('rail flyout opens',!$('#railFlyout').hidden&&!!$('.rail-action'));
@@ -29,7 +34,7 @@
     if(externalAction){externalAction.click();await wait(400);check('add external opens modal',!$('#externalModal').hidden);const closeExt=$('[data-ext-close]');if(closeExt)closeExt.click();await wait(100);}
     const settingsRail=$('#featureRail [data-rail-section="settings"]');
     if(settingsRail){settingsRail.click();await wait(150);}
-    check('settings rail flyout',/工具/.test($('#railFlyout').textContent)&&/设置/.test($('#railFlyout').textContent));
+    check('settings rail flyout',/工具/.test($('#railFlyout').textContent)&&/设置/.test($('#railFlyout').textContent)&&/主题/.test($('#railFlyout').textContent));
     check('chat style in rail',!!$('#railFlyout [data-chat-style="qq"]'));
     const topQq=$('#railFlyout [data-chat-style="qq"]');
     if(topQq){topQq.click();await wait(120);check('rail chat style saves',w.localStorage.getItem('agent-office.chat.style.v1')==='qq');}

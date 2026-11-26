@@ -309,7 +309,7 @@ button {
 .layout {
   height: calc(100vh - 64px);
   display: grid;
-  grid-template-columns: 54px 226px minmax(0, 1fr) 296px;
+  grid-template-columns: 60px 226px minmax(0, 1fr) 296px;
   gap: 10px;
   padding: 10px;
   min-height: 0;
@@ -2562,7 +2562,7 @@ button {
 
 @media (max-width: 1240px) {
   .layout {
-    grid-template-columns: 50px 210px minmax(0, 1fr) 280px;
+    grid-template-columns: 56px 210px minmax(0, 1fr) 280px;
   }
   .legend {
     display: none;

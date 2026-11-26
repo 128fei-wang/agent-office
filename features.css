@@ -2,7 +2,8 @@
    FUNCTION DRAWER · CHAT POPUPS · SETTINGS · CHAT CAPTURE
    ========================================================= */
 
-.legacy-team-actions[hidden] { display: none !important; }
+.legacy-team-actions[hidden],
+.legacy-topbar-actions[hidden] { display: none !important; }
 .panel-head-actions { display: flex; align-items: center; gap: 6px; }
 .feature-trigger {
   width: 100%;
@@ -68,11 +69,23 @@
   cursor: pointer;
 }
 .feature-rail [data-rail-section] b { color: #a9c9dc; font-family: var(--mono); font-size: 16px; font-weight: 500; line-height: 1; }
-.feature-rail [data-rail-section] span { color: var(--muted-2); font-size: 8.5px; line-height: 1.1; white-space: nowrap; }
+.feature-rail [data-rail-section] span { color: var(--muted-2); font-size: 9.5px; line-height: 1.1; white-space: nowrap; }
 .feature-rail [data-rail-section]:hover,
 .feature-rail [data-rail-section].active {
   border-color: rgba(85, 214, 194, 0.3);
   background: rgba(85, 214, 194, 0.08);
+}
+.feature-rail [data-rail-section] { position: relative; }
+.feature-rail [data-rail-section].has-update::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px rgba(242, 181, 68, 0.8);
 }
 .feature-rail [data-rail-section].active b,
 .feature-rail [data-rail-section].active span { color: var(--cyan); }

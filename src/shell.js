@@ -446,6 +446,43 @@
     async run(action) {
       const deps = this.deps;
       const chat = this.shell && this.shell.chat;
+      const click = function (id) {
+        const button = document.getElementById(id);
+        if (button) button.click();
+      };
+      if (action === "mission-center") {
+        this.close();
+        click("missionBtn");
+        return;
+      }
+      if (action === "company") {
+        this.close();
+        click("companyBtn");
+        return;
+      }
+      if (action === "meeting") {
+        this.close();
+        click("meetingBtn");
+        return;
+      }
+      if (action === "incident") {
+        this.close();
+        click("eventBtn");
+        return;
+      }
+      if (action === "reset") {
+        this.close();
+        click("resetBtn");
+        return;
+      }
+      if (action === "theme") {
+        click("themeBtn");
+        return;
+      }
+      if (action === "lang") {
+        click("langBtn");
+        return;
+      }
       if (action === "hire" || action === "external") {
         this.close();
         const id = action === "hire" ? "hireBtn" : "externalBtn";
@@ -604,13 +641,22 @@
       } else if (section === "settings") {
         title = t("featureSettingsGroup");
         const style = readChatStyle();
-        body = this.actionRow("tools", "⚙", t("featureTools"), "升级 / AI 模型状态") +
-          this.actionRow("settings", "☷", t("featureSettings"), "主题 / 语言 / 聊天样式") +
+        body = this.actionRow("tools", "⚙", t("featureTools"), "升级 / AI / MCP") +
+          this.actionRow("settings", "☷", t("featureSettings"), "设置中心") +
+          this.actionRow("theme", "☾", t("settingsTheme"), document.documentElement.dataset.theme === "day" ? t("themeDay") : t("themeNight")) +
+          this.actionRow("lang", "文", t("settingsLanguage"), AO.lang === "en" ? "English" : "中文") +
           '<div class="rail-style"><span>' + esc(t("settingsChatStyle")) + '</span><div class="feature-style-buttons">' +
           ["agent", "qq", "wechat"].map(function (id) {
             const label = id === "agent" ? "Agent" : id === "qq" ? "QQ" : "微信";
             return '<button type="button" data-chat-style="' + id + '" class="' + (style === id ? "active" : "") + '">' + label + '</button>';
           }).join("") + '</div></div>';
+      } else if (section === "work") {
+        title = t("featureWork");
+        body = this.actionRow("mission-center", "▤", t("featureTaskCenter"), t("featureTaskCenterHint")) +
+          this.actionRow("company", "◫", t("featureCompany"), t("featureCompanyHint")) +
+          this.actionRow("meeting", "◎", t("featureMeeting"), t("featureMeetingHint")) +
+          this.actionRow("incident", "!", t("featureIncident"), t("featureIncidentHint")) +
+          this.actionRow("reset", "↺", t("featureReset"), t("featureResetHint"));
       } else {
         title = t("featureComms");
         body = this.actionRow("group-chat", "#", t("featureGroupChat"), "群聊 / 任务群浮窗") +

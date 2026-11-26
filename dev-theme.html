@@ -47,9 +47,19 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       const vw=mobile.contentWindow.innerWidth;
       check('mobile no horizontal page overflow',md.documentElement.scrollWidth<=vw+1,
         md.documentElement.scrollWidth+' / '+vw);
-      const themeRect=md.getElementById('themeBtn').getBoundingClientRect();
-      check('mobile theme button visible',themeRect.width>0&&themeRect.right<=vw+1,
-        Math.round(themeRect.right)+' / '+vw);
+      const settingsRail=md.querySelector('#featureRail [data-rail-section="settings"]');
+      const settingsRect=settingsRail.getBoundingClientRect();
+      check('mobile settings rail visible',settingsRect.width>0&&settingsRect.right<=vw+1,
+        Math.round(settingsRect.right)+' / '+vw);
+      settingsRail.click(); await wait(200);
+      const railTheme=md.querySelector('#railFlyout [data-feature-action="theme"]');
+      const railThemeRect=railTheme?railTheme.getBoundingClientRect():{width:0,right:0};
+      check('mobile theme action visible',!!railTheme&&railThemeRect.width>0&&railThemeRect.right<=vw+1,
+        Math.round(railThemeRect.right)+' / '+vw);
+      if(railTheme){
+        railTheme.click(); await wait(150);
+        check('mobile theme action toggles',md.documentElement.dataset.theme==='night',md.documentElement.dataset.theme);
+      }
       const controls=md.querySelector('.controls');
       check('mobile controls scroll rail',getComputedStyle(controls).overflowX==='auto');
       const stageTools=md.querySelector('.stage-tools').getBoundingClientRect();

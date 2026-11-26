@@ -32,7 +32,7 @@ required=(
   dev-delegation.html dev-theme.html dev-company.html dev-i18n.html
   dev-update.html dev-update-manual.html dev-missions.html dev-features.html
   tests/test_bridge.py tests/test_updater.py providers.example.json
-  docs/ARCHITECTURE.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/MISSIONS.md docs/UPGRADING.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md
+  docs/ARCHITECTURE.md docs/LAYOUT.md docs/MCP.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/MISSIONS.md docs/UPGRADING.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md
 )
 for f in "${required[@]}"; do
   if [ ! -e "$f" ]; then
