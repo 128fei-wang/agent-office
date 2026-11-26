@@ -320,6 +320,9 @@ def provider_settings(provider_id: str, overrides=None):
     if not base_url.startswith(("http://", "https://")):
         raise ProviderCallError("provider baseUrl must start with http:// or https://")
     configured = bool(api_key) or bool(meta.get("keyOptional"))
+    auth_type = str(cfg.get("authType") or "").strip()
+    if not auth_type:
+        auth_type = "bearer" if key_env == "ANTHROPIC_AUTH_TOKEN" else "x-api-key"
     return {
         "id": provider_id,
         "name": meta["name"],
@@ -334,6 +337,7 @@ def provider_settings(provider_id: str, overrides=None):
         "env": list(meta.get("env", [])),
         "keyEnv": key_env,
         "keySource": key_source,
+        "authType": auth_type,
         "baseEnv": meta.get("baseEnv", ""),
         "baseEnvName": base_env,
         "baseSource": base_source,
@@ -431,13 +435,14 @@ def configure_provider(provider_id: str, body):
     body = body if isinstance(body, dict) else {}
 
     if body.get("useEnvironment"):
-        env_key, _ = _first_env(meta.get("env", []))
+        env_key, env_key_name = _first_env(meta.get("env", []))
         base_names = [meta.get("baseEnv", "")] + list(meta.get("baseEnvAliases") or [])
         env_base, _ = _first_env(base_names)
         model_names = [meta.get("modelEnv", "")] + list(meta.get("modelEnvAliases") or [])
         env_model, _ = _first_env(model_names)
         if env_key:
             merged["apiKey"] = env_key
+            merged["authType"] = "bearer" if env_key_name == "ANTHROPIC_AUTH_TOKEN" else "x-api-key"
         if env_base:
             merged["baseUrl"] = env_base
         if env_model:
@@ -447,6 +452,8 @@ def configure_provider(provider_id: str, body):
         api_key = _provider_text(body.get("apiKey"), 4096, "API key")
         if api_key:
             merged["apiKey"] = api_key
+            if not body.get("useEnvironment"):
+                merged["authType"] = "x-api-key"
         elif body.get("clearKey"):
             merged["apiKey"] = ""
     if "baseUrl" in body:
@@ -588,11 +595,10 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
             # DeepSeek's Anthropic-compatible gateway thinks by default; long
             # JSON tasks can exhaust max_tokens before any text is emitted.
             payload["thinking"] = {"type": "disabled"}
-        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-        # ANTHROPIC_AUTH_TOKEN gateways expect a bearer token; official API keys
-        # use x-api-key. Sending both keeps local Claude-compatible gateways working.
-        if key:
-            headers["Authorization"] = "Bearer " + key
+        if settings.get("authType") == "bearer":
+            headers = {"Authorization": "Bearer " + key, "anthropic-version": "2023-06-01"}
+        else:
+            headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
         data = _post_json(
             _provider_endpoint(base, "/messages"),
             payload,

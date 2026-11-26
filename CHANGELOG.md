@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.1] - 2026-11-26
+
+### Fixed
+- Claude-compatible providers now send either `Authorization: Bearer` (for `ANTHROPIC_AUTH_TOKEN`) or `x-api-key` (for `ANTHROPIC_API_KEY`), not both. This avoids gateways that reject mixed auth headers.
+- Saving detected environment credentials persists the matching auth type, so a saved bearertoken continues to work after the bridge restarts without that environment variable.
+
 ## [1.11.0] - 2026-11-26
 
 ### Added
