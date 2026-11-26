@@ -89,6 +89,9 @@
     if(style){style.value='wechat';style.dispatchEvent(new w.Event('change',{bubbles:true}));await wait(120);check('chat style persisted',w.localStorage.getItem('agent-office.chat.style.v1')==='wechat');}
     shell.settings.close();
 
+    const quickTools=$('#featureQuickBar [data-feature-action="tools"]');
+    check('tools action pinned',!!quickTools);
+    if(quickTools){quickTools.click();await wait(900);check('AI settings in tools',!!$('.update-ai')&&/AI 模型服务/.test($('.update-ai').textContent));const closeTools=$('[data-update-close]');if(closeTools)closeTools.click();}
     check('capture feature removed',!$('[data-feature-action="capture"]')&&!$('.feature-capture'));
 
     finish();

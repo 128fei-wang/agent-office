@@ -65,6 +65,8 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Pinned function bar** | **Group / DM chat popup** |
 | ![Function bar](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **AI settings in Tools** | **Pinned function bar** |
+| ![AI settings](docs/screenshots/ai-tools.jpg) | ![Function bar](docs/screenshots/feature-drawer.jpg) |
 
 ## 工作可追溯 / 审计
 
@@ -364,6 +366,17 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **微信**：微信式绿色标题栏和气泡。
 
 群聊弹窗 / 单聊弹窗是独立浮窗，支持现有任务群、临时群和私聊，消息走本地 bridge；窗口右上角的 **风** 按钮可以随时切换 QQ / 微信风格。风格只改变外观，不改变消息内容。
+
+## AI 模型设置
+
+打开顶部 **`工具`**，在 **AI 模型服务** 区域查看：
+
+- 当前是否有可用模型，以及正在使用哪个 provider；
+- 豆包、DeepSeek、WorkBuddy、Gemini、Claude、OpenAI、Kimi、Qwen、Ollama 的配置状态；
+- 已配置模型的 **测试** 按钮；
+- 配置方法和一份可复制的 `~/.agent-office/providers.json` 示例。
+
+API key 只放在 bridge 所在机器的 `~/.agent-office/providers.json` 或环境变量中，不进入前端、任务记录或导出。保存后点 **刷新模型状态**；配置好模型后，Mission Control 的 **AI 设置** 入口也会直接打开工具面板。
 
 ## 自行升级
 
@@ -747,7 +760,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.8.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.9.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

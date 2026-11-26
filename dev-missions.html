@@ -113,6 +113,8 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('task estimates generated',(mission.tasks||[]).every(t=>t.estimate&&t.estimate.minutes>0&&t.estimate.tokens>0));
     check('mission evaluation generated',!!mission.evaluation&&mission.evaluation.estimatedTokens>0);
     check('member logos generated',(mission.members||[]).every(m=>!!m.logoText));
+    view.detailTab='overview';view.render();await wait(120);
+    check('AI settings shortcut',view.ai&&view.ai.available?true:!!d.querySelector('[data-mission-ai-settings]'));
     view.detailTab='eval';view.render();await wait(200);
     check('evaluation tab renders',/预计/.test($('.mission-detail-body').textContent)&&/Token/i.test($('.mission-detail-body').textContent));
     check('rules present',(mission.rules||[]).length>=5);

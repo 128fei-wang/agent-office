@@ -65,6 +65,8 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Pinned function bar** | **Group / DM chat popup** |
 | ![Function bar](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| **AI settings in Tools** | **Pinned function bar** |
+| ![AI settings](docs/screenshots/ai-tools.jpg) | ![Function bar](docs/screenshots/feature-drawer.jpg) |
 
 ## Traceability and audit
 
@@ -363,6 +365,17 @@ Every action also has a top quick button; the **☰** button opens the full func
 - **WeChat** — green header and WeChat-style bubbles.
 
 Group and direct chats open as floating windows, using existing mission groups, ad-hoc groups and DMs through the local bridge. The **风** button in the chat header cycles the QQ/WeChat appearance; it changes style only, never message content.
+
+## AI model settings
+
+Open **TOOLS** in the top bar and use the **AI model service** section to see:
+
+- whether a model is available and which provider is active;
+- configuration status for Doubao, DeepSeek, WorkBuddy, Gemini, Claude, OpenAI, Kimi, Qwen and Ollama;
+- a **Test** action for configured models;
+- setup steps and a copyable `~/.agent-office/providers.json` example.
+
+API keys stay in `~/.agent-office/providers.json` or bridge environment variables; they never enter the frontend, task records or exports. Save the file and click **Refresh model status**. Once configured, Mission Control's **AI settings** action opens the Tools panel directly.
 
 ## Tools & self-update
 

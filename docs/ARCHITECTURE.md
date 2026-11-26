@@ -90,7 +90,7 @@ flowchart LR
 | `src/i18n.js` | zh/en dictionary, `data-i18n`, language persistence and change events |
 | `src/company.js` | one-person company builder, role/task board, room chat, SSE, execution isolation |
 | `src/missions.js` | mission workspace, charter, free team selection, recommendation cards, per-task executors, groups/DMs, files/OCR, approvals, AI discussion/run, usage eval |
-| `src/update.js` | tools panel, automatic/manual update, confirmation, progress, restart detection, rollback |
+| `src/update.js` | tools panel, AI model status/setup, automatic/manual update, confirmation, progress, restart detection, rollback |
 | `src/shell.js` | pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat styles |
 | `missions.py` | mission plan, recommendation scoring, brand logos, estimates, preferred-executor assignment, no-idle coverage, chat, artifact metadata, report/approval rules, usage evaluation |
 | `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |

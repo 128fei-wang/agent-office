@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0] - 2026-11-26
+
+### Added
+- **AI model settings in Tools**: the tools panel now shows current AI availability, every provider's configuration state, a test action for configured providers, setup steps and a copyable `~/.agent-office/providers.json` example.
+- Mission Control's unavailable AI card now has an **AI settings** shortcut that closes the mission and opens Tools.
+- AI settings expose configured-but-unreachable local gateways distinctly from unconfigured providers.
+
+### Changed
+- Version bumped to 1.9.0.
+- API keys remain exclusively in the bridge file/environment; no key input is added to the frontend.
+- README, English README and architecture document the Tools AI section.
+
 ## [1.8.1] - 2026-11-26
 
 ### Changed

@@ -194,6 +194,11 @@
           self.refreshRecommendation(false);
           return;
         }
+        if (event.target.closest("[data-mission-ai-settings]")) {
+          self.close();
+          if (self.renderer && self.renderer.update) self.renderer.update.open();
+          return;
+        }
         const formClose = event.target.closest("[data-mission-form-close]");
         if (formClose) { self.formMode = ""; self.formFiles = []; self.render(); return; }
         const drop = event.target.closest("[data-pending-file-remove]");
@@ -843,8 +848,11 @@
           discussion.status === "error" ? this.t("missionAiError") :
           discussion.status === "unavailable" ? this.t("missionAiUnavailable") : this.t("missionAiPending")) +
         '</p>' + (discussion.error ? '<small>' + esc(short(discussion.error, 180)) + '</small>' : '') +
-        '</div><button class="mission-primary small" type="button" data-ai-discuss>' +
-        esc(this.t("missionAiRun")) + '</button></div>' +
+        '</div><div class="mission-discussion-actions">' +
+        (this.ai.available ? '' : '<button class="mission-mini" type="button" data-mission-ai-settings>' +
+          esc(this.t("missionAiSettings")) + '</button>') +
+        '<button class="mission-primary small" type="button" data-ai-discuss>' +
+        esc(this.t("missionAiRun")) + '</button></div></div>' +
         (decisions.length ? '<h4>' + esc(this.t("missionDecisions")) + '</h4>' +
           decisions.map((d) => '<div class="mission-decision"><b>' + esc(d.topic) + '</b><p>' +
             esc(d.outcome) + '</p><small>' + esc(d.decidedBy || 'team') + ' · ' + esc(fmtTime(d.createdAt)) + '</small></div>').join('') : '') +

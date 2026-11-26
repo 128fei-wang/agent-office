@@ -725,6 +725,7 @@ html[data-theme="day"] .mission-primary { color: #5d3ca3; }
   background: rgba(181, 140, 255, 0.05);
 }
 .mission-discussion-card > div { flex: 1; min-width: 0; }
+.mission-discussion-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .mission-discussion-card b { font-size: 8px; }
 .mission-discussion-card p { margin: 2px 0 0; color: var(--muted); font-size: 6.8px; line-height: 1.45; }
 .mission-discussion-card small { display: block; margin-top: 2px; color: var(--red); font-size: 6px; }

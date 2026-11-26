@@ -60,6 +60,10 @@
       this.waiting = false;
       this.bootId = "";
       this.checkedAt = 0;
+      this.ai = null;
+      this.aiLoading = false;
+      this.aiError = "";
+      this.aiNotice = "";
       this.params = new URLSearchParams(window.location.search);
       this.noReload = this.params.get("noUpdateReload") === "1" ||
         window.__AO_NO_UPDATE_RELOAD__ === true;
@@ -84,6 +88,19 @@
         this.root.addEventListener("click", function (event) {
           if (event.target.closest("[data-update-close]")) {
             self.close();
+            return;
+          }
+          const aiButton = event.target.closest("[data-ai-action]");
+          if (aiButton) {
+            const aiAction = aiButton.getAttribute("data-ai-action");
+            if (aiAction === "refresh") self.loadAI(true);
+            else if (aiAction === "copy-example") self.copyAIExample();
+            else if (aiAction === "open-providers") {
+              self.close();
+              if (self.external) self.external.open();
+            } else if (aiAction === "test") {
+              self.testProvider(aiButton.getAttribute("data-ai-provider"));
+            }
             return;
           }
           const button = event.target.closest("[data-update-action]");
@@ -151,6 +168,7 @@
       this.root.setAttribute("aria-hidden", "false");
       document.body.classList.add("update-open");
       this.render();
+      this.loadAI();
       if (!this.data || Date.now() - this.checkedAt > 5 * 60 * 1000) {
         this.check(false, false);
       } else if (this.job && (this.job.status === "running" || this.job.status === "restarting")) {
@@ -383,6 +401,109 @@
         '<p class="update-hint">' + esc(this.t("toolsManualHint")) + '</p></div>';
     }
 
+    async loadAI(force) {
+      if (this.aiLoading) return;
+      this.aiLoading = true;
+      this.aiError = "";
+      if (this.isOpen && force) this.render();
+      try {
+        const providers = await this.fetchJson("/providers", { timeout: 8000 });
+        let overview = {};
+        try {
+          overview = await this.fetchJson("/missions/overview", { timeout: 8000 });
+        } catch (err) {}
+        this.ai = {
+          providers: providers.providers || [],
+          configFile: providers.configFile || "providers.json",
+          configError: providers.configError || "",
+          available: !!(overview.ai && overview.ai.available),
+          provider: (overview.ai && overview.ai.provider) || ""
+        };
+      } catch (err) {
+        this.aiError = this.errorText(err);
+      } finally {
+        this.aiLoading = false;
+        if (this.isOpen) this.render();
+      }
+    }
+
+    async copyAIExample() {
+      const example = JSON.stringify({
+        deepseek: { apiKey: "sk-...", model: "deepseek-chat" },
+        gemini: { apiKey: "...", model: "gemini-2.5-flash" },
+        workbuddy: { baseUrl: "http://127.0.0.1:10108/v1", model: "hy3" }
+      }, null, 2);
+      const text = "~/.agent-office/providers.json\n\n" + example;
+      try {
+        await navigator.clipboard.writeText(text);
+        this.aiNotice = this.t("aiExampleCopied");
+        this.render();
+      } catch (err) {
+        this.aiNotice = example;
+        this.render();
+      }
+    }
+
+    async testProvider(providerId) {
+      if (!providerId || this.aiLoading) return;
+      this.aiNotice = this.t("aiTesting");
+      this.render();
+      try {
+        const result = await this.fetchJson("/providers/" + encodeURIComponent(providerId) + "/test", {
+          method: "POST", body: "{}", timeout: 45000
+        });
+        this.aiNotice = this.t("aiTestOk", {
+          provider: providerId,
+          tokens: (result.tokensIn || 0) + "/" + (result.tokensOut || 0),
+          ms: result.durationMs || 0
+        });
+      } catch (err) {
+        this.aiNotice = this.t("aiTestFailed") + " " + this.errorText(err);
+      }
+      await this.loadAI(true);
+    }
+
+    aiBlock() {
+      if (!this.ai && !this.aiLoading && !this.aiError) return "";
+      const ai = this.ai || { providers: [], available: false, provider: "" };
+      const configuredCount = (ai.providers || []).filter((item) => item.configured).length;
+      const state = ai.available ? this.t("aiAvailable") :
+        (ai.configError ? this.t("aiConfigBroken") :
+          (configuredCount ? this.t("aiConfiguredUnreachable") : this.t("aiUnavailable")));
+      const rows = (ai.providers || []).map((provider) => {
+        const configured = !!provider.configured;
+        return '<div class="ai-provider-row"><span class="ai-provider-dot ' + (configured ? "ok" : "off") + '"></span>' +
+          '<div><b>' + esc(provider.name || provider.id) + '</b><em>' + esc(provider.vendor || provider.protocol || "") +
+          ' · ' + esc(provider.model || "") + '</em></div>' +
+          '<span class="ai-provider-state ' + (configured ? "ok" : "off") + '">' +
+          esc(configured ? this.t("aiConfigured") : this.t("aiNotConfigured")) + '</span>' +
+          (configured ? '<button type="button" class="update-mini" data-ai-action="test" data-ai-provider="' +
+            esc(provider.id) + '">' + esc(this.t("aiTest")) + '</button>' : '') +
+          '</div>';
+      }).join("");
+      return '<div class="update-section update-ai">' +
+        '<div class="update-ai-head"><div><span>AI SETTINGS</span><h3>' + esc(this.t("aiTitle")) + '</h3></div>' +
+        '<b class="ai-status ' + (ai.available ? "ok" : "off") + '">' + esc(state) +
+        (ai.provider ? ' · ' + esc(ai.provider) : '') + '</b></div>' +
+        '<p class="update-hint">' + esc(this.t("aiHint")) + '</p>' +
+        (this.aiError ? '<div class="update-result bad"><b>' + esc(this.t("aiLoadError")) +
+          '</b><p>' + esc(this.aiError) + '</p></div>' : "") +
+        (this.aiLoading ? '<div class="update-loading small"><div class="update-spinner"></div><span>' +
+          esc(this.t("aiLoading")) + '</span></div>' : "") +
+        '<div class="ai-provider-list">' + (rows || '<p class="update-hint">' + esc(this.t("aiNoProviders")) + '</p>') + '</div>' +
+        '<div class="ai-config-box"><b>' + esc(this.t("aiHowTo")) + '</b>' +
+        '<ol><li>' + esc(this.t("aiStep1")) + '</li><li>' + esc(this.t("aiStep2")) +
+        '</li><li>' + esc(this.t("aiStep3")) + '</li></ol>' +
+        '<code>~/.agent-office/providers.json</code>' +
+        '<pre>{ "deepseek": { "apiKey": "sk-...", "model": "deepseek-chat" } }</pre>' +
+        '<p class="update-hint">' + esc(this.t("aiKeySafety")) + '</p></div>' +
+        (this.aiNotice ? '<p class="update-hint ai-notice">' + esc(this.aiNotice) + '</p>' : "") +
+        '<div class="update-actions"><button type="button" class="btn" data-ai-action="refresh">' +
+        esc(this.t("aiRefresh")) + '</button><button type="button" class="btn ghost" data-ai-action="copy-example">' +
+        esc(this.t("aiCopyExample")) + '</button><button type="button" class="btn ghost" data-ai-action="open-providers">' +
+        esc(this.t("aiOpenManage")) + '</button></div></div>';
+    }
+
     toolsBlock() {
       return '<div class="update-section update-tools">' +
         '<h3>' + esc(this.t("toolsCli")) + '</h3>' +
@@ -481,6 +602,7 @@
         }
       }
       if (job) body += this.jobBlock();
+      if (!busy && !this.confirm) body += this.aiBlock();
       if (!busy && !this.confirm) body += this.manualBlock();
       if (!busy) body += this.toolsBlock();
       if (this.confirm) body += this.confirmBlock();
