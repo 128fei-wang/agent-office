@@ -378,7 +378,7 @@ Open **Tools → AI model service → Connect AI in 3 steps**, or use **AI setti
 
 The bridge now recognises `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` and similar environment variables, so credentials no longer appear missing just because they use a gateway-style variable name. Keys are written only to `~/.agent-office/providers.json` (mode `0600`) and never enter browser storage, task records, logs or the repo.
 
-When creating a mission, enable **Run automatically after creation (discuss → assign → execute → report)**. Agents execute dependency-ready tasks in order and auto-verify the reports. Only spend, decision, login and authorization gates pause the run; approving resumes it. Existing missions get a **Run automatically** button in the overview. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
+When creating a mission, enable **Run automatically after creation (discuss → assign → execute → report)**. Every mission also has a persistent command bar showing Discuss, Approvals, Execute and Report, plus whether you need to act. A mission with a finished discussion but no execution gets **Start N tasks**; a mission with no plan gets **Discuss & run** in one click. Only spend, decision, login and authorization gates pause the run; approving resumes it. See [docs/AI_SETUP.md](docs/AI_SETUP.md).
 
 ## MCP deployment
 

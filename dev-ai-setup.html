@@ -83,7 +83,16 @@
       mv.open();await mv.refreshAll(false);await mv.selectMission(createdMission.id);await wait(300);
       const card=$('.mission-autorun-card');
       check('autorun card renders',!!card&&/AI 全自动执行/.test(card.textContent));
-      check('autorun start control',!!$('[data-mission-autorun]')||/3 步接入 AI/.test((card||{}).textContent||''));
+      check('command bar renders',!!$('.mission-command')&&/下一步/.test($('.mission-command').textContent));
+      check('four flow steps',$$('.mission-flow-step').length===4);
+      check('boss next action',/需要你操作/.test($('.mission-command').textContent));
+      check('autorun start control',!!$('.mission-command [data-mission-autorun]')||/3 步接入 AI/.test($('.mission-command').textContent||''));
+      // Simulate the exact state from the reported incident: discussion finished, execution not started.
+      mv.mission.discussion={status:'done'};
+      mv.mission.autoRun={status:'off',completed:0,total:(mv.mission.tasks||[]).length};
+      mv.render();await wait(100);
+      check('discussed mission shows start',/开始执行/.test($('.mission-command').textContent||''));
+      check('discussed mission marks boss action',/需要你操作/.test($('.mission-command').textContent||''));
       await w.fetch(bridge+'/missions/'+createdMission.id,{method:'DELETE'});
       mv.close();
     }

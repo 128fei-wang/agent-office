@@ -381,7 +381,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 bridge 现在会识别 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` 等本机环境变量，不再出现“明明有凭据却显示 AI 不可用”。密钥只写入本机 `~/.agent-office/providers.json`（权限 `0600`），不进入浏览器存储、任务记录、日志或仓库。
 
-创建任务时勾选 **创建后全自动执行（讨论 → 分配 → 执行 → 汇报）**，Agent 会按依赖顺序逐个执行并自动验收；只有花费、拍板、扫码登录、授权四类老板门禁会暂停，批准后自动继续。已有任务可在概览里点 **全自动执行**。详细规则见 [docs/AI_SETUP.md](docs/AI_SETUP.md)。
+创建任务时勾选 **创建后全自动执行（讨论 → 分配 → 执行 → 汇报）**。每个任务顶部还有常驻状态条：讨论、审批、执行、汇报四个阶段一目了然，并明确显示「需要你操作」还是「无需操作」。讨论完成但未启动的任务直接点 **开始执行 N 个任务**；还没有计划的点 **讨论并执行**，一次完成讨论和启动。只有花费、拍板、扫码登录、授权四类老板门禁会暂停，批准后自动继续。详细规则见 [docs/AI_SETUP.md](docs/AI_SETUP.md)。
 
 ## MCP 部署
 
@@ -786,7 +786,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.11.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.12.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

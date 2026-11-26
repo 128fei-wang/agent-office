@@ -88,7 +88,7 @@ html[data-theme="day"] .mission-trigger { color: #6b47b3 !important; }
   border-radius: 4px;
   background: var(--panel-2);
   color: var(--muted);
-  font-size: 7.5px;
+  font-size: 8.5px;
   white-space: nowrap;
 }
 .mission-head-btn:hover { color: var(--text); border-color: var(--muted-2); }
@@ -1244,3 +1244,112 @@ html[data-theme="day"] .mission-autorun-card p { color: #556b76; }
 .mission-mini.danger { color: var(--red); border-color: rgba(255, 107, 107, 0.32); }
 .mission-autorun-card.stopped .mission-autorun-head span { color: var(--muted); border-color: var(--line); }
 .mission-autorun-card.stopped .mission-autorun-bar i { background: var(--muted-2); }
+
+/* ------------------------------------------------ mission command bar */
+.mission-command {
+  flex: none;
+  padding: 7px 12px 9px;
+  border-bottom: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(85, 214, 194, 0.045), rgba(8, 15, 22, 0.2));
+}
+.mission-command.warn { background: linear-gradient(180deg, rgba(242, 181, 68, 0.06), rgba(8, 15, 22, 0.2)); }
+.mission-command.run { background: linear-gradient(180deg, rgba(85, 214, 194, 0.075), rgba(8, 15, 22, 0.2)); }
+.mission-command.done { background: linear-gradient(180deg, rgba(123, 216, 143, 0.06), rgba(8, 15, 22, 0.2)); }
+.mission-command.error { background: linear-gradient(180deg, rgba(255, 107, 107, 0.07), rgba(8, 15, 22, 0.2)); }
+.mission-flow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mission-flow::-webkit-scrollbar { display: none; }
+.mission-flow-step {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+.mission-flow-step i {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 6px;
+  font-style: normal;
+}
+.mission-flow-step b { font-size: 8px; font-weight: 500; }
+.mission-flow-step em { color: var(--muted-2); font-family: var(--mono); font-size: 6.8px; font-style: normal; }
+.mission-flow-step.done { color: #7bd88f; border-color: rgba(123, 216, 143, 0.25); }
+.mission-flow-step.done i { border-color: rgba(123, 216, 143, 0.4); }
+.mission-flow-step.run { color: var(--cyan); border-color: rgba(85, 214, 194, 0.3); }
+.mission-flow-step.run i { border-color: rgba(85, 214, 194, 0.5); }
+.mission-flow-step.warn { color: var(--amber); border-color: rgba(242, 181, 68, 0.32); }
+.mission-flow-step.warn i { border-color: rgba(242, 181, 68, 0.45); }
+.mission-command-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  min-width: 0;
+}
+.mission-command-copy { flex: 1; min-width: 0; }
+.mission-command-copy span {
+  display: block;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 0.3px;
+}
+.mission-command.warn .mission-command-copy span { color: var(--amber); }
+.mission-command.run .mission-command-copy span { color: var(--cyan); }
+.mission-command.done .mission-command-copy span { color: #7bd88f; }
+.mission-command.error .mission-command-copy span { color: var(--red); }
+.mission-command-copy b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.mission-command-actions { flex: none; display: flex; gap: 5px; }
+.mission-command-btn {
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 8.5px;
+  white-space: nowrap;
+}
+.mission-command-btn:hover { color: var(--text); border-color: var(--muted-2); }
+.mission-command-btn.primary {
+  border-color: rgba(85, 214, 194, 0.42);
+  background: rgba(85, 214, 194, 0.13);
+  color: var(--cyan);
+}
+.mission-command-btn.danger { color: var(--red); border-color: rgba(255, 107, 107, 0.3); }
+html[data-theme="day"] .mission-command { background: #f1f8f5; border-color: #d8e8e2; }
+html[data-theme="day"] .mission-command.warn { background: #fff8e8; }
+html[data-theme="day"] .mission-command.run { background: #eef9f7; }
+html[data-theme="day"] .mission-command.done { background: #f0faf2; }
+html[data-theme="day"] .mission-command.error { background: #fff2f2; }
+html[data-theme="day"] .mission-command-btn { background: #fffaf2; color: #40515b; }
+html[data-theme="day"] .mission-command-btn.primary { color: #1f6f64; background: #e8f7f3; border-color: #a8dcd2; }
+@media (max-width: 620px) {
+  .mission-command { padding: 6px 9px 8px; }
+  .mission-command-row { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .mission-command-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+}

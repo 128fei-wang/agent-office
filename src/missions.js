@@ -190,7 +190,11 @@
         const run = event.target.closest("[data-ai-task]");
         if (run) { self.runTask(run.getAttribute("data-ai-task"), run); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
-        if (event.target.closest("[data-mission-autorun]")) { self.startAutorun(); return; }
+        const autorun = event.target.closest("[data-mission-autorun]");
+        if (autorun) {
+          self.startAutorun(autorun.getAttribute("data-mission-autorun") === "discuss");
+          return;
+        }
         if (event.target.closest("[data-mission-autorun-stop]")) { self.stopAutorun(); return; }
         if (event.target.closest("[data-mission-recommend]")) {
           self.refreshRecommendation(false);
@@ -788,6 +792,7 @@
         (isMission ? '<button type="button" class="mission-mini" data-detail-tab="tasks">' +
           esc(this.t("missionTabTasks")) + '</button>' : '') +
         '</div></header>' +
+        (isMission ? this.missionCommand(this.mission) : '') +
         '<div class="mission-messages" id="missionMessages">' +
         (this.messages.length ? this.messages.map((m) => this.messageHTML(m)).join("") :
           '<div class="mission-empty small">' + esc(this.t("missionNoMessagesHint")) + '</div>') +
@@ -887,8 +892,9 @@
         '</div><div class="mission-discussion-actions">' +
         (this.ai.available ? '' : '<button class="mission-mini" type="button" data-mission-ai-settings>' +
           esc(this.t("missionAiSettings")) + '</button>') +
-        '<button class="mission-primary small" type="button" data-ai-discuss>' +
-        esc(this.t("missionAiRun")) + '</button></div></div>' +
+        '<button class="mission-mini" type="button" data-ai-discuss>' +
+        esc(discussion.status === "done" || discussion.status === "partial" ?
+          this.t("missionAiRediscuss") : this.t("missionAiDiscussOnly")) + '</button></div></div>' +
         (decisions.length ? '<h4>' + esc(this.t("missionDecisions")) + '</h4>' +
           decisions.map((d) => '<div class="mission-decision"><b>' + esc(d.topic) + '</b><p>' +
             esc(d.outcome) + '</p><small>' + esc(d.decidedBy || 'team') + ' · ' + esc(fmtTime(d.createdAt)) + '</small></div>').join('') : '') +
@@ -1194,6 +1200,117 @@
       return !!(agent && agent.source === "external");
     }
 
+    flowStep(number, label, status, stateLabel) {
+      return '<span class="mission-flow-step ' + esc(status) + '"><i>' + number + '</i><b>' +
+        esc(label) + '</b><em>' + esc(stateLabel) + '</em></span>';
+    }
+
+    missionCommand(m) {
+      if (!m) return "";
+      const tasks = m.tasks || [];
+      const total = tasks.length;
+      const done = tasks.filter(function (t) { return t.status === "done"; }).length;
+      const approvals = m.approvals || [];
+      const pending = approvals.filter(function (a) { return a.status === "pending"; }).length ||
+        ((m.stats && m.stats.approvals) || 0);
+      const approved = approvals.filter(function (a) { return a.status === "approved"; }).length;
+      const discussion = m.discussion || {};
+      const discussing = discussion.status === "running" || discussion.status === "queued";
+      const discussed = discussion.status === "done" || discussion.status === "partial";
+      const auto = m.autoRun || {};
+      const autoStatus = auto.status || "off";
+      const active = ["pending", "queued", "discussing", "running"].indexOf(autoStatus) >= 0;
+      const autoDiscussing = discussing || autoStatus === "discussing";
+      const executing = autoStatus === "running" || (active && discussed);
+      const allDone = total > 0 && done >= total;
+      const aiReady = !!(this.ai && this.ai.available);
+      const nextTask = tasks.find(function (t) { return t.status !== "done"; }) || {};
+      const current = auto.currentTaskTitle || nextTask.title || "";
+
+      let tone = "idle";
+      let boss = false;
+      let title = this.t("missionNextPending");
+      let actions = "";
+
+      if (pending) {
+        tone = "warn"; boss = true;
+        title = this.t("missionNextApprovals", { count: pending });
+        actions = '<button type="button" class="mission-command-btn primary" data-detail-tab="approvals">' +
+          esc(this.t("missionHandleApprovals")) + '</button>';
+      } else if (allDone) {
+        tone = "done"; boss = false;
+        title = this.t("missionNextDone");
+        actions = '<button type="button" class="mission-command-btn" data-detail-tab="tasks">' +
+          esc(this.t("missionViewPlan")) + '</button>';
+      } else if (active) {
+        tone = "run"; boss = false;
+        title = autoDiscussing ? this.t("missionNextDiscussing") : this.t("missionNextRunning", {
+          done: done, total: total, task: current || this.t("missionWorking")
+        });
+        actions = '<button type="button" class="mission-command-btn danger" data-mission-autorun-stop>' +
+          esc(this.t("missionAutoRunStop")) + '</button>';
+      } else if (discussing) {
+        tone = "run"; boss = false;
+        title = this.t("missionNextDiscussing");
+      } else if (!aiReady) {
+        tone = "warn"; boss = true;
+        title = this.t("missionNextAi");
+        actions = '<button type="button" class="mission-command-btn primary" data-mission-ai-settings>' +
+          esc(this.t("missionAutoRunSetup")) + '</button>';
+      } else if (discussed) {
+        if (autoStatus === "error") {
+          tone = "error"; boss = true;
+          title = this.t("missionNextError", { error: short(auto.error || "", 160) });
+        } else if (autoStatus === "stopped") {
+          tone = "warn"; boss = true;
+          title = this.t("missionNextStopped", { done: done, total: total });
+        } else {
+          tone = "warn"; boss = true;
+          title = this.t("missionNextStart", {
+            count: total - done, task: nextTask.title || this.t("missionWorking")
+          });
+        }
+        actions = '<button type="button" class="mission-command-btn primary" data-mission-autorun="run">' +
+          esc(this.t(autoStatus === "error" || autoStatus === "stopped" ?
+            "missionAutoRunRestart" : "missionStartTasks", { count: total - done })) + '</button>' +
+          '<button type="button" class="mission-command-btn" data-detail-tab="tasks">' +
+          esc(this.t("missionViewPlan")) + '</button>';
+      } else {
+        tone = "warn"; boss = true;
+        title = this.t("missionNextDiscuss");
+        actions = '<button type="button" class="mission-command-btn primary" data-mission-autorun="discuss">' +
+          esc(this.t("missionDiscussAndRun")) + '</button>' +
+          '<button type="button" class="mission-command-btn" data-detail-tab="tasks">' +
+          esc(this.t("missionViewPlan")) + '</button>';
+      }
+
+      const discussState = discussed ? "done" : (discussing ? "run" : "wait");
+      const approveState = pending ? "warn" : (approved ? "done" : "wait");
+      const executeState = allDone ? "done" : (executing ? "run" : "wait");
+      const reportState = allDone ? "done" : (done ? "run" : "wait");
+      const discussLabel = discussed ? this.t("missionFlowDone") :
+        (discussing ? this.t("missionFlowRunning") : this.t("missionFlowWait"));
+      const approveLabel = pending ? this.t("missionPendingCount", { count: pending }) :
+        (approved ? this.t("missionApprovedCount", { count: approved }) : this.t("missionFlowNoNeed"));
+      const executeLabel = allDone ? this.t("missionFlowDone") :
+        (executing ? (done + "/" + total) : this.t("missionFlowWait"));
+      const reportLabel = allDone ? this.t("missionFlowDone") :
+        (done ? (done + "/" + total) : this.t("missionFlowWait"));
+
+      return '<div class="mission-command ' + esc(tone) + '">' +
+        '<div class="mission-flow">' +
+        this.flowStep(1, this.t("missionFlowDiscuss"), discussState, discussLabel) +
+        this.flowStep(2, this.t("missionFlowApprove"), approveState, approveLabel) +
+        this.flowStep(3, this.t("missionFlowExecute"), executeState, executeLabel) +
+        this.flowStep(4, this.t("missionFlowReport"), reportState, reportLabel) +
+        '</div>' +
+        '<div class="mission-command-row"><div class="mission-command-copy"><span>' +
+        esc(this.t("missionNextLabel")) + ' · ' + esc(boss ? this.t("missionNextBoss") : this.t("missionNextAuto")) +
+        '</span><b>' + esc(title) + '</b>' +
+        '</div>' + (actions ? '<div class="mission-command-actions">' + actions + '</div>' : '') +
+        '</div></div>';
+    }
+
     aiStateHTML() {
       if (this.ai && this.ai.available) {
         return '<span class="mission-ai-state ok">' + esc(this.t("missionAutoRunReady")) +
@@ -1227,22 +1344,6 @@
       const total = Number(auto.total || (m.stats && m.stats.tasks) || 0);
       const done = Number(auto.completed || (m.stats && m.stats.done) || 0);
       const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
-      let actions = "";
-      if (active) {
-        actions = '<button type="button" class="mission-mini danger" data-mission-autorun-stop>' +
-          esc(this.t("missionAutoRunStop")) + '</button>';
-      } else if (status === "waiting_boss") {
-        actions = '<button type="button" class="mission-mini" data-mission-autorun-stop>' +
-          esc(this.t("missionAutoRunStop")) + '</button><button type="button" class="mission-mini" data-detail-tab="approvals">' +
-          esc(this.t("missionApprovals")) + '</button>';
-      } else if (!this.ai.available) {
-        actions = '<button type="button" class="mission-mini" data-mission-ai-settings>' +
-          esc(this.t("missionAutoRunSetup")) + '</button>';
-      } else if (status !== "done") {
-        actions = '<button type="button" class="mission-primary small" data-mission-autorun>' +
-          esc(status === "error" || status === "stopped" ? this.t("missionAutoRunRestart") : this.t("missionAutoRunStart")) +
-          '</button>';
-      }
       const hint = status === "waiting_boss" ? this.t("missionAutoRunPausedHint") :
         status === "done" ? this.t("missionAutoRunDoneHint") :
         status === "stopped" ? this.t("missionAutoRunStoppedHint") :
@@ -1259,16 +1360,15 @@
           task: auto.currentTaskTitle
         })) + '</p>' : '') +
         '<p class="mission-autorun-hint">' + esc(hint) + '</p>' +
-        (actions ? '<div class="mission-autorun-actions">' + actions + '</div>' : '') +
         '</div>';
     }
 
-    async startAutorun() {
+    async startAutorun(forceDiscuss) {
       if (!this.mission) return;
       const missionId = this.mission.id;
       try {
         await this.api("/missions/" + encodeURIComponent(missionId) + "/autorun", {
-          method: "POST", body: JSON.stringify({})
+          method: "POST", body: JSON.stringify({ discuss: !!forceDiscuss })
         }, 30000);
         this.toast(this.t("missionAutoRunStarted"));
         await this.loadActive();

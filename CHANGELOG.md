@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.12.0] - 2026-11-26
+
+### Added
+- **Mission command bar**: every mission now shows a persistent four-stage strip (讨论 → 审批 → 执行 → 汇报) and a labelled next action across all detail tabs. The bar says whether the founder needs to act, what is waiting, and what will happen next.
+- **One-click existing missions**: a mission whose discussion is complete but never started now shows **Start N tasks**; a mission with no plan shows **Discuss & run**, which discusses and executes in one click.
+- **Discussion handoff message**: when a discussion finishes, the chat receives a clear next-step message instead of leaving the user guessing.
+- The auto-run overview card is now informational; the command bar is the single run/stop/approval control.
+
+### Changed
+- `POST /missions/<id>/autorun` accepts `{"discuss": true}` to force discussion before execution.
+- The AI discussion card's action is now a secondary **Discuss only / Discuss again**, so it no longer competes with the primary next action.
+- Version bumped to 1.12.0.
+
 ## [1.11.1] - 2026-11-26
 
 ### Fixed

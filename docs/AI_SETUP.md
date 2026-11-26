@@ -65,6 +65,30 @@ Existing missions get an **AI auto-run** card in the mission overview with a
 **Run automatically** button. It can resume from current progress. The same card
 has a **Stop** action; stopping keeps completed reports and deliverables.
 
+## Mission status bar
+
+Every mission shows a persistent command bar above the chat, on every detail tab:
+
+```text
+1 Discuss  →  2 Approvals  →  3 Execute  →  4 Report
+Next · You need to act
+Plan ready: 7 tasks waiting. First up: requirements review.
+[Start 7 tasks] [View plan]
+```
+
+- If no plan exists, the action is **Discuss & run**; the bridge discusses first,
+  then starts execution in the same click.
+- If the discussion is complete but execution has not started, the action is
+  **Start N tasks**. This is the case for missions created before auto-run was
+  enabled.
+- If approvals are pending, the bar says so and takes you to the approval cards.
+- While running, the bar shows the current task and offers **Stop**; the label
+  says **No action needed**.
+- When finished, it shows **All tasks complete** and links to the plan/reports.
+
+The bar is intentionally the single run control. The overview auto-run card is
+informational, so users do not have to hunt through tabs to find the next step.
+
 ## Security
 
 - Keys are written only to `~/.agent-office/providers.json` with mode `0600`
@@ -94,7 +118,7 @@ credential, test before save, and hide endpoint/model details under Advanced.
 - `POST /providers/<id>/configure` — `{ apiKey?, baseUrl?, model?,
   useEnvironment?: true }`; validates, tests, then saves atomically.
 - `POST /providers/<id>/test` — test an already saved provider.
-- `POST /missions/<id>/autorun` — start or resume auto-run.
+- `POST /missions/<id>/autorun` — start or resume auto-run. Send `{ "discuss": true }` to discuss first.
 - `POST /missions/<id>/autorun/stop` — stop at the next safe point; completed work is kept.
 - `POST /approvals/<id>/resolve` — resolving a pending gate also resumes a
   paused auto-run.

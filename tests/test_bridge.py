@@ -487,6 +487,32 @@ class BridgeTest(unittest.TestCase):
                             for r in reports))
         self.request("/missions/%s" % mission_id, "DELETE")
 
+    def test_mission_autorun_can_discuss_then_run(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Discuss then run",
+            "description": "Prepare a short weekly report and deliver it.",
+            "acceptance": "The plan is discussed and every task completes.",
+            "autoDiscuss": False,
+            "autoRun": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        status, started = self.request(
+            "/missions/%s/autorun" % mission_id, "POST", {"discuss": True})
+        self.assertEqual(status, 202, started)
+        deadline = time.time() + 25
+        latest = data["mission"]
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            latest = detail["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("done", "error"):
+                break
+            time.sleep(0.2)
+        self.assertEqual((latest.get("autoRun") or {}).get("status"), "done", latest)
+        self.assertIn((latest.get("discussion") or {}).get("status"), ("done", "partial"))
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
+        self.request("/missions/%s" % mission_id, "DELETE")
+
     def test_mission_autorun_stop_endpoint(self):
         status, data = self.request("/missions", "POST", {
             "title": "Stop auto mission",

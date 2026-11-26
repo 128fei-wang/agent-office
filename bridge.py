@@ -950,6 +950,24 @@ def _mission_discussion_prompt(mission):
     )
 
 
+def _mission_discussion_next_message(mission):
+    if not mission or not MISSION_STORE:
+        return
+    auto = mission.get("autoRun") or {}
+    if mission.get("language") == "en":
+        text = ("Discussion complete; the plan is ready. " +
+                ("Auto-run will continue through the tasks and pause only for founder gates." if auto.get("enabled") else
+                 "Execution has not started. Use Start tasks at the top of the mission."))
+    else:
+        text = ("讨论完成，计划已生成。" +
+                ("接下来会自动执行任务；只有花费、拍板、扫码登录、授权会暂停等你审批。" if auto.get("enabled") else
+                 "执行尚未开始；请在任务顶部点击「开始执行」或「讨论并执行」。"))
+    try:
+        MISSION_STORE._system_message(mission, "system", text)
+    except Exception:
+        pass
+
+
 def _apply_mission_discussion(mission_id, data, provider_id, usage=None):
     if not MISSION_STORE or not missions:
         return
@@ -1015,6 +1033,7 @@ def _apply_mission_discussion_locked(mission_id, data, provider_id, usage=None):
         mission_id, status="done", provider=provider_id, finishedAt=now_iso(),
         error="", messages=applied, usage=usage or {},
     )
+    _mission_discussion_next_message(mission)
 
 
 def _run_mission_discussion(mission_id, preferred=""):
@@ -1072,6 +1091,7 @@ def _run_mission_discussion(mission_id, preferred=""):
                     finishedAt=now_iso(), error="model returned non-JSON discussion",
                     usage=usage,
                 )
+                _mission_discussion_next_message(mission)
                 return
             _apply_mission_discussion(mission_id, parsed, provider_id, usage)
             return
@@ -1136,7 +1156,7 @@ def _mission_pending_approvals(mission):
     ]
 
 
-def _run_mission_autorun(mission_id, preferred=""):
+def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
     """Run discussion, then execute every dependency-ready task.
 
     The provider model acts as the execution engine for the task owner. Reports
@@ -1179,7 +1199,7 @@ def _run_mission_autorun(mission_id, preferred=""):
         with MISSION_STORE.lock:
             mission = MISSION_STORE.find_mission(mission_id)
             discussion = (mission or {}).get("discussion") or {}
-        if mission and mission.get("autoDiscuss") and discussion.get("status") not in ("done", "partial"):
+        if mission and (mission.get("autoDiscuss") or force_discuss) and discussion.get("status") not in ("done", "partial"):
             _run_mission_discussion(mission_id, preferred)
 
         for _ in range(200):
@@ -1319,7 +1339,7 @@ def _run_mission_autorun(mission_id, preferred=""):
             MISSION_AUTORUN_STOP.discard(mission_id)
 
 
-def start_mission_autorun(mission_id, preferred=""):
+def start_mission_autorun(mission_id, preferred="", force_discuss=False):
     if not MISSION_STORE:
         raise ValueError("mission store is not available")
     with MISSION_STORE.lock:
@@ -1341,7 +1361,7 @@ def start_mission_autorun(mission_id, preferred=""):
             finishedAt="", error="", currentTaskId="", currentTaskTitle="",
         )
     thread = threading.Thread(
-        target=_run_mission_autorun, args=(mission_id, preferred), daemon=True
+        target=_run_mission_autorun, args=(mission_id, preferred, force_discuss), daemon=True
     )
     thread.start()
     return auto
@@ -3205,7 +3225,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path.startswith("/missions/") and path.endswith("/autorun"):
                 mission_id = path.split("/")[2]
-                auto = start_mission_autorun(mission_id, str(body.get("providerId") or ""))
+                auto = start_mission_autorun(
+                    mission_id, str(body.get("providerId") or ""),
+                    bool(body.get("discuss")),
+                )
                 mission = MISSION_STORE.get_mission(mission_id)
                 self.send_json({"ok": True, "autoRun": auto, "mission": mission}, 202)
                 return
