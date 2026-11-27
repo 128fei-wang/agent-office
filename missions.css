@@ -2150,3 +2150,34 @@ html[data-theme="day"] .mission-deliverable-warning { border-color: #e2c17a; bac
 
 .mission-file-add.mission-download-all { text-decoration: none; border-color: rgba(85, 214, 194, 0.28); color: #7fe6d6; }
 .mission-file-add.mission-download-all:hover { background: rgba(85, 214, 194, 0.08); }
+
+/* context + token estimate */
+.mission-context-card {
+  margin: 12px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(85, 214, 194, 0.2);
+  border-radius: 11px;
+  background:
+    radial-gradient(360px 140px at 100% 0%, rgba(85, 214, 194, 0.08), transparent 70%),
+    rgba(85, 214, 194, 0.035);
+}
+.mission-context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mission-context-head span { display: block; color: #55d6c2; font-family: var(--mono); font-size: 7.5px; letter-spacing: 1.3px; }
+.mission-context-head b { display: block; margin-top: 4px; color: #e5f0f5; font-size: 12px; font-weight: 550; }
+.mission-context-head em { padding: 3px 7px; border: 1px solid rgba(85, 214, 194, 0.22); border-radius: 999px; color: #7fe6d6; font-family: var(--mono); font-size: 7px; font-style: normal; white-space: nowrap; }
+.mission-context-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.mission-context-grid > div { min-width: 0; padding: 7px 8px; border: 1px solid rgba(255, 255, 255, 0.055); border-radius: 7px; background: rgba(255, 255, 255, 0.025); }
+.mission-context-grid span { display: block; color: #6f8798; font-family: var(--mono); font-size: 6.5px; letter-spacing: .35px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mission-context-grid b { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2edf2; font-family: var(--mono); font-size: 10px; font-weight: 500; }
+.mission-context-sources { margin: 9px 0 0; color: #7b929e; font-size: 8px; line-height: 1.5; }
+.mission-context-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+html[data-theme="day"] .mission-context-card { border-color: #cfe5dd; background: #f3faf7; }
+html[data-theme="day"] .mission-context-head b { color: #2d4046; }
+html[data-theme="day"] .mission-context-head span { color: #0b7568; }
+html[data-theme="day"] .mission-context-head em { border-color: #a9d8cd; color: #0b7568; }
+html[data-theme="day"] .mission-context-grid > div { border-color: #e2e9e5; background: #fffdf8; }
+html[data-theme="day"] .mission-context-grid b { color: #344852; }
+html[data-theme="day"] .mission-context-sources { color: #6b7d80; }
+@media (max-width: 760px) {
+  .mission-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -44,7 +44,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       templateBtn.click();await wait(120);
       check('template fills title',/电商/.test(form.elements.title.value),form.elements.title.value);
       check('template fills acceptance',form.elements.acceptance.value.length>10);
-      check('template fills token budget',Number(form.elements.tokenBudget.value)>=100000);
+      check('template has no token cap',!form.elements.tokenBudget);
     }
     form.elements.title.value=title;
     form.elements.description.value='为自检创建一条真实任务，包含文档和图片附件、任务规则、自动分配和审批。';
@@ -58,9 +58,9 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     }
     check('agent picker rendered',picks.length>=6,'agents='+picks.length);
     const checkedPicks=Array.from(d.querySelectorAll('[data-team-agent]:checked'));
-    check('token budget field rendered',!!form.elements.tokenBudget);
+    check('no token cap field rendered',!form.elements.tokenBudget);
+    check('token estimate note rendered',/Token 上限|预估|不设/.test(form.textContent));
     check('scheduled start field rendered',!!form.elements.scheduleAt);
-    if(form.elements.tokenBudget)form.elements.tokenBudget.value='200000';
     check('auto team preselected',checkedPicks.length>=2);
     const pickInfo=(id)=>(view.data.agents||[]).find(a=>a.id===id)||{};
     check('external agents recommended',checkedPicks.every(el=>pickInfo(el.getAttribute('data-team-agent')).source==='external'),
@@ -125,14 +125,16 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('members assigned',(mission.members||[]).every(m=>(mission.tasks||[]).some(t=>t.assigneeId===m.id)));
     check('task estimates generated',(mission.tasks||[]).every(t=>t.estimate&&t.estimate.minutes>0&&t.estimate.tokens>0));
     check('mission evaluation generated',!!mission.evaluation&&mission.evaluation.estimatedTokens>0);
-    check('token budget persisted',mission.tokenBudget===200000,mission.tokenBudget);
-    check('token budget in evaluation',mission.evaluation&&mission.evaluation.tokenBudget===200000);
+    check('task has no token cap',mission.tokenBudget===0,mission.tokenBudget);
+    check('context insight generated',!!mission.contextInsight&&mission.contextInsight.estimatedTotalTokens>0);
+    check('no budget in evaluation',mission.evaluation&&mission.evaluation.tokenBudget===0);
     check('member logos generated',(mission.members||[]).every(m=>!!m.logoText));
     view.detailTab='overview';view.render();await wait(120);
     check('AI settings shortcut',view.ai&&view.ai.available?true:!!d.querySelector('[data-mission-ai-settings]'));
     view.detailTab='eval';view.render();await wait(200);
     check('evaluation tab renders',/预计/.test($('.mission-detail-body').textContent)&&/Token/i.test($('.mission-detail-body').textContent));
-    check('token budget editor rendered',!!$('#missionTokenBudget')&&!!$('[data-mission-budget-save]'));
+    check('context insight panel rendered',!!$('.mission-context-card')&&/预估输入/.test($('.mission-detail-body').textContent));
+    check('no token budget editor',!$('#missionTokenBudget')&&!$('[data-mission-budget-save]'));
     check('rules present',(mission.rules||[]).length>=5);
     check('document attachment stored',(mission.artifacts||[]).some(a=>a.name==='brief.md'&&/自检文档内容/.test(a.extractedText||'')));
     check('image attachment stored',(mission.artifacts||[]).some(a=>a.kind==='image'));
@@ -143,6 +145,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     finished.coverage={total:finished.members.length,assigned:finished.members.length,idle:[],noIdle:true,completed:true};
     const nextPayload=view.nextRoundPayload(finished);
     check('next round payload',!!nextPayload&&nextPayload.previousMissionId===mission.id);
+    check('next round has no cap',nextPayload&&nextPayload.tokenBudget===0);
     check('next round title',!!nextPayload&&/第 2 轮/.test(nextPayload.title),nextPayload&&nextPayload.title);
     check('next round team',!!nextPayload&&nextPayload.memberIds.length===mission.members.length);
     check('next round artifacts',!!nextPayload&&(nextPayload.artifactIds||[]).length===(finished.artifacts||[]).length);

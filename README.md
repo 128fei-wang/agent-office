@@ -1,6 +1,6 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [团队记忆](docs/MEMORY.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [团队记忆](docs/MEMORY.md) · [Token 与模型调用](docs/USAGE.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -414,10 +414,12 @@ bridge 现在会识别 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPI
 - 任务推荐和新建任务只使用已接入的真实外部 Agent，不再回退到系统预设角色。
 - 首页切换成 REAL OPS：显示 AI 状态、进行中的真实任务、真实外部 Agent 和「创建真实任务」入口；外部 Agent 离线只表示没有心跳，仍可由本机 AI 按分配身份执行。可随时恢复演示。
 
-## 任务上下文、Token 上限与自动重试
+## 任务上下文、Token 预估与自动重试
 
 - **上下文记忆**：AI 讨论和任务执行会读取本任务的上传文件 / OCR 文本、团队决策、已完成任务汇报、证据和已批准门禁。上下文被标记为不可信资料，不能覆盖规则、泄露密钥或绕过审批。
-- **Token 上限**：创建任务时可填写 Token 上限（0 / 留空表示不限）。讨论和任务消耗都会计入；达到上限时自动执行会停止，并在任务评估里给出已用 / 上限；调整后可从命令条继续。
+- **不设 Token 上限**：创建任务不再要求或保存 Token 上限；任务可以持续执行。系统会在任务计划里给出每个任务的输入/输出预估，执行后记录真实消耗。
+- **上下文洞察**：任务详情的「评估」页显示需求/验收、文件、记忆、历史汇报和决策占用的上下文字符/token 预估，以及实际模型调用的输入、输出和延迟。
+- **模型调用台账**：从设置 →「模型调用」、`Cmd/Ctrl+K` 或任务评估里的「查看模型调用明细」打开；可按任务、用途、Provider 搜索和筛选，查看每次调用的 Token、上下文、延迟和错误。
 - **失败重试**：单个任务执行失败会自动重试一次，再失败才中断，失败与重试都会写入任务群和审计记录。
 
 2026 趋势、缺口和下一阶段路线见 [docs/TRENDS.md](docs/TRENDS.md)。
@@ -627,6 +629,7 @@ agent-office/
 │   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
 │   ├── chat-ui.js      安全 Markdown、时间/附件/头像渲染
 │   ├── memory.js       团队记忆面板与 CRUD
+│   ├── usage.js        模型调用台账、Token 与延迟查询
 │   ├── chat-hub.js     双栏聊天工作台、未读/固定/静音、草稿、附件、@提及
 │   ├── shell.js        左侧导航栏、设置和聊天窗口风格
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
@@ -651,6 +654,7 @@ agent-office/
 ├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
 ├── dev-chat.html       自检聊天工作台、未读、搜索、引用、附件和响应式布局
 ├── dev-memory.html     团队记忆 CRUD、搜索和 command palette 深链自检
+├── dev-usage.html      模型调用面板、统计、详情和 API 自检
 ├── dev-features.html   自检功能抽屉、聊天入口、设置和聊天风格
 ├── dev-ai-setup.html   自检 3 步 AI 接入、环境凭据、测试保存和任务自动执行
 ├── dev-mission-live.html 自检首页 MISSION LIVE、外部 Agent 热桌和任务气泡
@@ -668,6 +672,7 @@ agent-office/
 ├── features.css        功能栏 / 设置 / 聊天窗口风格样式
 ├── chat-v2.css         Signal Studio 聊天工作台视觉系统
 ├── memory.css          团队记忆面板样式
+├── usage.css           模型调用 / Token / 上下文面板样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
 ├── ocr_vision.swift    macOS Vision 本地图片识别兜底
@@ -686,6 +691,7 @@ agent-office/
 ├── docs/ANIMATION.md   任务联动、完成态一次性动画和空转看门狗
 ├── docs/CHAT_UI.md     聊天工作台设计、参考产品与 Gemini 验收清单
 ├── docs/MEMORY.md      团队记忆与全局搜索设计/API/验收
+├── docs/USAGE.md       Token 预估、上下文洞察与模型调用台账
 ├── docs/GUIDE.md       使用指南：关闭演示、接 Agent、AI、任务与下一轮
 ├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
@@ -858,7 +864,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.21.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.22.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

@@ -352,6 +352,11 @@
         }
         const resumeTask = event.target.closest("[data-task-resume]");
         if (resumeTask) { self.patchTask(resumeTask.getAttribute("data-task-resume"), { status: "in_progress" }); return; }
+        if (event.target.closest("[data-model-calls-open]")) {
+          const usage = this.renderer && this.renderer.features && this.renderer.features.usage;
+          if (usage) usage.open({ missionId: (this.mission && this.mission.id) || "" });
+          return;
+        }
         const rerunTask = event.target.closest("[data-task-rerun]");
         if (rerunTask) { self.rerunTask(rerunTask.getAttribute("data-task-rerun")); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
@@ -372,10 +377,6 @@
         }
         if (event.target.closest("[data-mission-open-external]")) {
           if (self.renderer && self.renderer.external) self.renderer.external.open();
-          return;
-        }
-        if (event.target.closest("[data-mission-budget-save]")) {
-          self.saveBudget();
           return;
         }
         if (event.target.closest("[data-mission-next-round]")) {
@@ -1465,9 +1466,6 @@
         '<h4>' + esc(this.t("missionGoal")) + '</h4><p class="mission-copy">' + esc(m.description) + '</p>' +
         '<h4>' + esc(this.t("missionAcceptance")) + '</h4><p class="mission-copy">' + esc(m.acceptance) + '</p>' +
         (m.budget ? '<p class="mission-note">' + esc(this.t("missionBudget")) + '：' + esc(m.budget) + ' ' + esc(m.currency) + '</p>' : '') +
-        (m.tokenBudget ? '<p class="mission-note">' + esc(this.t("missionTokenBudget")) + '：' +
-          fmtTokens(m.tokenBudget) + ' tokens · ' + esc(this.t("missionTokenBudgetUsed")) + ' ' +
-          fmtTokens((m.evaluation && m.evaluation.totalTokens) || 0) + '</p>' : '') +
         (m.deadline ? '<p class="mission-note">' + esc(this.t("missionDeadline")) + '：' + esc(m.deadline) + '</p>' : '') +
         '<p class="mission-note">' + esc(this.t("missionContextHint")) + '</p>' +
         '<div class="mission-discussion-card"><div><b>' + esc(this.t("missionAiDiscuss")) + '</b><p>' +
@@ -1636,9 +1634,7 @@
       if (!m) return "";
       const ev = m.evaluation || {};
       const tasks = m.tasks || [];
-      const budget = Number(ev.tokenBudget || m.tokenBudget || 0);
       const totalTokens = Number(ev.totalTokens || ev.actualTokens || 0);
-      const budgetPct = budget ? Math.min(100, Math.round((totalTokens / budget) * 100)) : 0;
       const tokenPct = ev.estimatedTokens ? Math.min(100, Math.round((ev.actualTokens / ev.estimatedTokens) * 100)) : 0;
       const timePct = ev.estimatedMinutes ? Math.min(100, Math.round((ev.actualMinutes / ev.estimatedMinutes) * 100)) : 0;
       const risk = ev.deadlineRisk || "none";
@@ -1680,14 +1676,7 @@
         '<i><b style="width:' + timePct + '%"></b></i></div>' +
         '<div><span>' + esc(this.t("missionTokenUsage")) + ' ' + tokenPct + '%</span>' +
         '<i><b style="width:' + tokenPct + '%"></b></i></div></div>' +
-        '<div class="mission-budget-editor' + (budget && totalTokens >= budget ? ' over' : '') + '">' +
-        '<label>' + esc(this.t("missionTokenBudget")) + '<input id="missionTokenBudget" type="number" min="0" step="1000" value="' +
-        (budget || "") + '" placeholder="' + esc(this.t("missionTokenBudgetPh")) + '" /></label>' +
-        '<button type="button" class="mission-mini" data-mission-budget-save>' +
-        esc(this.t("missionTokenBudgetSave")) + '</button>' +
-        '<span>' + esc(this.t("missionTokenBudgetUsed")) + ' ' + fmtTokens(totalTokens) +
-        (budget ? ' / ' + fmtTokens(budget) + ' · ' + budgetPct + '%' : '') + '</span></div>' +
-        (budget ? '<div class="mission-budget-bar"><i style="width:' + budgetPct + '%"></i></div>' : '') +
+        this.contextInsightHTML(ev) +
         ((ev.discussionTokens || ev.discussionMinutes) ?
           '<p class="mission-note">' + esc(this.t("missionDiscussionUsage")) + '：' +
           fmtDuration(ev.discussionMinutes) + ' · ' + fmtTokens(ev.discussionTokens) +
@@ -1701,6 +1690,39 @@
         '</span><span>Δ</span></div>' + (rows || '<div class="mission-empty small">—</div>') +
         '<h4>' + esc(this.t("missionAgentCost")) + '</h4>' + (agents || '<div class="mission-empty small">—</div>') +
         '<p class="mission-note">' + esc(this.t("missionEvalHint")) + '</p></div>';
+    }
+
+    contextInsightHTML(ev) {
+      const m = this.mission;
+      if (!m) return "";
+      const insight = m.contextInsight || {};
+      const input = Number(insight.estimatedInputTokens || 0);
+      const output = Number(insight.estimatedOutputTokens || 0);
+      const total = Number(insight.estimatedTotalTokens || ev.estimatedTokens || 0);
+      const calls = Number(ev.modelCalls || 0);
+      const actualIn = Number(ev.modelInputTokens || 0);
+      const actualOut = Number(ev.modelOutputTokens || 0);
+      const avg = Number(ev.modelAvgMs || 0);
+      return '<div class="mission-context-card"><div class="mission-context-head"><div><span>CONTEXT INSIGHT</span><b>' +
+        esc(this.t("missionContextInsight")) + '</b></div><em>' + esc(this.t("missionNoTokenCap")) + '</em></div>' +
+        '<div class="mission-context-grid">' +
+        '<div><span>' + esc(this.t("missionEstInput")) + '</span><b>' + fmtTokens(input) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionEstOutput")) + '</span><b>' + fmtTokens(output) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionEstTotal")) + '</span><b>' + fmtTokens(total) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionModelCalls")) + '</span><b>' + calls + '</b></div>' +
+        '<div><span>' + esc(this.t("missionActualIO")) + '</span><b>' + fmtTokens(actualIn) + ' / ' + fmtTokens(actualOut) + '</b></div>' +
+        '<div><span>' + esc(this.t("missionAvgLatency")) + '</span><b>' + (avg ? avg + ' ms' : '—') + '</b></div>' +
+        '</div>' +
+        '<p class="mission-context-sources">' + esc(this.t("missionContextSources", {
+          base: Number(insight.baseChars || 0),
+          files: Number(insight.artifactCount || 0),
+          fileChars: Number(insight.artifactChars || 0),
+          memories: Number(insight.memoryCount || 0),
+          reports: Number(insight.reportCount || 0),
+          decisions: Number(insight.decisionCount || 0)
+        })) + '</p>' +
+        '<div class="mission-context-actions"><button type="button" class="mission-mini" data-model-calls-open>' +
+        esc(this.t("missionModelCallsOpen")) + '</button></div></div>';
     }
 
     rulesTab() {
@@ -2042,37 +2064,23 @@
         actions = '<button type="button" class="mission-command-btn primary" data-mission-ai-settings>' +
           esc(this.t("missionAutoRunSetup")) + '</button>';
       } else if (discussed) {
-        const budgetStopped = autoStatus === "stopped" &&
-          /token budget/i.test(String(auto.error || ""));
-        if (budgetStopped) {
+        if (autoStatus === "error") {
+          tone = "error"; boss = true;
+          title = this.t("missionNextError", { error: short(auto.error || "", 160) });
+        } else if (autoStatus === "stopped") {
           tone = "warn"; boss = true;
-          title = this.t("missionNextBudget", {
-            used: fmtTokens(auto.tokensUsed || (m.evaluation && m.evaluation.totalTokens) || 0),
-            budget: fmtTokens(auto.tokenBudget || m.tokenBudget || 0)
-          });
-          actions = '<button type="button" class="mission-command-btn primary" data-detail-tab="eval">' +
-            esc(this.t("missionTokenBudgetAdjust")) + '</button>' +
-            '<button type="button" class="mission-command-btn" data-mission-autorun="run">' +
-            esc(this.t("missionAutoRunRestart", { count: total - done })) + '</button>';
+          title = this.t("missionNextStopped", { done: done, total: total });
         } else {
-          if (autoStatus === "error") {
-            tone = "error"; boss = true;
-            title = this.t("missionNextError", { error: short(auto.error || "", 160) });
-          } else if (autoStatus === "stopped") {
-            tone = "warn"; boss = true;
-            title = this.t("missionNextStopped", { done: done, total: total });
-          } else {
-            tone = "warn"; boss = true;
-            title = this.t("missionNextStart", {
-              count: total - done, task: nextTask.title || this.t("missionWorking")
-            });
-          }
-          actions = '<button type="button" class="mission-command-btn primary" data-mission-autorun="run">' +
-            esc(this.t(autoStatus === "error" || autoStatus === "stopped" ?
-              "missionAutoRunRestart" : "missionStartTasks", { count: total - done })) + '</button>' +
-            '<button type="button" class="mission-command-btn" data-detail-tab="tasks">' +
-            esc(this.t("missionViewPlan")) + '</button>';
+          tone = "warn"; boss = true;
+          title = this.t("missionNextStart", {
+            count: total - done, task: nextTask.title || this.t("missionWorking")
+          });
         }
+        actions = '<button type="button" class="mission-command-btn primary" data-mission-autorun="run">' +
+          esc(this.t(autoStatus === "error" || autoStatus === "stopped" ?
+            "missionAutoRunRestart" : "missionStartTasks", { count: total - done })) + '</button>' +
+          '<button type="button" class="mission-command-btn" data-detail-tab="tasks">' +
+          esc(this.t("missionViewPlan")) + '</button>';
       } else {
         tone = "warn"; boss = true;
         title = this.t("missionNextDiscuss");
@@ -2142,7 +2150,6 @@
         status === "discussing" || status === "running";
       const total = Number(auto.total || (m.stats && m.stats.tasks) || 0);
       const done = Number(auto.completed || (m.stats && m.stats.done) || 0);
-      const tokenBudget = Number(auto.tokenBudget || m.tokenBudget || 0);
       const tokensUsed = Number(auto.tokensUsed ||
         (m.evaluation && m.evaluation.totalTokens) || (m.evaluation && m.evaluation.actualTokens) || 0);
       const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -2162,8 +2169,8 @@
         (auto.currentTaskTitle ? '<p>' + esc(this.t("missionAutoRunCurrent", {
           task: auto.currentTaskTitle
         })) + '</p>' : '') +
-        '<p class="mission-autorun-budget">' + esc(this.t("missionTokenBudgetUsed")) + ' ' +
-        fmtTokens(tokensUsed) + (tokenBudget ? ' / ' + fmtTokens(tokenBudget) : '') + '</p>' +
+        '<p class="mission-autorun-budget">' + esc(this.t("missionTokenEstimateUsed")) + ' ' +
+        fmtTokens(tokensUsed) + '</p>' +
         '<p class="mission-autorun-hint">' + esc(hint) + '</p>' +
         (status === "running" || status === "discussing" || status === "waiting_boss" ?
           '<p class="mission-autorun-hint">' + esc(this.t("missionAutoAcceptNote")) + '</p>' : '') +
@@ -2218,7 +2225,7 @@
         acceptance: m.acceptance || "",
         priority: m.priority || "P1",
         budget: Number(m.budget || 0),
-        tokenBudget: Number(m.tokenBudget || 0),
+        tokenBudget: 0,
         autoRun: aiReady && hadAutoRun,
         autoDiscuss: aiReady && hadAutoRun,
         language: AO.lang,
@@ -2242,7 +2249,7 @@
         return member.titleZh || member.name || member.id;
       }).join("、");
       const summary = "开启下一轮？\n\n" + payload.title + "\n团队：" + team +
-        "\nToken 预算：" + (payload.tokenBudget || "不限") +
+        "\nToken：自动估算，不设上限" +
         "\n全自动执行：" + (payload.autoRun ? "是（会消耗 Token）" : "否");
       if (!window.confirm(summary)) return;
       this.nextRoundBusy = true;
@@ -2263,22 +2270,6 @@
         this.nextRoundBusy = false;
         this.render();
         this.toast(this.t("missionNextRoundFailed") + " " + String(err.message || ""));
-      }
-    }
-
-    async saveBudget() {
-      if (!this.mission) return;
-      const input = this.root.querySelector("#missionTokenBudget");
-      const value = Number(input && input.value || 0);
-      try {
-        const result = await this.api("/missions/" + encodeURIComponent(this.mission.id) + "/budget", {
-          method: "POST", body: JSON.stringify({ tokenBudget: value })
-        }, 12000);
-        this.mission = result.mission || this.mission;
-        this.toast(this.t("missionTokenBudgetSaved"));
-        this.render();
-      } catch (err) {
-        this.toast(this.t("missionTokenBudgetSaveFailed") + " " + String(err.message || ""));
       }
     }
 
@@ -2352,7 +2343,6 @@
       lines.push("- 创建：" + (m.createdAt || ""));
       lines.push("- 成员：" + (m.members || []).map((a) => a.titleZh || a.name || a.id).join("、"));
       if (m.deadline) lines.push("- 截止：" + m.deadline);
-      if (m.tokenBudget) lines.push("- Token 预算：" + m.tokenBudget);
       lines.push("");
       lines.push("## 目标");
       lines.push("");
@@ -2461,7 +2451,7 @@
             acceptance: source.acceptance,
             priority: source.priority || "P1",
             budget: 0,
-            tokenBudget: source.tokenBudget || 0,
+            tokenBudget: 0,
             autoRun: false,
             autoDiscuss: false,
             language: AO.lang,
@@ -2719,7 +2709,6 @@
             "Assortment list, PDP structure, paid plan and week-one review template are complete, with risks addressed.",
           priority: "P1",
           budget: "",
-          tokenBudget: "300000"
         },
         {
           key: "content",
@@ -2731,7 +2720,6 @@
             "Seven topics, three scripts, visual rules and a distribution schedule are complete and measurable.",
           priority: "P1",
           budget: "",
-          tokenBudget: "180000"
         },
         {
           key: "launch",
@@ -2743,7 +2731,6 @@
             "A running build, test evidence, release notes and monitoring are complete, with a rollback plan for release risks.",
           priority: "P0",
           budget: "",
-          tokenBudget: "500000"
         },
         {
           key: "incident",
@@ -2755,7 +2742,6 @@
             "Root cause and impact are evidenced, the fix is verified, and follow-up actions have owners and dates.",
           priority: "P0",
           budget: "",
-          tokenBudget: "250000"
         }
       ];
     }
@@ -2764,7 +2750,7 @@
       const template = this.missionTemplates().find(function (item) { return item.key === key; });
       const form = this.root.querySelector("#missionCreateForm");
       if (!template || !form) return;
-      ["title", "description", "acceptance", "priority", "budget", "tokenBudget"].forEach(function (name) {
+      ["title", "description", "acceptance", "priority", "budget"].forEach(function (name) {
         const field = form.elements[name];
         if (!field) return;
         field.value = template[name] || "";
@@ -2802,10 +2788,7 @@
           '<label>' + esc(this.t("missionDeadline")) + '<input name="deadline" type="date" /></label>' +
           '<label>' + esc(this.t("missionScheduleAt")) + '<input name="scheduleAt" type="datetime-local" /></label></div>' +
           '<p class="mission-note">' + esc(this.t("missionScheduleHint")) + '</p>' +
-          '<label class="mission-token-limit">' + esc(this.t("missionTokenBudget")) +
-          '<input name="tokenBudget" type="number" min="0" step="1000" placeholder="' +
-          esc(this.t("missionTokenBudgetPh")) + '" /></label>' +
-          '<p class="mission-note">' + esc(this.t("missionTokenBudgetHint")) + '</p>' +
+          '<p class="mission-note">' + esc(this.t("missionTokenEstimateOnly")) + '</p>' +
           '<div class="mission-autorun-option"><label class="mission-check"><input id="missionAutoRun" name="autoRun" type="checkbox"' +
           (this.ai.available ? ' checked' : ' disabled') + ' /> ' +
           esc(this.t("missionAutoRun")) + '</label><div class="mission-ai-state-wrap" data-mission-ai-state>' +
@@ -3151,7 +3134,7 @@
             acceptance: String(data.get("acceptance") || "").trim(),
             priority: String(data.get("priority") || "P1"),
             budget: Number(data.get("budget") || 0),
-            tokenBudget: Number(data.get("tokenBudget") || 0),
+            tokenBudget: 0,
             autoRun: autoRun,
             autoDiscuss: autoRun,
             scheduleAt: String(data.get("scheduleAt") || ""),

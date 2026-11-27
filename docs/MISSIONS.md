@@ -35,7 +35,7 @@ Every mission freezes a charter on creation:
 | acceptance | what counts as done |
 | deadline | optional target date |
 | budget | optional; a positive budget creates a spend approval |
-| tokenBudget | optional hard cap; 0 = unlimited. Discussion + task tokens count |
+| tokenBudget | legacy compatibility field; tasks are unlimited and new missions store 0 |
 | non-goals / constraints | scope guardrails |
 | boss gates | spend, decision, login, authorization |
 | decision rule | the team decides technical topics; the boss only decides the four gates |
@@ -191,7 +191,7 @@ discussion overhead. AI discussion and AI run usage is stored on the mission and
 the report message; report cards show an inline token/latency badge. This is a
 consumption evaluation, not vendor billing.
 
-`tokenBudget` adds a hard guardrail: **Tokens used / cap** is shown in the
+`tokenBudget` is no longer a hard guardrail: tasks are unlimited, while token estimates and actual model calls are shown in the
 evaluation tab, and auto-run stops before the next task once the total (including
 discussion) reaches the cap. The cap is editable from the evaluation tab via
 `POST /missions/<id>/budget`.

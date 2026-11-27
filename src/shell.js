@@ -41,6 +41,7 @@
     ".trace-lab:not([hidden])",
     ".command-root:not([hidden])",
     ".memory-root:not([hidden])",
+    ".usage-root:not([hidden])",
     ".chat-window",
     "#detailDrawer.open"
   ].join(", ");
@@ -219,6 +220,11 @@
       if (action === "memory") {
         this.close();
         if (this.shell && this.shell.memory) this.shell.memory.open();
+        return;
+      }
+      if (action === "usage") {
+        this.close();
+        if (this.shell && this.shell.usage) this.shell.usage.open();
         return;
       }
       if (action === "group") {
@@ -439,6 +445,7 @@
         title = t("featureSettingsGroup");
         const style = readChatStyle();
         body = this.actionRow("tools", "⚙", t("featureTools"), "升级 / AI / MCP") +
+          this.actionRow("usage", "◫", t("usageTitle"), t("usageRailHint", "Token / 延迟 / 上下文")) +
           this.actionRow("memory", "◇", t("memoryTitle"), t("memoryRailHint", "跨任务记忆与偏好")) +
           this.actionRow("settings", "☷", t("featureSettings"), "设置中心") +
           this.actionRow("demo", "◌", t("settingsDemo"), t("settingsDemoHint")) +
@@ -930,6 +937,12 @@
       this.add(list, "⇢ 接入外部 Agent", "⇢ Connect external agent", "Codex / Claude / 豆包 / DeepSeek",
         "Codex / Claude / Doubao / DeepSeek", "external agent connect 外部 接入 配对",
         function () { if (renderer.external) renderer.external.open(); });
+      this.add(list, "◫ 模型调用", "◫ Model calls", "Token、延迟、上下文与失败明细",
+        "Tokens, latency, context and failures", "usage tokens cost latency model 模型 调用 消耗",
+        function () {
+          const usage = renderer.features && renderer.features.usage;
+          if (usage) usage.open();
+        });
       this.add(list, "◇ 团队记忆", "◇ Company memory", "跨任务的判断、偏好与事实",
         "Cross-mission facts, choices and preferences", "memory remember 记忆 经验 偏好",
         function () {
@@ -1186,6 +1199,7 @@
       this.settings = new SettingsCenter(renderer);
       this.guide = new GuideCenter(renderer);
       this.memory = AO.MemoryPanel ? new AO.MemoryPanel(renderer) : null;
+      this.usage = AO.UsagePanel ? new AO.UsagePanel(renderer) : null;
       this.drawer = new FeatureDrawer(renderer, deps, this);
       this.rail = new RailMenu(renderer, this);
       this.command = new CommandPalette(renderer);

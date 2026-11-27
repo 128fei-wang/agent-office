@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.22.0] - 2026-11-27
+
+### Added
+- **Token estimate plan**: new missions no longer ask for a token cap. The form shows the per-task estimate plan, and Mission Control’s Eval tab shows estimated input, output, total and per-task estimates.
+- **Context insight**: each mission detail now reports base brief/acceptance chars, files and chars, memories, decisions, reports, estimated context tokens, estimated input/output and actual model-call tokens and latency.
+- **Model call ledger**: every discussion, task, deliverable and chat model call is persisted with provider, model, mission/task/agent, prompt/system chars, context estimate, input/output tokens, latency, status and error. Existing task/discussion usage is backfilled once so the ledger is immediately useful.
+- **Model calls UI**: a global panel (Settings rail, full drawer, command palette, and “查看模型调用明细” in Eval) with summary cards, mission/purpose filters, search, rows and expandable details.
+
+### Changed
+- Tasks are unlimited by design: the UI no longer sets or edits a token cap, the bridge ignores `tokenBudget` for new missions and auto-run no longer stops on a token budget. Actual usage remains fully visible.
+- Added `usage.css`, `usage.js`, `dev-usage.html` and docs/USAGE.md.
+
 ## [1.21.1] - 2026-11-27
 
 ### Fixed

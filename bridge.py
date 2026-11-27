@@ -938,6 +938,44 @@ def _extract_json_object(raw):
     return ""
 
 
+def _record_model_call(provider_id, purpose, mission=None, task=None, agent_id="",
+                       agent_name="", prompt_chars=0, system_chars=0, result=None,
+                       started_at=None, error="", fallback=""):
+    if not MISSION_STORE:
+        return
+    usage = result if isinstance(result, dict) else {}
+    model = str(usage.get("model") or "")
+    if not model:
+        try:
+            model = str((provider_settings(provider_id) or {}).get("model") or "")
+        except Exception:
+            model = ""
+    duration = int(round((time.time() - started_at) * 1000)) if started_at else 0
+    try:
+        MISSION_STORE.add_model_call({
+            "provider": provider_id or "",
+            "model": model,
+            "purpose": purpose,
+            "missionId": (mission or {}).get("id", ""),
+            "missionTitle": (mission or {}).get("title", ""),
+            "taskId": (task or {}).get("id", ""),
+            "taskTitle": (task or {}).get("title", ""),
+            "agentId": agent_id or (task or {}).get("assigneeId", ""),
+            "agentName": agent_name or (task or {}).get("assigneeName", ""),
+            "promptChars": int(prompt_chars or 0),
+            "systemChars": int(system_chars or 0),
+            "contextTokens": max(1, round((int(prompt_chars or 0) + int(system_chars or 0)) / 3.2)),
+            "tokensIn": int(usage.get("tokensIn") or 0),
+            "tokensOut": int(usage.get("tokensOut") or 0),
+            "durationMs": duration,
+            "ok": not bool(error),
+            "error": str(error or "")[:500],
+            "fallback": fallback,
+        })
+    except Exception:
+        pass
+
+
 def _parse_model_json(text):
     raw = str(text or "").strip().lstrip("\ufeff")
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I)
@@ -1200,6 +1238,9 @@ def _run_mission_discussion(mission_id, preferred=""):
         try:
             result = provider_chat(provider_id, prompt, system, max_tokens=6000,
                                    max_prompt=16000, max_system=4000)
+            _record_model_call(provider_id, "discussion", mission, None,
+                               prompt_chars=len(prompt), system_chars=len(system),
+                               result=result, started_at=started_at)
             usage = {
                 "provider": provider_id,
                 "model": result.get("model") or "",
@@ -1226,6 +1267,9 @@ def _run_mission_discussion(mission_id, preferred=""):
             _apply_mission_discussion(mission_id, parsed, provider_id, usage)
             return
         except Exception as exc:
+            _record_model_call(provider_id, "discussion", mission, None,
+                               prompt_chars=len(prompt), system_chars=len(system),
+                               started_at=started_at, error=str(exc)[:300])
             errors.append(provider_id + ": " + str(exc)[:180])
             continue
     MISSION_STORE.set_discussion(
@@ -1342,21 +1386,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
         with MISSION_STORE.lock:
             mission = MISSION_STORE.find_mission(mission_id)
             discussion = (mission or {}).get("discussion") or {}
-            budget = int((mission or {}).get("tokenBudget") or 0)
             tokens_used = _mission_token_usage(mission) if mission else 0
-        if budget and tokens_used >= budget:
-            with MISSION_STORE.lock:
-                MISSION_STORE.set_autorun(
-                    mission_id, status="stopped", finishedAt=now_iso(),
-                    tokensUsed=tokens_used, tokenBudget=budget, currentTaskStartedAt="",
-                    error="token budget reached (%s/%s)" % (tokens_used, budget),
-                )
-            _autorun_message(
-                mission_id,
-                "Token 上限已达到（%s/%s），AI 全自动执行未继续。"
-                "可在任务评估里调整上限后重新开始。" % (tokens_used, budget),
-            )
-            return
         if mission and (mission.get("autoDiscuss") or force_discuss) and discussion.get("status") not in ("done", "partial"):
             _run_mission_discussion(mission_id, preferred)
 
@@ -1371,7 +1401,6 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     )
                 _autorun_message(mission_id, "AI 全自动执行已停止；已完成的汇报和交付物会保留。")
                 return
-            budget_stop = False
             with MISSION_STORE.lock:
                 mission = MISSION_STORE.find_mission(mission_id)
                 if not mission:
@@ -1379,7 +1408,7 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                 tasks = mission.get("tasks", [])
                 done = _mission_done_count(mission)
                 pending = _mission_pending_approvals(mission)
-                budget = int(mission.get("tokenBudget") or 0)
+                budget = 0
                 tokens_used = _mission_token_usage(mission)
                 if tasks and done >= len(tasks):
                     MISSION_STORE.set_autorun(
@@ -1392,18 +1421,6 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     MISSION_STORE._save()
                     should_finish = True
                     task = None
-                elif budget and tokens_used >= budget:
-                    MISSION_STORE.set_autorun(
-                        mission_id, status="stopped", completed=done, total=len(tasks),
-                        currentTaskId="", currentTaskTitle="", currentTaskStartedAt="",
-                        currentAgentId="", currentAgentName="", currentRole="",
-                        tokensUsed=tokens_used, tokenBudget=budget,
-                        error="token budget reached (%s/%s)" % (tokens_used, budget),
-                        finishedAt=now_iso(),
-                    )
-                    should_finish = True
-                    task = None
-                    budget_stop = True
                 elif pending:
                     MISSION_STORE.set_autorun(
                         mission_id, status="waiting_boss", completed=done,
@@ -1448,13 +1465,6 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                             tokensUsed=tokens_used, tokenBudget=budget, retry=0,
                         )
             if should_finish:
-                if budget_stop:
-                    _autorun_message(
-                        mission_id,
-                        "Token 上限已达到（%s/%s），AI 全自动执行已停止。"
-                        "可在任务评估里调整上限，然后重新开始执行；已完成的汇报和交付物会保留。"
-                        % (tokens_used, budget),
-                    )
                 break
             last_error = None
             for attempt in range(2):
@@ -1918,6 +1928,7 @@ def _generate_deliverable(mission, task, data, preferred="", attempted=""):
     )
     errors = []
     for provider_id in candidates:
+        call_started = time.time()
         try:
             result = provider_chat(
                 provider_id, prompt,
@@ -1935,13 +1946,29 @@ def _generate_deliverable(mission, task, data, preferred="", attempted=""):
                         for item in files if isinstance(item, dict)
                     )
                 if _deliverable_usable(candidate):
+                    _record_model_call(provider_id, "deliverable", mission, task,
+                                       prompt_chars=len(prompt),
+                                       system_chars=len("你是严谨的交付物生成器。只输出最终可交付内容。"),
+                                       result=result, started_at=call_started)
                     return candidate[:20000], files, provider_id, result
+                _record_model_call(provider_id, "deliverable", mission, task,
+                                   prompt_chars=len(prompt), result=result,
+                                   started_at=call_started, error="JSON has no usable deliverable")
                 errors.append(provider_id + ": JSON has no usable deliverable")
                 continue
             if _deliverable_usable(text):
+                _record_model_call(provider_id, "deliverable", mission, task,
+                                   prompt_chars=len(prompt), result=result,
+                                   started_at=call_started)
                 return text[:20000], _parse_fenced_files(text), provider_id, result
+            _record_model_call(provider_id, "deliverable", mission, task,
+                               prompt_chars=len(prompt), result=result,
+                               started_at=call_started, error="empty/placeholder deliverable")
             errors.append(provider_id + ": empty/placeholder deliverable")
         except Exception as exc:
+            _record_model_call(provider_id, "deliverable", mission, task,
+                               prompt_chars=len(prompt), started_at=call_started,
+                               error=str(exc)[:300])
             errors.append(provider_id + ": " + str(exc)[:160])
     raise missions.MissionError(
         "模型没有返回可用的交付物，任务未标记完成：" + ("; ".join(errors)[:400] or "no provider"),
@@ -2020,13 +2047,20 @@ def run_mission_task(mission_id, task_id, preferred=""):
     usage = {}
     started_at = time.time()
     for pid in candidates:
+        call_started = time.time()
         try:
             result = provider_chat(pid, prompt, system, max_tokens=8000,
                                    max_prompt=16000, max_system=4000)
             data = _parse_model_json(result.get("text"))
             if not data:
+                _record_model_call(pid, "task", mission, task, prompt_chars=len(prompt),
+                                   system_chars=len(system), result=result,
+                                   started_at=call_started, error="non-JSON response")
                 errors.append(pid + ": non-JSON response")
                 continue
+            _record_model_call(pid, "task", mission, task, prompt_chars=len(prompt),
+                               system_chars=len(system), result=result,
+                               started_at=call_started)
             data = _sanitize_raw_boss(data)
             data, repaired = _repair_ai_report(data)
             report = _sanitize_boss_gate(MISSION_STORE.validate_report(data))
@@ -2042,6 +2076,9 @@ def run_mission_task(mission_id, task_id, preferred=""):
             }
             break
         except Exception as exc:
+            _record_model_call(pid, "task", mission, task, prompt_chars=len(prompt),
+                               system_chars=len(system), started_at=call_started,
+                               error=str(exc)[:300])
             errors.append(pid + ": " + str(exc)[:160])
             continue
     if not parsed:
@@ -4002,7 +4039,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/missions", "/missions/overview", "/missions/agents",
                     "/conversations", "/approvals", "/mission-tasks",
-                    "/files", "/memories", "/search") or path.startswith(
+                    "/files", "/memories", "/search", "/model-calls") or path.startswith(
                         ("/missions/", "/conversations/", "/files/")):
             if not MISSION_STORE:
                 self.send_json({"error": "mission store is not available",
@@ -4035,6 +4072,18 @@ class Handler(BaseHTTPRequestHandler):
                 scope = (qs.get("scope") or ["all"])[0]
                 agent_id = (qs.get("agentId") or [""])[0]
                 self.send_json({"memories": MISSION_STORE.list_memories(query, scope, agent_id)})
+                return
+            if path == "/model-calls":
+                mission_id = (qs.get("missionId") or [""])[0]
+                task_id = (qs.get("taskId") or [""])[0]
+                purpose = (qs.get("purpose") or ["all"])[0]
+                query = (qs.get("q") or [""])[0]
+                try:
+                    limit = int((qs.get("limit") or ["120"])[0])
+                except ValueError:
+                    limit = 120
+                self.send_json(MISSION_STORE.list_model_calls(
+                    mission_id, task_id, purpose, query, limit))
                 return
             if path == "/search":
                 query = (qs.get("q") or [""])[0]
@@ -4886,8 +4935,14 @@ def _chat_reply_worker(conversation_id, trigger_text):
             meta["fallback"] = "no_provider"
         else:
             provider_id = candidates[0]
+            chat_started = time.time()
             try:
                 result = provider_chat(provider_id, prompt, system=system, max_tokens=700)
+                _record_model_call(provider_id, "chat", MISSION_STORE.find_mission(
+                    conversation.get("missionId") or ""), None,
+                    agent_id=member.get("id"), agent_name=name,
+                    prompt_chars=len(prompt), system_chars=len(system),
+                    result=result, started_at=chat_started)
                 reply = str(result.get("text") or "").strip()[:4000]
                 usage = {
                     "tokensIn": int(result.get("tokensIn") or 0),
@@ -4897,6 +4952,11 @@ def _chat_reply_worker(conversation_id, trigger_text):
                 }
                 meta.update({"provider": provider_id, "model": result.get("model") or ""})
             except Exception as exc:
+                _record_model_call(provider_id, "chat", MISSION_STORE.find_mission(
+                    conversation.get("missionId") or ""), None,
+                    agent_id=member.get("id"), agent_name=name,
+                    prompt_chars=len(prompt), system_chars=len(system),
+                    started_at=chat_started, error=str(exc)[:300])
                 reply = ("我收到了，但本机模型调用失败：" + str(exc)[:180] +
                          "。请检查 AI 接入或外部连接器。")
                 meta["fallback"] = "provider_error"

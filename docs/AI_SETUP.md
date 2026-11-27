@@ -78,7 +78,7 @@ work actually affect later tasks instead of being stored but unused.
 
 Set **Token cap** when creating a mission (0 / empty = unlimited). Discussion and
 task usage both count. Auto-run checks the cap before each task; when reached it
-sets `autoRun.status = "stopped"`, stores `tokensUsed` / `tokenBudget` and posts a
+stores `tokensUsed` and updates the model-call ledger; it does not stop on a token cap
 clear message. The evaluation tab has an editable cap; raise it and continue
 from the command bar. A failed task is retried once before the run is marked as
 an error.
@@ -182,7 +182,7 @@ credential, test before save, and hide endpoint/model details under Advanced.
 - `POST /providers/<id>/test` — test an already saved provider.
 - `POST /missions/<id>/autorun` — start or resume auto-run. Send `{ "discuss": true }` to discuss first.
 - `POST /missions/<id>/autorun/stop` — stop at the next safe point; completed work is kept.
-- `POST /missions/<id>/budget` — `{ "tokenBudget": 120000 }`; 0 = unlimited.
+- `POST /missions/<id>/budget` — legacy compatibility only; new tasks are unlimited and the UI no longer sets a cap.
 - `POST /approvals/<id>/resolve` — resolving a pending gate also resumes a
   paused auto-run.
 - `POST /missions/recommend` and `POST /missions` accept `realOnly: true` to

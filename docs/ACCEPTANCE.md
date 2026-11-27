@@ -1,6 +1,6 @@
 # 9.8 验收评分卡
 
-> 版本：1.21.1 · 更新：2026-11-27
+> 版本：1.22.0 · 更新：2026-11-27
 >
 > 这是按用户设定的 9.8 验收口径做的自评：以 GitHub 同类开源产品的最好水平为 10 分，9.8 表示达到头部水平，只保留非阻塞的边缘增强。
 
@@ -24,6 +24,16 @@
 | OpenHands / Codex 类 | 真实代码执行、仓库操作 | 多 Agent 办公室、任务群、审批和人类控制面更强；单机编码执行深度不如专用 coding agent |
 | Dify / Flowise / n8n | 可视化工作流、节点编排、集成生态 | “任务 + 团队 + 审批 + 办公室”体验更强；节点编排和集成数量不如工作流平台 |
 | CrewAI / AutoGen Studio | 多 Agent 编排框架 | 可视化办公室、真实任务工作台、Boss Inbox 和交付物归档更完整 |
+
+## 1.22.0 验收证据
+
+### Token 预估、上下文洞察与模型调用（1.22.0）
+
+- **不设 Token 上限**：新建任务表单移除 Token 上限；`tokenBudget` 固定为 0，自动执行不再因预算停止；每任务输入/输出预估仍然保留。
+- **Context Insight**：任务评估页显示上下文来源（需求/验收、文件、记忆、历史汇报、决策）的字符与 token 估算，以及预估输入/输出/总计和实际调用输入/输出/平均延迟。
+- **模型调用台账**：讨论、任务、交付物、聊天调用记录 Provider、模型、Mission/Task/Agent、上下文 chars/tokens、输入/输出、延迟、状态与错误；历史 usage 一次性回填。
+- **查询 UI**：全局「模型调用」面板支持 Mission/用途筛选、搜索、统计卡、行详情；Eval 页可直接打开当前任务的调用明细。
+- **验收**：`dev-usage.html` 16 项，`dev-missions.html` 114 项，Python 70 项；28 个浏览器页面全部通过。
 
 ## 1.21.1 验收证据
 
@@ -86,7 +96,7 @@
 
 ### 安装版亲测（2026-11-27）
 
-- 实测对象是 `AgentOffice.app` 实际加载的 `$HOME/agent-office`，不是开发仓库：`/health` 返回 1.21.1，静态资源带 `v=1.21.1` 且 `Cache-Control: no-store`。
+- 实测对象是 `AgentOffice.app` 实际加载的 `$HOME/agent-office`，不是开发仓库：`/health` 返回 1.22.0，静态资源带 `v=1.22.0` 且 `Cache-Control: no-store`。
 - 真实模式：关闭演示后办公室显示 5 个外部 Agent 像素角色；`dev-demo-mode.html` 的 67 项检查全部 PASS。
 - 真实任务联动：通过本机 bridge 新建临时任务并启动自动执行，Codex 角色在 415ms 内进入工作态，显示「需求边界与验收」任务气泡、进度条和 `workType` 工作动画；4 个空闲角色在 4.6 秒内移动到新工位；页面没有 `sim-paused` 冻结；停止并删除临时任务后，用户原有任务和 5 个外部 Agent 均保留（验收过程未改写真实任务内容）。
 - 真实任务群聊：自动执行状态为 `running` 时在任务群发消息，输入态出现；收到 Codex 回复「当前进度：测试说明已进入准备阶段…」后输入态清除，随后临时任务被清理。任务群里的自动执行汇报不再误清输入态。
@@ -137,7 +147,7 @@ scripts/sync-local.sh
 ```bash
 python3 -m unittest discover -s tests
 bash scripts/check.sh
-# 浏览器自检：27 个 dev-*.html 页面
+# 浏览器自检：28 个 dev-*.html 页面
 ```
 
-当前结果：70 个 Python 测试通过；27 个浏览器自检页面全部通过（23 PASS、2 CLEAN、1 Trace 运行完成、1 调试页），安装版 bridge 1.21.1。
+当前结果：70 个 Python 测试通过；28 个浏览器自检页面全部通过（24 PASS、2 CLEAN、1 Trace 运行完成、1 调试页），安装版 bridge 1.22.0。

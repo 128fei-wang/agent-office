@@ -623,6 +623,14 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(result["provider"])
         self.assertGreater(result["usage"]["tokensIn"], 0)
         self.assertGreater(result["task"]["actual"]["tokens"], 0)
+        status, calls = self.request("/model-calls?missionId=" + mission["id"])
+        self.assertEqual(status, 200)
+        self.assertTrue(calls["calls"])
+        self.assertGreater(calls["summary"]["tokensOut"], 0)
+        self.assertTrue(any(c["purpose"] == "task" for c in calls["calls"]))
+        detail = self.request("/missions/" + mission["id"])[1]["mission"]
+        self.assertIn("contextInsight", detail)
+        self.assertGreater(detail["contextInsight"]["estimatedInputTokens"], 0)
         messages = self.request(
             "/conversations/%s/messages" % mission["conversationId"])[1]["messages"]
         self.assertTrue(any(m["type"] == "report" and m.get("usage", {}).get("tokensIn", 0) > 0
@@ -706,17 +714,18 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(any(t.get("report") for t in latest["tasks"]))
         self.request("/missions/%s" % mission_id, "DELETE")
 
-    def test_mission_autorun_honours_token_budget(self):
+    def test_mission_autorun_has_no_token_cap(self):
         status, data = self.request("/missions", "POST", {
-            "title": "Budgeted auto mission",
+            "title": "Unlimited auto mission",
             "description": "Build and verify a landing page with independent QA.",
-            "acceptance": "Execution stops before an unbounded token spend.",
+            "acceptance": "Tasks run without a token cap while usage remains visible.",
             "autoDiscuss": False,
             "autoRun": True,
             "tokenBudget": 5,
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
+        self.assertEqual(data["mission"]["tokenBudget"], 0)
         deadline = time.time() + 45
         latest = data["mission"]
         while time.time() < deadline:
@@ -726,16 +735,10 @@ class BridgeTest(unittest.TestCase):
                 break
             time.sleep(0.2)
         auto = latest.get("autoRun") or {}
-        self.assertEqual(auto.get("status"), "stopped", latest)
-        self.assertIn("token budget", auto.get("error", ""))
+        self.assertEqual(auto.get("status"), "done", latest)
+        self.assertEqual(latest["tokenBudget"], 0)
+        self.assertTrue(all(t["status"] == "done" for t in latest["tasks"]), latest)
         self.assertGreater(auto.get("tokensUsed", 0), 0)
-        self.assertTrue(any(t["status"] == "done" for t in latest["tasks"]), latest)
-        self.assertEqual(latest["tokenBudget"], 5)
-        status, updated = self.request("/missions/%s/budget" % mission_id, "POST", {
-            "tokenBudget": 100000,
-        })
-        self.assertEqual(status, 200, updated)
-        self.assertEqual(updated["mission"]["tokenBudget"], 100000)
         self.request("/missions/%s" % mission_id, "DELETE")
 
     def test_mission_autorun_retries_a_transient_failure(self):

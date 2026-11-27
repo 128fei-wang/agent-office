@@ -403,10 +403,11 @@ While a mission runs, the home office shows a **MISSION LIVE** HUD, the executin
 - Recommendations and new missions use connected external agents only; they never fall back to preset roles.
 - The home office becomes REAL OPS with AI availability, active real missions, real external agents, a **Create real mission** action and a Mission Control shortcut. An offline agent only means no heartbeat; local AI can still execute under the assigned identity. Demo can be restored at any time.
 
-## Mission context, token cap and retry
+## Mission context, token estimates and retry
 
 - **Context memory** — AI discussion and execution read uploaded file / OCR text, team decisions, completed reports, evidence and approved gates. Context is marked as untrusted reference and cannot change rules, leak secrets or bypass approvals.
-- **Token cap** — an optional per-mission token cap counts discussion and task usage. Auto-run stops at the cap, shows used/cap in evaluation, and can resume after the cap is raised.
+- **No token cap** — tasks are unlimited; new missions no longer ask for or store a token cap. Per-task input/output estimates remain visible, and the Eval tab shows a context insight with estimated vs actual input, output and latency.
+- **Model call ledger** — every discussion, task, deliverable and chat call is persisted with provider, model, mission/task, context size, tokens, latency and errors. Open it from Settings → Model calls, `Cmd/Ctrl+K`, or the Eval tab.
 - **Retry** — a failed task is retried once; retries and final failures are written to the mission group and audit trail.
 
 See [docs/TRENDS.md](docs/TRENDS.md) for the 2026 trend review, gaps and roadmap.

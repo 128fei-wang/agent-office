@@ -48,7 +48,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [ ] Token-level streaming replies and message editing/branching.
 - [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
 - [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.
-- [x] Per-mission token cap with stop/resume and one-shot auto-retry for failed tasks.
+- [x] Unlimited task execution with per-task token estimates, context insight and a model-call ledger (1.22.0); one-shot auto-retry remains.
 - [ ] Durable queue/scheduler, checkpoints and idempotent resume.
 - [x] Workspace and agent memory with retrieval and prompt injection (1.21.0); citations and expiry remain open.
 - [ ] Budget-aware model routing and price table.

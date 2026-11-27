@@ -278,11 +278,13 @@ class MissionTest(unittest.TestCase):
         self.assertEqual(done["coverage"]["assigned"], done["coverage"]["total"])
         self.assertEqual(done["coverage"]["idle"], [])
 
-    def test_token_budget_is_stored_and_editable(self):
+    def test_token_cap_is_ignored_for_new_missions(self):
         mission = self.make(tokenBudget=120000)
-        self.assertEqual(mission["tokenBudget"], 120000)
-        self.assertEqual(mission["autoRun"]["tokenBudget"], 120000)
+        self.assertEqual(mission["tokenBudget"], 0)
+        self.assertEqual(mission["autoRun"]["tokenBudget"], 0)
         self.assertEqual(mission["autoRun"].get("currentTaskStartedAt"), "")
+        # The legacy endpoint remains for older clients, but the UI and
+        # auto-run no longer use it as a stop condition.
         updated = self.store.update_token_budget(mission["id"], 250000)
         self.assertEqual(updated["tokenBudget"], 250000)
         self.assertEqual(updated["autoRun"]["tokenBudget"], 250000)

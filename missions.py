@@ -405,6 +405,10 @@ class MissionStore:
         self.upload_dir = Path(upload_dir)
         self.lock = threading.RLock()
         self.data = self._load()
+        if not self.data.get("_modelCallsBackfilled"):
+            self._backfill_model_calls()
+            self.data["_modelCallsBackfilled"] = True
+            self._save()
 
     def _empty(self):
         return {
@@ -415,6 +419,7 @@ class MissionStore:
             "approvals": [],
             "artifacts": [],
             "memories": [],
+            "modelCalls": [],
             "next": {"message": 1},
         }
 
@@ -429,6 +434,7 @@ class MissionStore:
                     data.setdefault("approvals", [])
                     data.setdefault("artifacts", [])
                     data.setdefault("memories", [])
+                    data.setdefault("modelCalls", [])
                     data.setdefault("next", {"message": 1})
                     for conv in data.get("conversations", []):
                         conv.setdefault("pinned", False)
@@ -501,6 +507,181 @@ class MissionStore:
         out["attachments"] = [a for a in out["attachments"] if a]
         out.pop("attachmentIds", None)
         return out
+
+    def _backfill_model_calls(self):
+        """Turn historical task/discussion usage into a one-time call ledger."""
+        calls = []
+
+        def add(usage, purpose, mission, task=None, agent_id="", agent_name="", created=""):
+            if not isinstance(usage, dict):
+                return
+            tin = int(usage.get("tokensIn") or usage.get("inputTokens") or 0)
+            tout = int(usage.get("tokensOut") or usage.get("outputTokens") or 0)
+            if not (usage.get("provider") or usage.get("model") or tin or tout):
+                return
+            calls.append({
+                "id": "call-history-" + secrets.token_hex(6),
+                "createdAt": created or usage.get("at") or now_iso(),
+                "provider": _text(usage.get("provider"), 80),
+                "model": _text(usage.get("model"), 160),
+                "purpose": purpose,
+                "missionId": (mission or {}).get("id", ""),
+                "missionTitle": (mission or {}).get("title", ""),
+                "taskId": (task or {}).get("id", ""),
+                "taskTitle": (task or {}).get("title", ""),
+                "agentId": agent_id or (task or {}).get("assigneeId", ""),
+                "agentName": agent_name or (task or {}).get("assigneeName", ""),
+                "promptChars": 0,
+                "systemChars": 0,
+                "contextTokens": tin,
+                "tokensIn": tin,
+                "tokensOut": tout,
+                "durationMs": int(usage.get("durationMs") or 0),
+                "ok": True,
+                "error": "",
+                "fallback": "history",
+            })
+
+        for mission in self.data.get("missions", []):
+            add((mission.get("discussion") or {}).get("usage"), "discussion", mission)
+            for task in mission.get("tasks") or []:
+                for usage in task.get("usages") or []:
+                    purpose = "deliverable" if "deliverable" in str(usage.get("source") or "") else "task"
+                    add(usage, purpose, mission, task, created=usage.get("at"))
+        for conversation in self.data.get("conversations", []):
+            mission = self.find_mission(conversation.get("missionId") or "")
+            for message in self.data.get("messages", []):
+                if message.get("conversationId") != conversation.get("id"):
+                    continue
+                if message.get("type") == "report" or message.get("taskId"):
+                    continue
+                usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+                if usage:
+                    add(usage, "chat", mission, None,
+                        agent_id=message.get("senderId", ""),
+                        agent_name=message.get("senderName", ""),
+                        created=message.get("createdAt", ""))
+        calls.sort(key=lambda c: str(c.get("createdAt") or ""))
+        self.data["modelCalls"] = calls[-800:]
+
+    # ---------------------------------------------------------- model calls
+
+    def add_model_call(self, data):
+        call = {
+            "id": _mid("call"),
+            "createdAt": now_iso(),
+            "provider": _text(data.get("provider"), 80),
+            "model": _text(data.get("model"), 160),
+            "purpose": _text(data.get("purpose") or "task", 40),
+            "missionId": _text(data.get("missionId"), 80),
+            "missionTitle": _text(data.get("missionTitle"), 160),
+            "taskId": _text(data.get("taskId"), 80),
+            "taskTitle": _text(data.get("taskTitle"), 200),
+            "agentId": _text(data.get("agentId"), 80),
+            "agentName": _text(data.get("agentName"), 120),
+            "promptChars": int(data.get("promptChars") or 0),
+            "systemChars": int(data.get("systemChars") or 0),
+            "contextTokens": int(data.get("contextTokens") or 0),
+            "tokensIn": int(data.get("tokensIn") or 0),
+            "tokensOut": int(data.get("tokensOut") or 0),
+            "durationMs": int(data.get("durationMs") or 0),
+            "ok": bool(data.get("ok", True)),
+            "error": _text(data.get("error"), 500),
+            "fallback": _text(data.get("fallback"), 40),
+        }
+        with self.lock:
+            calls = self.data.setdefault("modelCalls", [])
+            calls.append(call)
+            if len(calls) > 800:
+                del calls[:len(calls) - 800]
+            self._save()
+        return call
+
+    def list_model_calls(self, mission_id="", task_id="", purpose="", query="", limit=120):
+        q = str(query or "").strip().lower()
+        limit = max(1, min(500, int(limit or 120)))
+        with self.lock:
+            rows = list(self.data.get("modelCalls", []))
+        if mission_id:
+            rows = [r for r in rows if r.get("missionId") == mission_id]
+        if task_id:
+            rows = [r for r in rows if r.get("taskId") == task_id]
+        if purpose and purpose != "all":
+            rows = [r for r in rows if r.get("purpose") == purpose]
+        if q:
+            rows = [r for r in rows if q in " ".join(str(r.get(k) or "") for k in (
+                "provider", "model", "purpose", "missionTitle", "taskTitle",
+                "agentName", "error", "fallback"
+            )).lower()]
+        rows = sorted(rows, key=lambda r: str(r.get("createdAt") or ""), reverse=True)[:limit]
+        summary = {
+            "calls": len(rows),
+            "tokensIn": sum(int(r.get("tokensIn") or 0) for r in rows),
+            "tokensOut": sum(int(r.get("tokensOut") or 0) for r in rows),
+            "durationMs": sum(int(r.get("durationMs") or 0) for r in rows),
+            "failures": sum(0 if r.get("ok", True) else 1 for r in rows),
+            "providers": sorted(set(r.get("provider") for r in rows if r.get("provider"))),
+        }
+        summary["avgMs"] = round(summary["durationMs"] / len(rows)) if rows else 0
+        return {"calls": rows, "summary": summary}
+
+    # ---------------------------------------------------------- context insight
+
+    def context_insight(self, mission):
+        if not mission:
+            return {}
+        with self.lock:
+            tasks = list(mission.get("tasks") or [])
+            artifact_texts = []
+            for artifact_id in (mission.get("artifactIds") or [])[-16:]:
+                artifact = self.find_artifact(artifact_id)
+                if artifact:
+                    artifact_texts.append(str(artifact.get("extractedText") or
+                                              artifact.get("visionSummary") or ""))
+            members = [m.get("id") for m in (mission.get("members") or [])]
+            memory_text = self.memory_context(members, limit=8, chars=10000)
+            decisions = [str(d.get("topic") or "") + " " + str(d.get("outcome") or "")
+                         for d in (mission.get("decisions") or []) if isinstance(d, dict)]
+            reports = []
+            for task in tasks:
+                report = task.get("report") or {}
+                if report.get("summary"):
+                    reports.append(str(report.get("summary") or "") + " " +
+                                   str(report.get("solution") or ""))
+        base_chars = len(str(mission.get("title") or "")) + len(str(mission.get("description") or ""))             + len(str(mission.get("acceptance") or "")) + len(" ".join(mission.get("rules") or []))
+        artifact_chars = sum(len(t) for t in artifact_texts)
+        memory_chars = len(memory_text)
+        decision_chars = sum(len(t) for t in decisions)
+        report_chars = sum(len(t) for t in reports)
+        context_chars = base_chars + artifact_chars + memory_chars + decision_chars + report_chars
+        total_est = sum(int((t.get("estimate") or {}).get("tokens") or 0) for t in tasks)
+        task_rows = []
+        for task in tasks:
+            est = int((task.get("estimate") or {}).get("tokens") or 0)
+            task_rows.append({
+                "id": task.get("id"), "title": task.get("title"),
+                "estimatedInputTokens": round(est * 0.6),
+                "estimatedOutputTokens": round(est * 0.4),
+                "estimatedTotalTokens": est,
+            })
+        return {
+            "baseChars": base_chars,
+            "artifactCount": len(artifact_texts),
+            "artifactChars": artifact_chars,
+            "memoryCount": len([m for m in self.data.get("memories", [])
+                                if m.get("scope") == "workspace" or m.get("agentId") in members]),
+            "memoryChars": memory_chars,
+            "decisionCount": len(decisions),
+            "decisionChars": decision_chars,
+            "reportCount": len(reports),
+            "reportChars": report_chars,
+            "contextChars": context_chars,
+            "contextTokens": max(1, round(context_chars / 3.2)),
+            "estimatedInputTokens": round(total_est * 0.6),
+            "estimatedOutputTokens": round(total_est * 0.4),
+            "estimatedTotalTokens": total_est,
+            "tasks": task_rows,
+        }
 
     # --------------------------------------------------------------- memory
 
@@ -778,6 +959,8 @@ class MissionStore:
             })
         token_budget = int(mission.get("tokenBudget") or 0)
         total_tokens = actual_tokens + discussion_tokens
+        calls = [c for c in self.data.get("modelCalls", [])
+                 if c.get("missionId") == mission.get("id")]
         return {
             "estimatedMinutes": estimated_minutes,
             "estimatedTokens": estimated_tokens,
@@ -792,6 +975,12 @@ class MissionStore:
             "elapsedMinutes": elapsed_minutes,
             "discussionTokens": discussion_tokens,
             "discussionMinutes": discussion_minutes,
+            "modelCalls": len(calls),
+            "modelInputTokens": sum(int(c.get("tokensIn") or 0) for c in calls),
+            "modelOutputTokens": sum(int(c.get("tokensOut") or 0) for c in calls),
+            "modelFailures": sum(0 if c.get("ok", True) else 1 for c in calls),
+            "modelAvgMs": round(sum(int(c.get("durationMs") or 0) for c in calls) / len(calls))
+                           if calls else 0,
             "confidence": confidence,
             "deadline": deadline,
             "deadlineDays": deadline_days,
@@ -860,6 +1049,7 @@ class MissionStore:
         out["artifacts"] = [a for a in out["artifacts"] if a]
         if not summary:
             out["tasks"] = [self.public_task(t, mission) for t in tasks]
+            out["contextInsight"] = self.context_insight(mission)
         return out
 
     def public_conversation(self, conversation):
@@ -932,11 +1122,9 @@ class MissionStore:
             budget = max(0.0, float(body.get("budget") or 0))
         except (TypeError, ValueError):
             budget = 0.0
+        # Tasks are unlimited by design; keep the field at zero for older
+        # clients while estimates and actual usage remain visible.
         token_budget = 0
-        try:
-            token_budget = max(0, min(2000000, int(float(body.get("tokenBudget") or 0))))
-        except (TypeError, ValueError, OverflowError):
-            token_budget = 0
         schedule_at = _text(body.get("scheduleAt"), 40)
         if schedule_at:
             try:

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Usage self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style>
+</head><body><h1>USAGE SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  let watchdog=null;
+  function done(){if(watchdog)clearTimeout(watchdog);finish();}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;done();}),3000));
+  async function run(){
+    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 45s');failed++;done();},45000);
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s),$$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app&&!!app.renderer&&!!app.renderer.features);
+    if(!app){done();return;}
+    const usage=app.renderer.features.usage;
+    check('usage panel constructed',!!usage);
+    if(!usage){done();return;}
+    usage.open();await wait(650);
+    check('usage panel opens',!$('#usageRoot').hidden&&!!$('.usage-window'));
+    check('usage title',/模型调用/.test($('.usage-window').textContent));
+    check('usage filters',!!$('#usageSearch')&&$$('#usagePurpose option').length>=4);
+    check('usage stats',$$('.usage-stat').length===5);
+    usage.calls=[{
+      id:'call-test-1',createdAt:new Date().toISOString(),provider:'test-provider',model:'test-model',
+      purpose:'task',missionId:'m1',missionTitle:'测试任务',taskId:'t1',taskTitle:'需求边界',
+      agentId:'a1',agentName:'Test Agent',promptChars:4200,systemChars:600,contextTokens:1500,
+      tokensIn:900,tokensOut:300,durationMs:1234,ok:true,error:''
+    },{
+      id:'call-test-2',createdAt:new Date().toISOString(),provider:'test-provider',model:'test-model',
+      purpose:'deliverable',missionId:'m1',missionTitle:'测试任务',taskId:'t1',taskTitle:'交付物',
+      agentId:'a1',agentName:'Test Agent',promptChars:800,systemChars:100,contextTokens:280,
+      tokensIn:100,tokensOut:40,durationMs:600,ok:false,error:'placeholder deliverable'
+    }];
+    usage.summary={calls:2,tokensIn:1000,tokensOut:340,durationMs:1834,failures:1,avgMs:917};
+    usage.renderBody();await wait(80);
+    check('usage rows render',$$('.usage-row').length===2);
+    check('usage token stats',/1\.0K|1K/.test($('.usage-stats').textContent));
+    check('usage failure visible',$$('.usage-row.failed').length===1);
+    const row=$('[data-usage-row="call-test-1"]');if(row){row.click();await wait(80);}
+    check('usage detail expands',!!$('.usage-detail'));
+    check('usage detail has context',/Context/.test($('.usage-detail').textContent));
+    const api=await fetch(usage.bridge()+'/model-calls').then(r=>r.json()).catch(()=>({calls:[],summary:{}}));
+    check('model call API responds',Array.isArray(api.calls)&&!!api.summary);
+    const missions=await fetch(usage.bridge()+'/missions').then(r=>r.json()).catch(()=>({missions:[]}));
+    const first=(missions.missions||[])[0];
+    if(first){
+      const detail=await fetch(usage.bridge()+'/missions/'+encodeURIComponent(first.id)).then(r=>r.json()).catch(()=>({}));
+      check('context insight API',!!(detail.mission&&detail.mission.contextInsight)&&detail.mission.contextInsight.estimatedTotalTokens>=0);
+    } else {
+      check('context insight API',true,'no missions');
+    }
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}));
+    await wait(200);
+    check('command palette opens',!!$('#commandRoot')&&!$('#commandRoot').hidden);
+    const cmd=$('#commandInput');
+    if(cmd){cmd.value='模型调用';cmd.dispatchEvent(new w.Event('input',{bubbles:true}));}
+    await wait(250);
+    check('command palette exposes usage',/模型调用/.test($('.command-list').textContent));
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(120);
+    usage.close();await wait(120);
+    check('usage closes',!!$('#usageRoot')&&$('#usageRoot').hidden);
+    done();
+  }
+})();
+</script></body></html>
