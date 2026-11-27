@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Chat hub self-check</title>
+<style>
+body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}
+iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}
+pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}
+</style></head><body><h1>CHAT HUB SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  let watchdog=null;
+  function done(){if(watchdog)clearTimeout(watchdog);finish();}
+  function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&chatStream=1&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;done();}),3200));
+  async function run(){
+    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 60s');failed++;done();},60000);
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s),$$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app&&!!app.renderer&&!!app.renderer.features);
+    if(!app){done();return;}
+    const shell=app.renderer.features.chat;
+    check('chat hub constructed',!!shell);
+    check('chat ui helper',!!w.AgentOffice.ChatUI);
+    if(!shell){done();return;}
+    let fakeStream=null;
+    class FakeEventSource {
+      constructor(url){this.url=url;this.listeners={};this.closed=false;fakeStream=this;}
+      addEventListener(type,fn){(this.listeners[type]||(this.listeners[type]=[])).push(fn);}
+      emit(type,data){(this.listeners[type]||[]).forEach(fn=>fn({data:data}));}
+      close(){this.closed=true;}
+    }
+    try{w.EventSource=FakeEventSource;}catch(err){}
+    await shell.openGroupPicker();
+    await wait(650);
+    check('hub window',!!$('.chat-window.chat-hub'));
+    check('conversation rail',!!$('.chat-side')&&$('.chat-side').getBoundingClientRect().width>=220,
+      'width='+($('.chat-side')?Math.round($('.chat-side').getBoundingClientRect().width):0));
+    check('all/group/direct tabs',$$('[data-chat-filter]').length===3);
+    check('conversation search',!!$('#chatConvSearch'));
+    check('new group control',!!$('[data-chat-new-group]'));
+    const row=$('[data-chat-conv]');
+    check('conversation rows',!!row);
+    const sidebarFont=$('.chat-conv-top b')?parseFloat(w.getComputedStyle($('.chat-conv-top b')).fontSize):0;
+    check('readable sidebar type',sidebarFont>=10,'size='+sidebarFont);
+
+    const title='聊天自检群 '+Date.now().toString().slice(-6);
+    $('[data-chat-new-group]').click();
+    await wait(300);
+    const form=$('#chatGroupForm');
+    check('new group form',!!form);
+    check('group form reusable selectors',!!(form&&form.elements.title&&form.querySelectorAll('input[name="memberIds"]').length>=2));
+    let groupId='';
+    if(form){
+      form.elements.title.value=title;
+      const boxes=Array.from(form.querySelectorAll('input[name="memberIds"]'));
+      boxes.slice(0,2).forEach((box)=>{box.checked=true;});
+      form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+      await wait(1300);
+      groupId=shell.active&&shell.active.id;
+      check('group created and opened',!!shell.active&&shell.active.kind==='group',groupId);
+      check('chat header',!!$('.chat-head')&&/自检|聊天自检/.test($('.chat-head').textContent));
+      check('composer textarea',!!$('#chatDraft'));
+      check('send button',!!$('#chatSendBtn'));
+      check('send disabled while empty',$('#chatSendBtn')&&$('#chatSendBtn').disabled);
+      check('empty state or messages',!!$('.chat-conv-empty')||!!$('.chat-msg')||!!$('.chat-event'));
+      check('chat SSE created',!!shell.eventStream&&!!fakeStream&&/missions\/stream/.test(fakeStream.url||''),
+        fakeStream&&fakeStream.url);
+      let sseLoads=0,sseRefreshes=0;
+      const baseLoad=shell.loadMessages.bind(shell);
+      const baseRefresh=shell.refreshConversations.bind(shell);
+      shell.loadMessages=function(){sseLoads++;return baseLoad.apply(null,arguments);};
+      shell.refreshConversations=function(){sseRefreshes++;return baseRefresh.apply(null,arguments);};
+      if(fakeStream){
+        fakeStream.emit('message',JSON.stringify({id:'sse-self',seq:999998,conversationId:groupId,
+          senderType:'agent',type:'text',text:'SSE',createdAt:new Date().toISOString()}));
+        await wait(180);
+        check('SSE message triggers load',sseLoads>0,'loads='+sseLoads);
+        fakeStream.emit('overview','{}');
+        await wait(220);
+        check('SSE overview refreshes rail',sseRefreshes>0,'refreshes='+sseRefreshes);
+      }
+    }
+    if(groupId){
+      const draftBox=$('#chatDraft');
+      if(draftBox){
+        draftBox.value='草稿保留自检';draftBox.dispatchEvent(new w.Event('input',{bubbles:true}));
+        check('send enabled with draft',$('#chatSendBtn')&&!$('#chatSendBtn').disabled);
+        shell.close();await wait(180);await shell.openGroupPicker();await wait(700);
+        const again=d.querySelector('[data-chat-conv="'+groupId+'"]');
+        if(again)again.click();
+        await wait(900);
+        check('draft survives reopen',$('#chatDraft')&&$('#chatDraft').value==='草稿保留自检');
+        const box=$('#chatDraft'); if(box){box.value='';box.dispatchEvent(new w.Event('input',{bubbles:true}));}
+        check('send disabled after clearing',$('#chatSendBtn')&&$('#chatSendBtn').disabled);
+      }
+      const fake={id:'chat-selftest-md',seq:900000,senderId:'mselftest',senderName:'QA Self',
+        senderType:'agent',type:'text',text:'**加粗**\n\n- 第一项\n- 第二项\n\n```js\nconst ok = true;\n```',
+        createdAt:new Date().toISOString(),meta:{chatReply:true,provider:'selfcheck'}};
+      shell.messages.push(fake);
+      shell.renderMessages(true);
+      check('markdown strong',!!$('#chatMessages strong'));
+      check('markdown list',$$('#chatMessages li').length>=2);
+      check('markdown code block',!!$('.chat-code')&&!!$('.chat-code-copy'));
+      check('message action copy',!!$('[data-chat-action="copy"]'));
+      const quote=$('[data-chat-action="quote"]');
+      check('message action quote',!!quote);
+      if(quote){quote.click();await wait(120);check('quote preview',!!$('.chat-reply-preview'));}
+      const clearQuote=$('[data-chat-quote-close]'); if(clearQuote)clearQuote.click();
+      $('[data-chat-search-toggle]').click();
+      await wait(100);
+      const searchInput=$('#chatMsgSearchInput');
+      check('message search opens',!!searchInput&&!$('#chatMsgSearch').hidden);
+      if(searchInput){
+        searchInput.value='第一项';searchInput.dispatchEvent(new w.Event('input',{bubbles:true}));
+        await wait(100);
+        check('message search filters',$$('.chat-msg:not(.search-hidden)').length>=1);
+        $('[data-chat-search-close]').click();
+      }
+      shell.messages=shell.messages.filter(m=>m.id!=='chat-selftest-md');
+      shell.renderMessages(true);
+
+      const info=$('[data-chat-info-toggle]');
+      check('info control',!!info);
+      if(info){info.click();await wait(300);check('details panel',!!$('#chatDetails')&&/成员/.test($('#chatDetails').textContent));info.click();}
+      const styleBtn=$('[data-chat-style-toggle]');
+      check('style control',!!styleBtn);
+      if(styleBtn){styleBtn.click();await wait(80);check('style changes window class',/style-(qq|wechat|agent)/.test($('.chat-window').className));}
+      const max=$('[data-chat-maximize]');
+      check('maximize control',!!max);
+      if(max){max.click();await wait(80);check('maximize class',!!$('.chat-window.is-max'));max.click();}
+
+      const file=new w.File(['hello chat'],'chat-selfcheck.txt',{type:'text/plain'});
+      await shell.handleFiles([file]);
+      for(let i=0;i<20&&shell.files.some(f=>f.uploading);i++)await wait(250);
+      check('file upload',shell.files.length>=1&&!shell.files.some(f=>f.uploading),'files='+shell.files.length);
+      check('file chip',!!$('.chat-pending-file'));
+      const removeFile=$('[data-chat-file-remove]'); if(removeFile)removeFile.click();
+      check('file chip removable',$('[data-chat-file-remove]')===null);
+
+      const menu=$('[data-chat-conv-menu="'+groupId+'"]');
+      check('conversation menu control',!!menu);
+      if(menu){
+        menu.click();await wait(100);
+        check('conversation menu opens',!!$('#chatPopover')&&!$('#chatPopover').hidden);
+        const pin=$('[data-chat-conv-action="pin"]');
+        check('pin action',!!pin);
+        if(pin){pin.click();await wait(700);
+          const rowAfter=await shell.api('/conversations/'+encodeURIComponent(groupId));
+          check('pin persisted',!!rowAfter.conversation.pinned);
+          const menu2=$('[data-chat-conv-menu="'+groupId+'"]'); if(menu2){menu2.click();await wait(80);$('[data-chat-conv-action="pin"]').click();await wait(400);}
+        }
+      }
+      const renameMenu=d.querySelector('[data-chat-conv-menu="'+groupId+'"]');
+      if(renameMenu){
+        renameMenu.click();await wait(100);
+        const rename=$('[data-chat-conv-action="rename"]');
+        check('rename action',!!rename);
+        if(rename){
+          rename.click();await wait(120);
+          const dialog=$('#chatRenameForm');
+          check('rename dialog',!!dialog);
+          if(dialog){dialog.elements.title.value=title+' 改名';dialog.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await wait(700);}
+          const renamed=await shell.api('/conversations/'+encodeURIComponent(groupId));
+          check('rename persisted',/改名/.test(renamed.conversation.title),renamed.conversation.title);
+        }
+      }
+      const draft=$('#chatDraft');
+      if(draft){draft.value='聊天窗口自检消息';draft.dispatchEvent(new w.Event('input',{bubbles:true}));}
+      check('send enabled with draft',$('#chatSendBtn')&&!$('#chatSendBtn').disabled);
+      const sent=await shell.sendText('聊天窗口自检消息');
+      await wait(600);
+      check('message send',sent&&/聊天窗口自检消息/.test($('#chatMessages').textContent));
+      check('composer clears after send',!$('#chatDraft')||$('#chatDraft').value==='');
+      check('send disabled after send',$('#chatSendBtn')&&$('#chatSendBtn').disabled);
+
+      const active=shell.active;
+      await shell.api('/conversations/'+encodeURIComponent(groupId)+'/messages',{
+        method:'POST',body:JSON.stringify({senderId:active.members[0].id,senderType:'agent',
+          type:'text',text:'未读自检消息'})});
+      shell.close();
+      await wait(160);
+      await shell.openGroupPicker();
+      await wait(750);
+      const unreadRow=d.querySelector('[data-chat-conv="'+groupId+'"]');
+      check('unread badge',!!unreadRow&&!!unreadRow.querySelector('.chat-unread-badge'),
+        unreadRow?unreadRow.textContent.replace(/\s+/g,' ').trim():'missing');
+      if(unreadRow){unreadRow.click();await wait(850);}
+      const readRow=d.querySelector('[data-chat-conv="'+groupId+'"]');
+      check('unread clears on open',!!readRow&&!readRow.querySelector('.chat-unread-badge'));
+      await shell.api('/conversations/'+encodeURIComponent(groupId),{method:'DELETE'});
+    }
+
+    // direct contacts + create
+    await shell.openDirectPicker();await wait(650);
+    check('direct filter active',$('[data-chat-filter="direct"]')&&$('[data-chat-filter="direct"]').classList.contains('active'));
+    check('agent contacts',$$('[data-chat-agent]').length>=1);
+    const directIds=new Set((shell.conversations||[]).filter(c=>c.kind==='direct').flatMap(c=>(c.members||[]).map(m=>m.id)));
+    const free=$$('[data-chat-agent]').find(el=>!directIds.has(el.getAttribute('data-chat-agent')));
+    if(free){
+      const agentId=free.getAttribute('data-chat-agent');
+      free.click();await wait(1100);
+      check('direct created and opened',!!shell.active&&shell.active.kind==='direct','id='+agentId);
+      if(shell.active&&!directIds.has(shell.active.members[0].id)){
+        await shell.api('/conversations/'+encodeURIComponent(shell.active.id),{method:'DELETE'});
+      }
+    } else {
+      check('direct free contact available',false,'all agents already have direct chats');
+    }
+    shell.close();
+    await wait(120);
+    check('hub closes',!$('.chat-hub')&&$('#chatHubRoot').hidden);
+    check('SSE closed with hub',!fakeStream||fakeStream.closed);
+    done();
+  }
+})();
+</script></body></html>

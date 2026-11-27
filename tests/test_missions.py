@@ -305,10 +305,33 @@ class MissionTest(unittest.TestCase):
         }, self.directory)
         self.assertEqual(group["kind"], "group")
         self.assertEqual(direct["kind"], "direct")
+        self.assertFalse(group["pinned"])
+        self.assertFalse(group["muted"])
+        self.assertEqual(group["unreadCount"], 0)
         message = self.store.post_message(group["id"], {
             "senderId": "boss", "senderType": "boss", "type": "text", "text": "hello",
         })
         self.assertEqual(message["text"], "hello")
+        self.assertEqual(self.store.get_conversation(group["id"])["unreadCount"], 0)
+        agent = next(m for m in group["members"])
+        self.store.post_message(group["id"], {
+            "senderId": agent["id"], "senderType": "agent", "type": "text", "text": "reply",
+        })
+        unread = self.store.get_conversation(group["id"])
+        self.assertEqual(unread["unreadCount"], 1)
+        self.assertEqual(unread["lastMessage"]["senderType"], "agent")
+        self.assertEqual(unread["lastSeq"], unread["lastMessage"]["seq"])
+        updated = self.store.update_conversation(group["id"], {
+            "title": "Review v2", "pinned": True, "muted": True,
+            "readSeq": unread["lastSeq"],
+        })
+        self.assertEqual(updated["title"], "Review v2")
+        self.assertTrue(updated["pinned"])
+        self.assertTrue(updated["muted"])
+        self.assertEqual(updated["readSeq"], unread["lastSeq"])
+        self.assertEqual(updated["unreadCount"], 0)
+        with self.assertRaises(missions.MissionError):
+            self.store.update_conversation(group["id"], {"readSeq": "bad"})
         with self.assertRaises(missions.MissionError):
             self.store.post_message(group["id"], {
                 "senderId": "ext-not-a-member", "senderType": "agent", "text": "nope",

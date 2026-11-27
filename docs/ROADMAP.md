@@ -39,7 +39,9 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Mission Control: task charter, auto team/plan/assignment, no-idle standby work, groups/DMs, file/image upload, OCR, boss gates, reports with solutions and AI discussion/run.
 - [x] Agent recommendations, free team selection, per-task executor overrides, auto brand logos, task time/token estimates and actual-usage evaluation.
 - [x] Real-external-agent-first recommendations, editable external job appointments, and built-in/custom avatar selection.
-- [x] Pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat-window styles.
+- [x] Pinned left function bar, settings center and QQ/WeChat chat-window styles.
+- [x] Two-pane group/DM chat workspace with unread/read state, pin/mute/rename, search, safe Markdown, quote/copy, attachments, @mentions, drafts, details/files and mobile sheet (1.19.0).
+- [ ] Token-level streaming replies, message editing/branching and cross-conversation full-text search.
 - [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
 - [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.
 - [x] Per-mission token cap with stop/resume and one-shot auto-retry for failed tasks.

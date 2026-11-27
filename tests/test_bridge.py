@@ -401,6 +401,52 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 
+    def test_conversation_unread_pin_mute_and_rename(self):
+        status, directory = self.request("/missions/agents")
+        self.assertEqual(status, 200)
+        members = [a["id"] for a in directory["agents"][:2]]
+        self.assertGreaterEqual(len(members), 2)
+        status, created = self.request("/conversations", "POST", {
+            "kind": "group", "title": "Chat metadata", "memberIds": members,
+        })
+        self.assertEqual(status, 201, created)
+        conversation = created["conversation"]
+        self.assertFalse(conversation["pinned"])
+        self.assertFalse(conversation["muted"])
+        self.assertEqual(conversation["unreadCount"], 0)
+        self.assertEqual(conversation["readSeq"], 0)
+        status, boss = self.request(
+            "/conversations/%s/messages" % conversation["id"], "POST",
+            {"senderId": "boss", "senderType": "boss", "type": "text", "text": "hello"},
+        )
+        self.assertEqual(status, 201, boss)
+        after_boss = self.request("/conversations/%s" % conversation["id"])[1]["conversation"]
+        self.assertEqual(after_boss["readSeq"], boss["message"]["seq"])
+        self.assertEqual(after_boss["unreadCount"], 0)
+        status, reply = self.request(
+            "/conversations/%s/messages" % conversation["id"], "POST",
+            {"senderId": members[0], "senderType": "agent", "type": "text", "text": "reply"},
+        )
+        self.assertEqual(status, 201, reply)
+        after_reply = self.request("/conversations/%s" % conversation["id"])[1]["conversation"]
+        self.assertEqual(after_reply["unreadCount"], 1)
+        self.assertEqual(after_reply["lastSeq"], reply["message"]["seq"])
+        status, patched = self.request(
+            "/conversations/%s" % conversation["id"], "PATCH",
+            {"title": "Renamed room", "pinned": True, "muted": True,
+             "readSeq": reply["message"]["seq"]},
+        )
+        self.assertEqual(status, 200, patched)
+        row = patched["conversation"]
+        self.assertEqual(row["title"], "Renamed room")
+        self.assertTrue(row["pinned"])
+        self.assertTrue(row["muted"])
+        self.assertEqual(row["unreadCount"], 0)
+        status, bad = self.request(
+            "/conversations/%s" % conversation["id"], "PATCH", {"readSeq": "nope"})
+        self.assertEqual(status, 400, bad)
+        self.request("/conversations/%s" % conversation["id"], "DELETE")
+
     def test_mission_group_chat_replies_during_active_autorun(self):
         status, data = self.request("/missions", "POST", {
             "title": "Active chat auto mission",

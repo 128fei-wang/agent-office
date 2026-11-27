@@ -181,6 +181,19 @@
       if (!this.root) return;
       this.root.addEventListener("click", function (event) {
         if (event.target.closest("[data-mission-close]")) { self.close(); return; }
+        const copyMessage = event.target.closest("[data-copy-message]");
+        if (copyMessage) {
+          const copyId = copyMessage.getAttribute("data-copy-message");
+          const source = (self.messages || []).find(function (item) { return item.id === copyId; });
+          const value = source ? ((source.meta && source.meta.report && source.meta.report.summary) ||
+            source.text || "") : "";
+          if (value && AO.ChatUI) {
+            AO.ChatUI.copyText(value).then(function () {
+              self.toast(AO.t("chatCopied"));
+            }).catch(function () {});
+          }
+          return;
+        }
         if (event.target.closest("[data-mission-refresh]")) { self.refreshAll(true); return; }
         if (event.target.closest("[data-mission-retry]")) { self.refreshAll(true); return; }
         if (event.target.closest("[data-mission-lang]")) {
@@ -397,8 +410,18 @@
         if (event.target.id === "missionCreateForm") { event.preventDefault(); self.submitForm(event.target); }
         if (event.target.id === "missionTaskEditForm") { event.preventDefault(); self.saveTaskEdit(event.target); }
       });
+      this.root.addEventListener("keydown", function (event) {
+        if (event.target.id === "missionDraft" && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          self.sendMessage();
+        }
+      });
       this.root.addEventListener("input", function (event) {
-        if (event.target.id === "missionDraft") self.draft = event.target.value;
+        if (event.target.id === "missionDraft") {
+          self.draft = event.target.value;
+          event.target.style.height = "auto";
+          event.target.style.height = Math.min(150, Math.max(38, event.target.scrollHeight)) + "px";
+        }
         if (event.target.id === "missionMessageSearch") {
           self.messageQuery = event.target.value;
           self.applyMessageFilter();
@@ -1712,8 +1735,10 @@
         this.messageAvatar(message).replace("mission-avatar", "mission-message-avatar") +
         '<div class="mission-bubble"><div class="mission-message-top"><b>' +
         esc(message.senderName || this.t("missionAgent")) + '</b><span>' +
-        esc(fmtTime(message.createdAt)) + '</span></div>' +
-        (message.text ? '<div class="mission-message-text">' + esc(message.text) + '</div>' : '') +
+        esc(fmtTime(message.createdAt)) + '</span><button type="button" class="mission-copy" data-copy-message="' +
+        esc(message.id) + '" title="' + esc(this.t("chatCopy")) + '" aria-label="' +
+        esc(this.t("chatCopy")) + '">⧉</button></div>' +
+        (message.text ? '<div class="mission-message-text">' + AO.ChatUI.markdown(message.text) + '</div>' : '') +
         this.attachmentsHTML(message.attachments) + '</div></div>';
     }
 
@@ -1733,7 +1758,7 @@
         (usageTokens || usage.durationMs ? '<div class="mission-usage-chip">TOKENS ' +
           esc(usage.tokensIn || 0) + ' in · ' + esc(usage.tokensOut || 0) + ' out · ' +
           fmtDuration(0, usage.durationMs) + '</div>' : '') +
-        '<p class="mission-report-summary">' + esc(report.summary) + '</p>' +
+        '<div class="mission-report-summary">' + AO.ChatUI.markdown(report.summary) + '</div>' +
         rows.map((row) => '<div class="mission-report-row"><span>' + esc(this.t(row[0])) +
           '</span><div>' + (row[1] || []).map((item) => '<em>' + esc(item) + '</em>').join("") + '</div></div>').join('') +
         '<div class="mission-solution"><b>' + esc(this.t("missionSolution")) + '</b><p>' +
@@ -1752,7 +1777,7 @@
         this.messageAvatar(message).replace("mission-avatar", "mission-message-avatar") +
         '<div class="mission-proposal"><div class="mission-report-head"><b>' + esc(message.senderName) +
         ' · ' + esc(this.t("missionProposal")) + '</b><span>' + esc(fmtTime(message.createdAt)) + '</span></div>' +
-        '<p>' + esc(message.text) + '</p>' +
+        '<div class="mission-message-text">' + AO.ChatUI.markdown(message.text) + '</div>' +
         (p.topic ? '<div class="mission-proposal-meta"><b>' + esc(p.topic) + '</b><span>' +
           esc(p.option || "") + '</span>' + (p.rationale ? '<em>' + esc(p.rationale) + '</em>' : '') + '</div>' : '') +
         this.attachmentsHTML(message.attachments) + '</div></div>';
@@ -3175,7 +3200,7 @@
         });
         if (res.replyPending && !repliedEarly) this.waitForReply(this.conversation.id);
         this.render();
-        this.markRead();
+        if (this.markRead) this.markRead();
         this.refreshOverview();
       } catch (err) {
         this.uploading = false;

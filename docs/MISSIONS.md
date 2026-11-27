@@ -346,6 +346,7 @@ GET    /mission-tasks?agentId=<id>
 GET    /conversations?missionId=&kind=
 POST   /conversations
 GET    /conversations/<id>
+PATCH  /conversations/<id>       # title, pinned, muted, readSeq
 GET    /conversations/<id>/messages?since=
 POST   /conversations/<id>/messages
 
@@ -363,6 +364,8 @@ GET    /missions/stream?since=N
 
 POST   /mcp                 # local MCP JSON-RPC (X-Agent-Id identity)
 ```
+
+Conversation objects include `pinned`, `muted`, `readSeq`, `lastSeq`, `unreadCount` and `lastMessage` metadata. `PATCH` updates only chat organization/read state; message history remains append-only.
 
 ### External worker protocol
 

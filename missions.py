@@ -428,6 +428,13 @@ class MissionStore:
                     data.setdefault("approvals", [])
                     data.setdefault("artifacts", [])
                     data.setdefault("next", {"message": 1})
+                    for conv in data.get("conversations", []):
+                        conv.setdefault("pinned", False)
+                        conv.setdefault("muted", False)
+                        if "readSeq" not in conv:
+                            conv["readSeq"] = max(
+                                [int(m.get("seq") or 0) for m in data.get("messages", [])
+                                 if m.get("conversationId") == conv.get("id")] or [0])
                     return data
             except Exception:
                 pass
@@ -652,12 +659,24 @@ class MissionStore:
         messages = [m for m in self.data["messages"]
                     if m.get("conversationId") == conversation.get("id")]
         last = messages[-1] if messages else None
+        read_seq = int(conversation.get("readSeq") or 0)
         out = {k: conversation.get(k) for k in (
             "id", "kind", "title", "missionId", "members", "createdAt", "updatedAt",
         )}
+        out["pinned"] = bool(conversation.get("pinned"))
+        out["muted"] = bool(conversation.get("muted"))
+        out["readSeq"] = read_seq
+        out["lastSeq"] = int(last.get("seq") or 0) if last else 0
+        out["unreadCount"] = sum(
+            1 for m in messages
+            if int(m.get("seq") or 0) > read_seq and m.get("senderType") == "agent")
         out["lastMessage"] = ({
-            "id": last.get("id"), "text": (last.get("text") or "")[:120],
-            "senderName": last.get("senderName"), "createdAt": last.get("createdAt"),
+            "id": last.get("id"), "seq": int(last.get("seq") or 0),
+            "text": (last.get("text") or "")[:120],
+            "senderId": last.get("senderId"), "senderName": last.get("senderName"),
+            "senderType": last.get("senderType"), "type": last.get("type"),
+            "attachmentCount": len(last.get("attachmentIds") or []),
+            "createdAt": last.get("createdAt"),
         } if last else None)
         out["messageCount"] = len(messages)
         return out
@@ -722,6 +741,9 @@ class MissionStore:
             "title": "# " + title,
             "missionId": mission_id,
             "members": members,
+            "pinned": False,
+            "muted": False,
+            "readSeq": 0,
             "createdAt": now_iso(),
             "updatedAt": now_iso(),
         }
@@ -1491,6 +1513,8 @@ class MissionStore:
             "attachmentIds": attachment_ids,
             "usage": usage,
         })
+        if sender_type == "boss":
+            conversation["readSeq"] = int(message.get("seq") or 0)
         mission = self.find_mission(conversation.get("missionId"))
         if mission and message_type == "report":
             task_id = _text(body.get("taskId"), 80)
@@ -1549,6 +1573,9 @@ class MissionStore:
             "title": title,
             "missionId": "",
             "members": members,
+            "pinned": False,
+            "muted": False,
+            "readSeq": 0,
             "createdAt": now_iso(),
             "updatedAt": now_iso(),
         }
@@ -1657,8 +1684,8 @@ class MissionStore:
             ])
         approvals = [[a.get("id"), a.get("status"), a.get("resolvedAt"),
                       a.get("createdAt")] for a in self.data["approvals"]]
-        conversations = [[c.get("id"), c.get("updatedAt"),
-                          (c.get("lastMessage") or {}).get("seq")]
+        conversations = [[c.get("id"), c.get("updatedAt"), c.get("pinned"),
+                          c.get("muted"), c.get("readSeq")]
                          for c in self.data["conversations"]]
         artifacts = [[a.get("id"), a.get("createdAt")]
                      for a in self.data["artifacts"][-80:]]
@@ -1696,6 +1723,37 @@ class MissionStore:
         mission["updatedAt"] = now_iso()
         self._save()
         return self.public_mission(mission, summary=True)
+
+    def update_conversation(self, conversation_id, body):
+        conversation = self.find_conversation(conversation_id)
+        if not conversation:
+            raise MissionError("conversation not found", "not_found", 404)
+        if "title" in body:
+            title = _text(body.get("title"), 120)
+            if len(title) < 1:
+                raise MissionError("conversation title is empty", "bad_title", 400)
+            mission = self.find_mission(conversation.get("missionId") or "")
+            if mission:
+                mission["title"] = title
+                mission["updatedAt"] = now_iso()
+                conversation["title"] = "# " + title
+            else:
+                conversation["title"] = title
+        if "pinned" in body:
+            conversation["pinned"] = bool(body.get("pinned"))
+        if "muted" in body:
+            conversation["muted"] = bool(body.get("muted"))
+        if "readSeq" in body:
+            try:
+                seq = max(0, int(body.get("readSeq") or 0))
+            except (TypeError, ValueError):
+                raise MissionError("readSeq must be a number", "bad_read_seq", 400)
+            last_seq = max(
+                [int(m.get("seq") or 0) for m in self.data["messages"]
+                 if m.get("conversationId") == conversation_id] or [0])
+            conversation["readSeq"] = min(seq, last_seq)
+        self._save()
+        return self.public_conversation(conversation)
 
     def delete_mission(self, mission_id):
         mission = self.find_mission(mission_id)

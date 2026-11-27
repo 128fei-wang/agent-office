@@ -1,13 +1,13 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Chat workspace](docs/CHAT_UI.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, floating group/DM chat with QQ/WeChat styles, day/night themes and a mobile layout.
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, a two-pane group/DM chat workspace with QQ/WeChat styles, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
@@ -65,7 +65,7 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
-| **Function navigation rail** | **Group / DM chat popup** |
+| **Function navigation rail** | **Group / DM chat workspace** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
 | **Real brand logos** | **Live mission in the office** |
 | ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
@@ -355,7 +355,7 @@ Open **TASKS** in the top bar or use `?missions=1`.
 
 See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker protocol.
 
-## Left function bar and chat popups
+## Left function bar and chat workspace
 
 The TEAM panel pins six actions at the top in three groups:
 
@@ -366,10 +366,10 @@ The TEAM panel pins six actions at the top in three groups:
 The function bar title folds or expands it; the **☰** button opens the full function drawer. The top bar includes a **chat window style** switch:
 
 - **Agent** — the default Agent Office look.
-- **QQ** — compact window, blue header and bubbles.
-- **WeChat** — green header and WeChat-style bubbles.
+- **QQ** — blue accent and QQ-style bubbles.
+- **WeChat** — green accent and WeChat-style bubbles.
 
-Group and direct chats open as floating windows, using existing mission groups, ad-hoc groups and DMs through the local bridge. The **风** button in the chat header cycles the QQ/WeChat appearance; it changes style only, never message content.
+Group and direct chats are now a **900×650 two-pane workspace**, not a tiny floating box: a conversation rail with search, all/group/direct filters, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search and a full-screen mobile sheet. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
 
 ## AI setup in 3 steps + full auto-run
 
@@ -504,6 +504,7 @@ agent-office/
 ├── docs/TASK_DELEGATION.md external task protocol and status machine
 ├── docs/COMPANY_OS.md    one-person template, chat and isolation
 ├── docs/MISSIONS.md      mission workspace, approvals, files and agent protocol
+├── docs/CHAT_UI.md       chat workspace design, reference products and Gemini checklist
 ├── docs/TRENDS.md        2026 agent-platform trends, gaps and roadmap
 ├── docs/ANIMATION.md     task linkage, one-shot completion and idle animation
 ├── docs/GUIDE.md         usage guide: demo off, agents, AI, missions and next round
@@ -544,7 +545,7 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
 - `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation, token budget editor and cleanup.
-- `dev-features.html` — left navigation rail, six actions, add friend/external-agent entry points, group and direct chat popups, settings center, AI settings and MCP deployment.
+- `dev-chat.html` — the two-pane chat workspace, Markdown/code, copy/quote, search, attachments, pin, rename, unread and mobile layout. `dev-features.html` — left navigation rail, six actions, add friend/external-agent entry points, chat entry points, settings center, AI settings and MCP deployment.
 - `dev-ai-setup.html` — 3-step AI setup, environment credentials, test-before-save and auto-run state.
 - `dev-mission-live.html` — homepage MISSION LIVE HUD, external agent hot desk, team activity and task bubble.
 - `dev-demo-mode.html` — demo shutdown, real-agent-only recommendations, REAL OPS board/feed and restoring demo.

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.19.0] - 2026-11-27
+
+### Added
+- **Two-pane chat hub**: the group/DM popup is now a real messaging workspace with a conversation rail, unread badges, search, group/direct filters, pinned/muted chats, rename and delete actions, and a full-screen mobile sheet.
+- **Unread and read state**: conversations persist `readSeq`; agent messages raise unread counts, opening a chat marks it read, muted conversations are excluded from the total, and the rail refreshes without reloading the page.
+- **Rich messages**: safe Markdown (headings, lists, quotes, links, bold/italic, inline code), fenced code blocks with copy, date separators, sender grouping, delivery ticks, AI/provider badges, report cards with expandable detail, proposal/approval cards, and attachment previews.
+- **Message actions**: copy, quote-reply, open the related mission, and jump-to-latest; quoted content is stored with the message.
+- **Composer upgrades**: per-conversation drafts, auto-grow textarea, Enter-to-send / Shift+Enter newline, emoji picker, `@` member suggestions, drag/drop and paste uploads, file chips with upload state, and a character counter.
+- **Conversation details panel**: member roles and presence, conversation metadata, task shortcut, and files from the current conversation.
+- **Polished rename dialog** (no browser prompt), two-step delete confirmation, and a `Cmd/Ctrl+F` in-conversation search.
+- **Mission Control text upgrades**: safe Markdown rendering, copy affordance on agent/boss messages and reports, and Enter-to-send composer behavior.
+
+### Changed
+- Chat typography and spacing are now Gemini-style: 12.5px message text, clear hierarchy, 8px rhythm, hover/focus/disabled states, light/dark palettes, focus trap, reduced-motion support, and a responsive 430px layout.
+- The chat window is now 900×650 on desktop with a conversation rail, instead of the previous 360px bubble-only popup.
+- Added `dev-chat.html` (59 checks) and expanded bridge coverage for unread/pin/mute/rename.
+
+### Fixed
+- Sending a message now clears the composer draft instead of restoring the sent text on re-render.
+- Fast AI replies that arrive before the local pending state no longer leave a stuck typing indicator.
+- The chat hub no longer relies on a full-screen picker step; the previous group/DM flow remains reachable from the rail and shortcuts.
+
 ## [1.18.5] - 2026-11-27
 
 ### Fixed

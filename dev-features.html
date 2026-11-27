@@ -76,7 +76,7 @@
 
     // group chat popup + create
     await shell.chat.openGroupPicker();await wait(500);
-    check('group chat picker',!!$('.chat-picker')&&/群聊/.test($('.chat-picker').textContent));
+    check('group chat hub',!!$('.chat-window.chat-hub')&&!!$('.chat-side')&&/群聊/.test($('.chat-side').textContent));
     const newGroup=$('[data-chat-new-group]');
     check('new group control',!!newGroup);
     if(newGroup){
@@ -104,7 +104,7 @@
 
     // direct chat popup
     await shell.chat.openDirectPicker();await wait(800);
-    check('direct chat picker',!!$('.chat-picker')&&/单聊/.test($('.chat-picker').textContent));
+    check('direct chat hub',!!$('.chat-window.chat-hub')&&!!$('.chat-side')&&/私聊/.test($('.chat-side').textContent));
     const agent=$('[data-chat-agent]');
     check('direct agent control',!!agent);
     if(agent){

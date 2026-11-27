@@ -1,13 +1,13 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能导航栏、群聊/单聊弹窗与 QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能导航栏、双栏群聊/单聊聊天工作台、QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
 
 没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
 
@@ -65,7 +65,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | ![Mission Control](docs/screenshots/missions.jpg) | ![Company OS](docs/screenshots/company-os.jpg) |
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
-| **Function navigation rail** | **Group / DM chat popup** |
+| **Function navigation rail** | **Group / DM chat workspace** |
 | ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
 | **真实品牌 Logo** | **首页任务联动** |
 | ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
@@ -356,7 +356,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 完整规则、API 和外部 Agent 协议见 [docs/MISSIONS.md](docs/MISSIONS.md)。
 
-## 左侧导航栏与聊天弹窗
+## 左侧导航栏与聊天工作台
 
 左侧新增独立 **功能导航栏**，图标从上到下为：
 
@@ -364,15 +364,15 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **人脉**：添加好友（本地 Agent）、添加外部 Agent。
 - **创建**：创建群组、任务管理 / 创建任务。
 - **设置**：工具（含 AI / MCP 部署）、设置、主题、语言。
-- **消息**：群聊弹窗、单聊弹窗。
+- **消息**：群聊 / 单聊聊天工作台。
 
 顶部栏只保留场景选择、暂停/速度等运行控制，不再重复任务、公司、工具、主题、语言等入口。点击左侧图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
 
 - **Agent**：Agent Office 默认外观。
-- **QQ**：紧凑聊天窗口、蓝色标题栏和气泡。
-- **微信**：微信式绿色标题栏和气泡。
+- **QQ**：蓝色强调色和 QQ 式气泡。
+- **微信**：绿色强调色和微信式气泡。
 
-群聊弹窗 / 单聊弹窗是独立浮窗，支持现有任务群、临时群和私聊，消息走本地 bridge；窗口右上角的 **风** 按钮可以随时切换 QQ / 微信风格。风格只改变外观，不改变消息内容。
+群聊 / 单聊不再是只能发一句话的小气泡，而是 **900×650 的双栏工作台**：左侧是会话列表（搜索、全部/群聊/私聊、未读角标、固定、静音、重命名、删除），右侧是消息区（日期分隔、发送者分组、Markdown/代码、复制、引用、任务入口、附件、详情和文件）。支持草稿、`@` 成员建议、拖放/粘贴上传、`Cmd/Ctrl+F` 消息搜索和移动端全屏。消息走本地 bridge，AI 回复显示输入态和 provider 标记。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)。
 
 ## AI 三步接入与全自动执行
 
@@ -606,7 +606,9 @@ agent-office/
 │   ├── company.js      一人公司模板、角色、任务、群聊、SSE、隔离校验
 │   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
 │   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
-│   ├── shell.js        左侧导航栏、群聊/单聊弹窗、设置和聊天窗口风格
+│   ├── chat-ui.js      安全 Markdown、时间/附件/头像渲染
+│   ├── chat-hub.js     双栏聊天工作台、未读/固定/静音、草稿、附件、@提及
+│   ├── shell.js        左侧导航栏、设置和聊天窗口风格
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
 │   └── main.js         启动、循环、控件、快捷键
 ├── dev-check.html      跑完两个场景并输出断言结果
@@ -627,7 +629,8 @@ agent-office/
 ├── dev-update.html     自检工具入口、自动升级、确认、进度、重启和完成态
 ├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
 ├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
-├── dev-features.html   自检功能抽屉、群聊/单聊弹窗、设置和聊天风格
+├── dev-chat.html       自检聊天工作台、未读、搜索、引用、附件和响应式布局
+├── dev-features.html   自检功能抽屉、聊天入口、设置和聊天风格
 ├── dev-ai-setup.html   自检 3 步 AI 接入、环境凭据、测试保存和任务自动执行
 ├── dev-mission-live.html 自检首页 MISSION LIVE、外部 Agent 热桌和任务气泡
 ├── dev-demo-mode.html  自检演示关闭、真实模式、只推荐外部 Agent 和恢复
@@ -641,7 +644,7 @@ agent-office/
 ├── update.css          工具与升级面板样式
 ├── missions.css        任务工作台 / 群聊 / 私聊 / 审批样式
 ├── demo-mode.css       演示关闭 / REAL OPS 首页 / 真实任务看板样式
-├── features.css        功能栏 / 聊天弹窗 / 设置 / 聊天窗口风格样式
+├── features.css        功能栏 / 聊天工作台 / 设置 / 聊天窗口风格样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
 ├── ocr_vision.swift    macOS Vision 本地图片识别兜底
@@ -658,6 +661,7 @@ agent-office/
 ├── docs/MISSIONS.md    任务工作台、自动分配、审批、文件与 Agent 协议
 ├── docs/TRENDS.md      2026 Agent 平台趋势、差距与本项目路线
 ├── docs/ANIMATION.md   任务联动、完成态一次性动画和空转看门狗
+├── docs/CHAT_UI.md     聊天工作台设计、参考产品与 Gemini 验收清单
 ├── docs/GUIDE.md       使用指南：关闭演示、接 Agent、AI、任务与下一轮
 ├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
@@ -809,7 +813,7 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-missions.html` 会验证任务创建、自由选人、推荐卡片、逐任务执行 Agent、品牌 Logo、预计/实际消耗、Eval 面板、自动组队/拆解、无空岗、文档/图片附件、任务群、群聊、私聊、审批、汇报必须带解决方案、技术问题不能升级给老板和清理。
 
-`dev-features.html` 会验证左侧导航栏、六项功能、添加好友/外部 Agent 入口、群聊弹窗、单聊弹窗、设置中心、AI 设置和 MCP 部署。
+`dev-chat.html` 会验证双栏聊天工作台、Markdown/代码、复制/引用、搜索、附件、固定、重命名、未读和移动端布局；`dev-features.html` 会验证左侧导航栏、六项功能、添加好友/外部 Agent 入口、聊天入口、设置中心、AI 设置和 MCP 部署。
 
 `dev-ai-setup.html`、`dev-mission-live.html` 和 `dev-demo-mode.html` 会验证 3 步 AI 接入、首页 MISSION LIVE、演示关闭 / 真实 Agent 模式、真实任务看板和恢复演示。`dev-activity.html` 会验证任务进度到角色进度条、完成后庆祝自动回到日常活动，以及「新一轮」重置。
 
@@ -826,10 +830,11 @@ python3 -m unittest discover -s tests -v
 - 安全边界：[SECURITY.md](SECURITY.md)
 - 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - 架构：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 聊天工作台设计与参考：[docs/CHAT_UI.md](docs/CHAT_UI.md)
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.18.5`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.19.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

@@ -4269,6 +4269,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json({"ok": True, "task": task, "mission": mission_view})
             return
+        if path.startswith("/conversations/") and path.count("/") == 2:
+            if not MISSION_STORE:
+                self.send_json({"error": "mission store is not available"}, 503)
+                return
+            try:
+                with MISSION_STORE.lock:
+                    conversation = MISSION_STORE.update_conversation(
+                        path.split("/")[2], body)
+            except missions.MissionError as exc:
+                self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                return
+            self.send_json({"ok": True, "conversation": conversation})
+            return
         with LOCK:
             if path.startswith("/assignments/") and path.count("/") == 2:
                 assignment_id = path.split("/")[2]
