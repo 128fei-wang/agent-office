@@ -157,7 +157,8 @@
 
     setEnabled(next, options) {
       const enabled = !!next;
-      writeCoverDismissed(false);
+      // Turning demo off should land in the real workspace, not a blocking cover.
+      writeCoverDismissed(!enabled);
       try { localStorage.setItem(KEY, enabled ? "on" : "off"); } catch (err) {}
       this.apply();
       document.dispatchEvent(new CustomEvent("agent-office:demo-change", {

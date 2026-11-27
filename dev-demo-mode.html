@@ -26,10 +26,11 @@
     await wait(900);
     check('html marks real mode',d.documentElement.dataset.demo==='off');
     check('simulation paused',!!app.engine.paused);
-    check('cover visible',!!$('#realModeCover')&&!$('#realModeCover').hidden);
-    check('cover text',/演示已关闭|Demo is off/.test(($('#realModeCover')||{}).textContent||''));
+    check('cover stays closed by default',!!$('#realModeCover')&&$('#realModeCover').hidden);
+    check('demo off lands in real workspace',!!$('#realStageNote')&&!$('#realStageNote').hidden);
+    check('real panel label available',/面板/.test(($('#realOpsBtn')||{}).textContent||''));
     check('preset team cards hidden',$$('.team-card[data-agent]').length===0);
-    check('real office agents rendered',$$('.real-agent-desk').length>=1,'desks='+$$('.real-agent-desk').length);
+    check('real office agent activity rendered',$$('.real-agent-desk').length>=1||$$('.mission-desk-chip').length>=1,'desks='+$$('.real-agent-desk').length+' chips='+$$('.mission-desk-chip').length);
     check('char layer hidden by css',w.getComputedStyle($('.char-layer')).display==='none');
     check('top stats show real metrics',w.getComputedStyle($('.top-stats')).display!=='none'&&/\//.test(($('#statTasks')||{}).textContent||''));
     check('office title becomes real ops',($('#officeName')||{}).textContent==='REAL OPS');
@@ -40,6 +41,10 @@
     check('feed title changed',($('#feedTitle')||{}).textContent==='REAL OPS');
     check('real board empty state or missions',!!$('.real-mission-row')||!!$('.real-board-empty'));
     check('real mode live panel',!!$('#realModeLive'));
+    $('#realOpsBtn').click();
+    await wait(300);
+    check('real panel opens from topbar',!!$('#realModeCover')&&!$('#realModeCover').hidden);
+    check('cover text',/演示已关闭|Demo is off/.test(($('#realModeCover')||{}).textContent||''));
     check('real mode create action',!!$('#realModeCover [data-real-create-mission]'));
     check('real mode AI action',!!$('#realModeCover [data-real-open-ai]'));
     const openFromCover=$('#realModeCover [data-real-open-missions]');

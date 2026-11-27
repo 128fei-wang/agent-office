@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.18.2] - 2026-11-27
+
+### Fixed
+- **Turning demo off no longer traps the workspace behind a full-screen REAL OPS cover**. It now lands directly in the real workspace with the compact dismissible “真实运营模式” card; the topbar **真实模式面板** button opens the detailed panel when needed.
+- Updated demo-mode and guide self-checks for the non-blocking transition.
+
+### Changed
+- Version bumped to 1.18.2.
+
 ## [1.18.1] - 2026-11-27
 
 ### Fixed
