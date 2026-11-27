@@ -349,8 +349,53 @@ class BridgeTest(unittest.TestCase):
             "kind": "direct", "memberIds": [member["id"]],
         })
         self.assertEqual(status, 201)
-        status, _ = self.request("/conversations/%s" % direct["conversation"]["id"], "DELETE")
+        direct_id = direct["conversation"]["id"]
+        status, _ = self.request(
+            "/conversations/%s/messages" % direct_id, "POST",
+            {"senderId": "boss", "senderType": "boss", "type": "text",
+             "text": "用一句话介绍你能做什么。"},
+        )
+        self.assertEqual(status, 201)
+        reply = None
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            _, listing = self.request("/conversations/%s/messages?since=0" % direct_id)
+            reply = next((m for m in listing["messages"]
+                          if m.get("senderType") == "agent"
+                          and (m.get("meta") or {}).get("chatReply")), None)
+            if reply:
+                break
+            time.sleep(0.15)
+        self.assertIsNotNone(reply, "direct chat agent reply")
+        self.assertTrue(reply.get("text"))
+        status, _ = self.request("/conversations/%s" % direct_id, "DELETE")
         self.assertEqual(status, 200)
+        group_ids = [m["id"] for m in mission["members"][:2]]
+        if len(group_ids) >= 2:
+            status, group = self.request("/conversations", "POST", {
+                "kind": "group", "memberIds": group_ids,
+            })
+            self.assertEqual(status, 201)
+            group_id = group["conversation"]["id"]
+            status, _ = self.request(
+                "/conversations/%s/messages" % group_id, "POST",
+                {"senderId": "boss", "senderType": "boss", "type": "text",
+                 "text": "大家好，各自用一句话说明能负责什么。"},
+            )
+            self.assertEqual(status, 201)
+            group_reply = None
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                _, listing = self.request("/conversations/%s/messages?since=0" % group_id)
+                group_reply = next((m for m in listing["messages"]
+                                    if m.get("senderType") == "agent"
+                                    and (m.get("meta") or {}).get("chatReply")), None)
+                if group_reply:
+                    break
+                time.sleep(0.15)
+            self.assertIsNotNone(group_reply, "group chat agent reply")
+            status, _ = self.request("/conversations/%s" % group_id, "DELETE")
+            self.assertEqual(status, 200)
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 

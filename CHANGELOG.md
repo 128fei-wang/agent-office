@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.18.4] - 2026-11-27
+
+### Added
+- **Chat replies now actually work**: boss messages in direct chats and ad-hoc groups trigger a reply from a conversation member through the configured local AI provider. The reply is posted back through the same conversation/SSE channel.
+- **Typing indicator**: the sender sees “Agent 正在输入…” while the reply is being generated, then the reply replaces it.
+- **Offline-safe fallback**: if no provider is configured or the call fails, the agent posts a clear fallback instead of staying silent.
+- **Bridge regression tests** for direct-chat and group-chat agent replies using the mock provider.
+
+### Fixed
+- Group and private chat previously only stored the boss message; no agent response path existed.
+
+### Changed
+- Version bumped to 1.18.4.
+
 ## [1.18.3] - 2026-11-27
 
 ### Fixed

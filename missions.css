@@ -2023,3 +2023,33 @@ html[data-theme="day"] .mission-command-btn.primary { color: #1f6f64; background
 }
 .mission-task-bulk button:disabled { opacity: 0.35; cursor: default; }
 .mission-task-check { flex: none; margin: 0 1px 0 0; accent-color: #55d6c2; }
+
+.mission-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 10px 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--muted-2);
+  font-size: 7px;
+}
+.mission-typing > span {
+  display: inline-flex;
+  gap: 3px;
+}
+.mission-typing i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: typingDot 1s ease-in-out infinite;
+}
+.mission-typing i:nth-child(2) { animation-delay: 0.15s; }
+.mission-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-2px); opacity: 1; }
+}

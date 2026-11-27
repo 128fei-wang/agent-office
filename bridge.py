@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import json
 import mimetypes
 import os
@@ -63,6 +64,8 @@ MISSION_DISCUSS_LOCK = threading.Lock()
 MISSION_AUTORUN_LOCK = threading.Lock()
 MISSION_AUTORUN_ACTIVE = set()
 MISSION_AUTORUN_STOP = set()
+CHAT_REPLY_LOCK = threading.Lock()
+CHAT_REPLY_ACTIVE = set()
 BOOT_ID = secrets.token_hex(8)
 UPDATE_TOKENS = {}
 UPDATE_TOKEN_LOCK = threading.Lock()
@@ -3495,7 +3498,9 @@ class Handler(BaseHTTPRequestHandler):
                 conversation_id = path.split("/")[2]
                 with MISSION_STORE.lock:
                     message = MISSION_STORE.post_message(conversation_id, body)
-                self.send_json({"ok": True, "message": message}, 201)
+                pending = queue_chat_reply(conversation_id, message)
+                self.send_json({"ok": True, "message": message,
+                                "replyPending": pending}, 201)
                 return
             if path == "/approvals":
                 mission_id = str(body.get("missionId") or "")
@@ -4408,6 +4413,139 @@ def _mission_scheduler_loop():
                         mission_id, status="error",
                         error="scheduled start failed: " + str(exc)[:300],
                         finishedAt=now_iso())
+
+def _chat_reply_member(conversation, text):
+    members = conversation.get("members") or []
+    if not members:
+        return None
+    if conversation.get("kind") == "direct":
+        return members[0]
+    lowered = str(text or "")
+    for member in members:
+        for name in (member.get("name"), member.get("titleZh"), member.get("titleEn")):
+            if name and ("@" + str(name)) in lowered:
+                return member
+    online = [m for m in members if str(m.get("source")) == "external" and m.get("online")]
+    external = [m for m in members if str(m.get("source")) == "external"]
+    return (online or external or members)[0]
+
+
+def _chat_reply_worker(conversation_id, trigger_text):
+    try:
+        with MISSION_STORE.lock:
+            conversation = MISSION_STORE.find_conversation(conversation_id)
+            if not conversation:
+                return
+            member = _chat_reply_member(conversation, trigger_text)
+            if not member:
+                return
+            mission = MISSION_STORE.find_mission(conversation.get("missionId") or "")
+            if mission:
+                auto = mission.get("autoRun") or {}
+                if auto.get("status") in ("running", "discussing", "queued", "starting"):
+                    return
+            rows = MISSION_STORE.list_messages(conversation_id)
+            members = conversation.get("members") or []
+        history = []
+        for row in rows[-12:]:
+            if not row.get("text"):
+                continue
+            who = row.get("senderName") or ("老板" if row.get("senderType") == "boss" else "Agent")
+            history.append(who + "： " + str(row.get("text"))[:500])
+        name = member.get("titleZh") or member.get("name") or member.get("id")
+        role = member.get("titleEn") or member.get("role") or "operator"
+        roster = "、".join(
+            str(m.get("titleZh") or m.get("name") or m.get("id")) for m in members
+        )
+        language = "中文" if re.search(r"[\u4e00-\u9fff]", trigger_text or "") else "the user's language"
+        system = (
+            "你是 Agent Office 中的 " + str(name) + "（" + str(role) + "）。"
+            "你正在和老板进行 " + ("私聊" if conversation.get("kind") == "direct" else "群聊") +
+            "，群聊成员包括：" + roster + "。"
+            "请用 " + language + " 简洁回复，通常 1-4 句，直接给出判断、下一步或需要老板决定的事项。"
+            "不要编造已经执行过的操作、文件修改或外部调用；没有做的事就说明需要什么条件。"
+            "技术问题自己给方案，不要把技术问题原样抛回给老板；不要索要或输出 API Key。"
+        )
+        prompt = (
+            "最近的对话记录：\n" + "\n".join(history[-10:]) +
+            "\n\n老板刚刚说：\n" + str(trigger_text)[:2000] +
+            "\n\n请以你的身份回复老板。"
+        )
+        candidates = mission_provider_candidates(str(member.get("provider") or ""))
+        reply = ""
+        usage = {}
+        meta = {"chatReply": True}
+        if not candidates:
+            reply = ("我在。当前本机没有可用的模型服务，所以暂时只能确认消息；"
+                     "完成 3 步接入 AI 或启动外部 Agent 连接器后，我就能直接回复和执行。")
+            meta["fallback"] = "no_provider"
+        else:
+            provider_id = candidates[0]
+            try:
+                result = provider_chat(provider_id, prompt, system=system, max_tokens=700)
+                reply = str(result.get("text") or "").strip()[:4000]
+                usage = {
+                    "tokensIn": int(result.get("tokensIn") or 0),
+                    "tokensOut": int(result.get("tokensOut") or 0),
+                    "provider": provider_id,
+                    "model": result.get("model") or "",
+                }
+                meta.update({"provider": provider_id, "model": result.get("model") or ""})
+            except Exception as exc:
+                reply = ("我收到了，但本机模型调用失败：" + str(exc)[:180] +
+                         "。请检查 AI 接入或外部连接器。")
+                meta["fallback"] = "provider_error"
+        if not reply:
+            reply = "我在。请再说一次具体要我做什么，我会直接给方案。"
+        with MISSION_STORE.lock:
+            MISSION_STORE.post_message(conversation_id, {
+                "senderId": member.get("id"),
+                "senderType": "agent",
+                "type": "text",
+                "text": reply,
+                "usage": usage,
+                "meta": meta,
+            })
+    except Exception as exc:
+        print("chat reply failed: " + str(exc)[:300], file=sys.stderr)
+    finally:
+        with CHAT_REPLY_LOCK:
+            CHAT_REPLY_ACTIVE.discard(conversation_id)
+
+
+def queue_chat_reply(conversation_id, message):
+    if not conversation_id or not message:
+        return False
+    if str(message.get("senderType") or "") != "boss":
+        return False
+    if str(message.get("type") or "text") not in ("text", "attachment"):
+        return False
+    text = str(message.get("text") or "").strip()
+    if not text:
+        return False
+    try:
+        with MISSION_STORE.lock:
+            conversation = MISSION_STORE.find_conversation(conversation_id)
+            if not conversation:
+                return False
+            mission = MISSION_STORE.find_mission(conversation.get("missionId") or "")
+            if mission:
+                auto = mission.get("autoRun") or {}
+                if auto.get("status") in ("running", "discussing", "queued", "starting"):
+                    return False
+    except Exception:
+        return False
+    with CHAT_REPLY_LOCK:
+        if conversation_id in CHAT_REPLY_ACTIVE:
+            return False
+        CHAT_REPLY_ACTIVE.add(conversation_id)
+    threading.Thread(
+        target=_chat_reply_worker,
+        args=(conversation_id, text),
+        daemon=True,
+    ).start()
+    return True
+
 
 def main():
     parser = argparse.ArgumentParser()

@@ -137,6 +137,10 @@
       this.bulkBusy = false;
       this.messageQuery = "";
       this.messageSearchOpen = false;
+      this.replyPending = false;
+      this.replyPendingConversation = "";
+      this.replyTimer = null;
+      this.replyPollTimer = null;
       this.taskEditId = "";
       this.archivingMission = false;
       this.duplicatingMission = false;
@@ -659,6 +663,7 @@
       this.artifactFocus = null;
       this.viewMode = "chat";
       this.approvalFilter = "pending";
+      this.clearReplyPending();
       const app = document.getElementById("app");
       if (app) app.inert = false;
       this.stopStream();
@@ -854,6 +859,7 @@
       this.detailTab = "overview";
       this.messageQuery = "";
       this.messageSearchOpen = false;
+      this.clearReplyPending();
       this.mission = this.data.missions.find(function (m) { return m.id === id; }) || null;
       this.messages = [];
       this.draft = "";
@@ -871,6 +877,7 @@
       this.mission = null;
       this.messageQuery = "";
       this.messageSearchOpen = false;
+      this.clearReplyPending();
       this.messages = [];
       this.draft = "";
       this.files = [];
@@ -1178,6 +1185,9 @@
         '<div class="mission-messages" id="missionMessages">' +
         (this.messages.length ? this.messages.map((m) => this.messageHTML(m)).join("") :
           '<div class="mission-empty small">' + esc(this.t("missionNoMessagesHint")) + '</div>') +
+        (this.replyPending && this.replyPendingConversation === (this.conversation && this.conversation.id) ?
+          '<div class="mission-typing"><span><i></i><i></i><i></i></span>' +
+          esc(this.t("missionTyping")) + '</div>' : "") +
         '</div>' + this.renderComposer() + '</main>';
     }
 
@@ -2503,11 +2513,65 @@
       const box = this.root.querySelector("#missionMessages");
       if (!box) return;
       const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+      if (message && message.senderType === "agent") this.clearReplyPending();
+      const typing = box.querySelector(".mission-typing");
+      if (typing) typing.remove();
       const empty = box.querySelector(".mission-empty");
       if (empty) empty.remove();
       box.insertAdjacentHTML("beforeend", this.messageHTML(message));
       this.applyMessageFilter();
       if (stick) box.scrollTop = box.scrollHeight;
+    }
+
+    clearReplyPending() {
+      this.replyPending = false;
+      this.replyPendingConversation = "";
+      if (this.replyTimer) {
+        window.clearTimeout(this.replyTimer);
+        this.replyTimer = null;
+      }
+      if (this.replyPollTimer) {
+        window.clearInterval(this.replyPollTimer);
+        this.replyPollTimer = null;
+      }
+    }
+
+    waitForReply(conversationId) {
+      this.replyPending = true;
+      this.replyPendingConversation = conversationId || "";
+      if (this.replyTimer) window.clearTimeout(this.replyTimer);
+      this.replyTimer = window.setTimeout(() => {
+        this.replyPending = false;
+        this.replyPendingConversation = "";
+        this.replyTimer = null;
+        if (this.replyPollTimer) {
+          window.clearInterval(this.replyPollTimer);
+          this.replyPollTimer = null;
+        }
+        if (this.conversation && this.conversation.id === conversationId) this.render();
+      }, 90000);
+      if (this.replyPollTimer) window.clearInterval(this.replyPollTimer);
+      this.replyPollTimer = window.setInterval(async () => {
+        if (!this.conversation || this.conversation.id !== conversationId || !this.replyPending) {
+          if (this.replyPollTimer) window.clearInterval(this.replyPollTimer);
+          this.replyPollTimer = null;
+          return;
+        }
+        try {
+          const data = await this.api("/conversations/" + encodeURIComponent(conversationId) +
+            "/messages?since=" + encodeURIComponent(this.lastSeq || 0), null, 8000);
+          const rows = data.messages || [];
+          let gotAgent = false;
+          rows.forEach((message) => {
+            if (this.messages.some((item) => item.id === message.id)) return;
+            this.messages.push(message);
+            this.lastSeq = Math.max(Number(this.lastSeq) || 0, Number(message.seq) || 0);
+            this.appendMessage(message);
+            if (message.senderType === "agent") gotAgent = true;
+          });
+          if (gotAgent) this.clearReplyPending();
+        } catch (err) {}
+      }, 2500);
     }
 
     renderSidebarOnly() {
@@ -3102,6 +3166,10 @@
         this.files = [];
         this.uploadCache = {};
         this.uploading = false;
+        const repliedEarly = this.messages.some(function (item) {
+          return item.senderType === "agent" && Number(item.seq) > Number(res.message.seq);
+        });
+        if (res.replyPending && !repliedEarly) this.waitForReply(this.conversation.id);
         this.render();
         this.markRead();
         this.refreshOverview();
