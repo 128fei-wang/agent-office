@@ -1475,6 +1475,7 @@ class MissionStore:
             "risks": _list(report.get("risks")),
             "solution": _text(report.get("solution")),
             "evidence": _list(report.get("evidence")),
+            "deliverable": _text(report.get("deliverable"), 20000),
             "needsBoss": needs,
             "approval": report.get("approval") if isinstance(report.get("approval"), dict) else None,
         }
@@ -1834,6 +1835,26 @@ class MissionStore:
                 mission["updatedAt"] = now_iso()
         self._save()
         return self.public_artifact(artifact)
+
+    def delete_artifact(self, artifact_id):
+        with self.lock:
+            artifact = self.find_artifact(artifact_id)
+            if not artifact:
+                return False
+            try:
+                Path(artifact.get("path") or "").unlink()
+            except OSError:
+                pass
+            self.data["artifacts"] = [a for a in self.data.get("artifacts", [])
+                                      if a.get("id") != artifact_id]
+            for mission in self.data.get("missions", []):
+                if artifact_id in (mission.get("artifactIds") or []):
+                    mission["artifactIds"] = [a for a in mission["artifactIds"] if a != artifact_id]
+                for task in mission.get("tasks") or []:
+                    if artifact_id in (task.get("artifactIds") or []):
+                        task["artifactIds"] = [a for a in task["artifactIds"] if a != artifact_id]
+            self._save()
+            return True
 
     def update_artifact(self, artifact_id, **fields):
         artifact = self.find_artifact(artifact_id)

@@ -2094,3 +2094,59 @@ html[data-density="comfortable"] .mission-report-summary .chat-markdown { font-s
 
 /* search result target */
 .mission-task-target { border-color: rgba(85, 214, 194, 0.55) !important; box-shadow: 0 0 0 3px rgba(85, 214, 194, 0.09); }
+
+/* task-level deliverables */
+.mission-task-deliverables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 0 4px;
+  padding: 7px;
+  border: 1px solid rgba(85, 214, 194, 0.18);
+  border-radius: 8px;
+  background: rgba(85, 214, 194, 0.045);
+}
+.mission-task-deliverables > b {
+  width: 100%;
+  color: #7fe6d6;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+.mission-task-deliverables button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 25px;
+  padding: 0 7px;
+  border: 1px solid rgba(85, 214, 194, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #d8e8f1;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+.mission-task-deliverables button:hover { border-color: rgba(85, 214, 194, 0.4); background: rgba(85, 214, 194, 0.1); }
+.mission-task-deliverables button i { color: #55d6c2; font-family: var(--mono); font-size: 7px; font-style: normal; }
+.mission-task-deliverables button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mission-task-deliverables button em { color: #6f8798; font-family: var(--mono); font-size: 7px; font-style: normal; }
+.mission-deliverable-warning {
+  margin: 5px 0 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(242, 181, 68, 0.24);
+  border-radius: 7px;
+  background: rgba(242, 181, 68, 0.06);
+  color: #e2c17a;
+  font-size: 9px;
+}
+html[data-theme="day"] .mission-task-deliverables { border-color: rgba(14, 139, 115, 0.2); background: rgba(14, 139, 115, 0.05); }
+html[data-theme="day"] .mission-task-deliverables > b { color: #0b7568; }
+html[data-theme="day"] .mission-task-deliverables button { color: #344852; border-color: rgba(14, 139, 115, 0.2); }
+html[data-theme="day"] .mission-deliverable-warning { border-color: #e2c17a; background: #fff8e8; color: #8a641d; }
+
+.mission-file-add.mission-download-all { text-decoration: none; border-color: rgba(85, 214, 194, 0.28); color: #7fe6d6; }
+.mission-file-add.mission-download-all:hover { background: rgba(85, 214, 194, 0.08); }

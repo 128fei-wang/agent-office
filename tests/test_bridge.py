@@ -4,8 +4,10 @@
 Run with:
     python3 -m unittest discover -s tests -v
 """
+import io
 import json
 import os
+import zipfile
 import socket
 import subprocess
 import sys
@@ -86,20 +88,32 @@ class MockProviderHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
         mission_report = "deliverable" in prompt_text
+        placeholder_report = "PLACEHOLDER_DELIVERABLE" in prompt_text
         incomplete_report = "INCOMPLETE_REPORT" in prompt_text
         needs_approval = "NEEDS_APPROVAL" in prompt_text and "任务：需求边界与验收" in prompt_text
         invalid_gate = "INVALID_GATE" in prompt_text and not needs_approval
-        if incomplete_report:
+        if placeholder_report:
+            report_text = json.dumps({
+                "summary": "已完成任务并提交交付物。",
+                "done": ["完成主要工作"],
+                "next": ["按验收标准复核交付物"],
+                "risks": ["未发现新增风险"],
+                "solution": "已按验收标准完成。",
+                "evidence": ["任务执行报告"],
+                "deliverable": "已完成任务并提交交付物。",
+                "needsBoss": [],
+            }, ensure_ascii=False)
+        elif incomplete_report:
             report_text = json.dumps({
                 "summary": "Partial mock report",
-                "deliverable": "# Partial deliverable",
+                "deliverable": "# Partial deliverable\n\nThis repaired partial report still contains a concrete, usable deliverable with implementation notes and verification steps so the quality gate can evaluate the repair path instead of treating it as a placeholder.",
             }, ensure_ascii=False)
         else:
             report_text = json.dumps({
             "summary": "Mock agent report", "done": ["mock step"],
             "next": ["review"], "risks": ["mock risk"],
             "solution": "mock fallback and verification", "evidence": ["mock"],
-            "deliverable": "# Mock deliverable\n\nThis is a test artifact.",
+            "deliverable": "# Mock deliverable\n\nThis is a test artifact with enough concrete content to pass the usable-deliverable gate. It includes the implementation notes, verification steps and the exact files a reviewer should check before accepting the task.",
             "needsBoss": ["spend"] if needs_approval else (["technical"] if invalid_gate else []),
             "approval": ({
                 "type": "spend", "title": "Mock spend approval",
@@ -613,6 +627,55 @@ class BridgeTest(unittest.TestCase):
             "/conversations/%s/messages" % mission["conversationId"])[1]["messages"]
         self.assertTrue(any(m["type"] == "report" and m.get("usage", {}).get("tokensIn", 0) > 0
                             for m in messages))
+        self.request("/missions/%s" % mission["id"], "DELETE")
+
+    def test_mission_autorun_rejects_placeholder_deliverable(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Placeholder delivery guard",
+            "description": "PLACEHOLDER_DELIVERABLE: produce a concrete deliverable.",
+            "acceptance": "The task must not be marked done without a usable artifact.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission_id = data["mission"]["id"]
+        deadline = time.time() + 30
+        latest = data["mission"]
+        while time.time() < deadline:
+            latest = self.request("/missions/" + mission_id)[1]["mission"]
+            if (latest.get("autoRun") or {}).get("status") in ("error", "stopped", "done"):
+                break
+            time.sleep(0.2)
+        auto = latest.get("autoRun") or {}
+        self.assertEqual(auto.get("status"), "error", latest)
+        self.assertIn("交付物", auto.get("error", ""))
+        self.assertFalse(all(t.get("status") == "done" for t in latest.get("tasks", [])))
+        self.assertFalse(any(int(a.get("size") or 0) < 80 for a in latest.get("artifacts", [])))
+        latest = self.request("/missions/" + mission_id)[1]["mission"]
+        self.assertFalse(any(t.get("status") == "done" for t in latest.get("tasks", [])))
+        self.request("/missions/" + mission_id, "DELETE")
+
+    def test_mission_deliverables_zip(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Zip delivery mission",
+            "description": "Produce a concrete deliverable and package it for download.",
+            "acceptance": "The deliverable can be downloaded as a ZIP with a manifest.",
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        task = next(t for t in mission["tasks"] if t["status"] == "assigned")
+        self.assertEqual(self.request(
+            "/missions/%s/tasks/%s/run" % (mission["id"], task["id"]), "POST", {})[0], 200)
+        with urllib.request.urlopen(
+                self.base + "/missions/" + mission["id"] + "/deliverables.zip") as response:
+            body = response.read()
+            self.assertEqual(response.status, 200)
+            self.assertIn("application/zip", response.headers.get("Content-Type", ""))
+        archive = zipfile.ZipFile(io.BytesIO(body))
+        names = archive.namelist()
+        self.assertIn("MANIFEST.md", names)
+        self.assertTrue(any(name.endswith(".md") for name in names))
         self.request("/missions/%s" % mission["id"], "DELETE")
 
     def test_mission_autorun_completes_every_task(self):

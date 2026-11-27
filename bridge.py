@@ -28,6 +28,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import io
+import zipfile
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -551,7 +553,7 @@ def _text_from_content(content) -> str:
 
 
 def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: int = 512,
-                  settings=None):
+                  settings=None, max_prompt: int = 4000, max_system: int = 2000):
     settings = settings or provider_settings(provider_id)
     if not settings:
         raise ProviderCallError("unknown provider")
@@ -560,8 +562,8 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
             "missing API key for %s; set %s in the bridge environment or ~/.agent-office/providers.json"
             % (settings["name"], settings["env"][0] if settings["env"] else "an API key")
         )
-    prompt = str(prompt or "").strip()[:4000]
-    system = str(system or "").strip()[:2000]
+    prompt = str(prompt or "").strip()[:max_prompt]
+    system = str(system or "").strip()[:max_system]
     if not prompt:
         raise ProviderCallError("prompt is empty")
     model = settings["model"]
@@ -908,19 +910,54 @@ def mission_provider_candidates(preferred=""):
     return order
 
 
+def _extract_json_object(raw):
+    start = raw.find("{")
+    while start >= 0:
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(raw)):
+            char = raw[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return raw[start:index + 1]
+        start = raw.find("{", start + 1)
+    return ""
+
+
 def _parse_model_json(text):
-    raw = str(text or "").strip()
+    raw = str(text or "").strip().lstrip("\ufeff")
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I)
     raw = re.sub(r"\s*```$", "", raw)
+    candidates = []
     start = raw.find("{")
     end = raw.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        data = json.loads(raw[start:end + 1])
-        return data if isinstance(data, dict) else None
-    except ValueError:
-        return None
+    if start >= 0 and end > start:
+        candidates.append(raw[start:end + 1])
+    balanced = _extract_json_object(raw)
+    if balanced and balanced not in candidates:
+        candidates.append(balanced)
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
 
 
 def _mission_context_pack(mission, limit=6500, agent_ids=None):
@@ -1161,7 +1198,8 @@ def _run_mission_discussion(mission_id, preferred=""):
                                      startedAt=now_iso(), error="")
         started_at = time.time()
         try:
-            result = provider_chat(provider_id, prompt, system, max_tokens=3000)
+            result = provider_chat(provider_id, prompt, system, max_tokens=6000,
+                                   max_prompt=16000, max_system=4000)
             usage = {
                 "provider": provider_id,
                 "model": result.get("model") or "",
@@ -1711,12 +1749,14 @@ def _mission_task_prompt(mission, task):
             context + "\n\n") if context else "")
         + "只输出 JSON，不要 Markdown：{\"summary\":\"\",\"done\":[\"\"],"
         "\"next\":[\"\"],\"risks\":[\"\"],\"solution\":\"\",\"evidence\":[\"\"],"
-        "\"deliverable\":\"可直接交付的文本内容\","
+        "\"deliverable\":\"可直接交付的完整文本\","
+        "\"files\":[{\"name\":\"相对路径\",\"content\":\"完整文件内容\"}],"
         "\"needsBoss\":[]}。\n"
         "needsBoss 通常必须是空数组。只有确实需要老板花钱、业务拍板、扫码登录或授权时才填写，"
         "且：spend 必须给 amount>0；decision 必须给至少两个 options；login 必须给 service；"
         "authorization 必须给非空 scopes。技术阻塞和有替代路径的事项不得放进 needsBoss。"
-        "deliverable 要有实际内容，不要只写“已完成”。"
+        "deliverable 要有实际内容，不要只写“已完成”；实现、设计、发布类任务尽量用 files 给出可直接下载的完整文件。"
+        "任何任务都不能用占位句作为交付物。"
     )
 
 
@@ -1791,6 +1831,124 @@ def _sanitize_boss_gate(report):
     return report
 
 
+DELIVERABLE_PLACEHOLDERS = (
+    "已完成任务并提交交付物。", "已完成任务并提交交付物", "已完成", "完成",
+    "done", "ok", "已完成主要工作", "任务已完成",
+)
+
+
+def _clean_deliverable(text):
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _deliverable_usable(text):
+    clean = _clean_deliverable(text)
+    if len(clean) < 80:
+        return False
+    lowered = clean.lower().strip("。.!！ ")
+    return lowered not in DELIVERABLE_PLACEHOLDERS
+
+
+def _parse_fenced_files(text):
+    """Extract ```file:path ...``` blocks from a focused deliverable response."""
+    rows = []
+    pattern = re.compile(
+        r"```(?:[a-zA-Z0-9_+.-]+)?\s*file:([^\n`]+)\n(.*?)```",
+        re.S,
+    )
+    for name, body in pattern.findall(str(text or "")):
+        name = name.strip().replace("\\", "/").lstrip("/")
+        if not name or ".." in name.split("/") or len(name) > 160:
+            continue
+        rows.append({"name": name, "content": body.rstrip()})
+    return rows[:20]
+
+
+def _deliverable_mime(name):
+    lower = str(name or "").lower()
+    if lower.endswith(".html") or lower.endswith(".htm"):
+        return "text/html"
+    if lower.endswith(".css"):
+        return "text/css"
+    if lower.endswith(".js"):
+        return "text/javascript"
+    if lower.endswith(".json"):
+        return "application/json"
+    if lower.endswith(".py"):
+        return "text/x-python"
+    if lower.endswith(".ts") or lower.endswith(".tsx"):
+        return "text/typescript"
+    if lower.endswith(".svg"):
+        return "image/svg+xml"
+    return "text/markdown"
+
+
+def _safe_deliverable_name(name, fallback):
+    raw = str(name or "").replace("\\", "/").strip().lstrip("/")
+    parts = [part for part in raw.split("/") if part not in ("", ".", "..")]
+    if not parts:
+        parts = [fallback]
+    cleaned = "/".join(re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+", "-", part)[:80]
+                       for part in parts[-3:])
+    return cleaned or fallback
+
+
+def _generate_deliverable(mission, task, data, preferred="", attempted=""):
+    """Ask the model for the actual deliverable when its first JSON omitted it."""
+    candidates = mission_provider_candidates(preferred or attempted)
+    if attempted and attempted in candidates:
+        candidates = [attempted] + [p for p in candidates if p != attempted]
+    if not candidates:
+        raise missions.MissionError(
+            "模型没有返回可用交付物，且没有可重试的模型服务",
+            "deliverable_missing", 502,
+        )
+    summary = str((data or {}).get("summary") or "").strip()
+    prompt = (
+        "你正在执行 Agent Office 任务。\n"
+        "任务：" + str(task.get("title") or "") + "\n"
+        "说明：" + str(task.get("brief") or "")[:1200] + "\n"
+        "验收：" + str(task.get("acceptance") or "")[:800] + "\n"
+        "任务目标：" + str(mission.get("description") or "")[:1200] + "\n"
+        + (("你刚才的汇报摘要：" + summary[:1200] + "\n") if summary else "")
+        + "\n现在只输出最终交付物正文。不要写“已完成”，不要只给提纲，不要 JSON 解释。\n"
+        "交付物必须完整、可直接使用，至少 500 字或对应规模的代码/检查表。\n"
+        "如果是实现或设计任务，请给出完整代码/配置/文件；可以用 ```file:相对路径 围栏输出多个文件，"
+        "每个文件内容必须完整。否则输出完整 Markdown。"
+    )
+    errors = []
+    for provider_id in candidates:
+        try:
+            result = provider_chat(
+                provider_id, prompt,
+                "你是严谨的交付物生成器。只输出最终可交付内容。",
+                max_tokens=8000, max_prompt=10000, max_system=4000,
+            )
+            text = str(result.get("text") or "").strip()
+            parsed = _parse_model_json(text)
+            if parsed:
+                files = parsed.get("files") if isinstance(parsed.get("files"), list) else []
+                candidate = str(parsed.get("deliverable") or "").strip()
+                if not _deliverable_usable(candidate) and files:
+                    candidate = "\n\n".join(
+                        "### " + str(item.get("name") or "file") + "\n" + str(item.get("content") or "")
+                        for item in files if isinstance(item, dict)
+                    )
+                if _deliverable_usable(candidate):
+                    return candidate[:20000], files, provider_id, result
+                errors.append(provider_id + ": JSON has no usable deliverable")
+                continue
+            if _deliverable_usable(text):
+                return text[:20000], _parse_fenced_files(text), provider_id, result
+            errors.append(provider_id + ": empty/placeholder deliverable")
+        except Exception as exc:
+            errors.append(provider_id + ": " + str(exc)[:160])
+    raise missions.MissionError(
+        "模型没有返回可用的交付物，任务未标记完成：" + ("; ".join(errors)[:400] or "no provider"),
+        "deliverable_missing", 502,
+    )
+
+
 def _repair_ai_report(data):
     """Coerce a partial model report into the mission report contract.
 
@@ -1804,8 +1962,10 @@ def _repair_ai_report(data):
     changed = False
     deliverable = str(data.get("deliverable") or "").strip()
     summary = str(data.get("summary") or "").strip()
+    if _clean_deliverable(summary).lower().strip("。.!！ ") in DELIVERABLE_PLACEHOLDERS:
+        summary = ""
     if not summary:
-        summary = deliverable[:1000].strip() or "已完成任务并提交交付物。"
+        summary = deliverable[:1000].strip()
         changed = True
     fields = {
         "done": ["完成主要工作"],
@@ -1861,7 +2021,8 @@ def run_mission_task(mission_id, task_id, preferred=""):
     started_at = time.time()
     for pid in candidates:
         try:
-            result = provider_chat(pid, prompt, system, max_tokens=3000)
+            result = provider_chat(pid, prompt, system, max_tokens=8000,
+                                   max_prompt=16000, max_system=4000)
             data = _parse_model_json(result.get("text"))
             if not data:
                 errors.append(pid + ": non-JSON response")
@@ -1884,24 +2045,119 @@ def run_mission_task(mission_id, task_id, preferred=""):
             errors.append(pid + ": " + str(exc)[:160])
             continue
     if not parsed:
+        # Structured output can fail when a long deliverable is truncated or the
+        # model adds prose. Ask once for the deliverable itself before failing.
+        try:
+            deliverable, extra_files, repair_provider, repair_result = _generate_deliverable(
+                mission, task, {}, preferred, "")
+            data = {
+                "summary": deliverable[:1000],
+                "deliverable": deliverable,
+                "files": extra_files,
+            }
+            provider_id = repair_provider
+            usage = {
+                "provider": repair_provider,
+                "model": repair_result.get("model") or "",
+                "tokensIn": int(repair_result.get("tokensIn") or 0),
+                "tokensOut": int(repair_result.get("tokensOut") or 0),
+                "durationMs": int(round((time.time() - started_at) * 1000)),
+                "source": "ai-run-deliverable",
+            }
+            parsed = (data, None)
+        except Exception as exc:
+            errors.append("deliverable fallback: " + str(exc)[:200])
+            raise missions.MissionError(
+                "AI execution failed: " + ("; ".join(errors)[:500] or "no provider"),
+                "ai_failed", 502)
+    data = parsed[0]
+    deliverable = str(data.get("deliverable") or "").strip()
+    if not _deliverable_usable(deliverable):
+        deliverable, extra_files, repair_provider, repair_result = _generate_deliverable(
+            mission, task, data, preferred, provider_id)
+        data["deliverable"] = deliverable
+        if extra_files:
+            data["files"] = extra_files
+        if not data.get("summary") or _clean_deliverable(data.get("summary")).lower().strip("。.!！ ") in DELIVERABLE_PLACEHOLDERS:
+            data["summary"] = deliverable[:1000]
+        usage["tokensIn"] = int(usage.get("tokensIn") or 0) + int(repair_result.get("tokensIn") or 0)
+        usage["tokensOut"] = int(usage.get("tokensOut") or 0) + int(repair_result.get("tokensOut") or 0)
+        usage["durationMs"] = int(usage.get("durationMs") or 0) + int(round((time.time() - started_at) * 1000))
+        if repair_provider:
+            usage["repairProvider"] = repair_provider
+    data, repaired = _repair_ai_report(data)
+    report = _sanitize_boss_gate(MISSION_STORE.validate_report(data))
+    if not _deliverable_usable(deliverable):
         raise missions.MissionError(
-            "AI execution failed: " + ("; ".join(errors)[:500] or "no provider"),
-            "ai_failed", 502)
-    data, report = parsed
-    deliverable = str(data.get("deliverable") or report.get("summary") or "").strip()[:20000]
+            "交付物为空或只有占位内容，任务未标记完成；请重试或检查模型配置",
+            "deliverable_missing", 502,
+        )
+    deliverable = deliverable[:20000]
     MISSION_STORE.upload_dir.mkdir(parents=True, exist_ok=True)
-    artifact = None
-    if deliverable:
-        path = MISSION_STORE.upload_dir / (secrets.token_hex(10) + ".md")
+    files = data.get("files") if isinstance(data.get("files"), list) else []
+    if not files:
+        files = _parse_fenced_files(deliverable)
+    artifact_rows = []
+    seen_names = set()
+    for item in files[:20]:
+        if not isinstance(item, dict):
+            continue
+        name = _safe_deliverable_name(item.get("name"), "deliverable.md")
+        content = str(item.get("content") or "")
+        if not content.strip():
+            continue
+        base = name
+        suffix = 2
+        while name in seen_names:
+            name = base.rsplit(".", 1)[0] + "-" + str(suffix) + ("." + base.rsplit(".", 1)[1] if "." in base else "")
+            suffix += 1
+        seen_names.add(name)
+        path = MISSION_STORE.upload_dir / (secrets.token_hex(10) + "-" + Path(name).name)
+        path.write_text(content, "utf-8")
+        artifact_rows.append(MISSION_STORE.add_artifact({
+            "name": name,
+            "mime": _deliverable_mime(name),
+            "size": len(content.encode("utf-8")),
+            "kind": "document",
+            "path": str(path),
+            "missionId": mission_id,
+            "conversationId": mission.get("conversationId"),
+            "uploadedBy": task.get("assigneeId"),
+            "extractedText": content[:20000],
+            "extraction": "text",
+        }))
+    if deliverable and (not artifact_rows or deliverable not in "\n".join(
+            str(item.get("content") or "") for item in files if isinstance(item, dict))):
+        name = _safe_deliverable_name(task.get("title", "deliverable") + ".md", "deliverable.md")
+        if name in seen_names:
+            name = name.rsplit(".", 1)[0] + "-交付说明.md"
+        seen_names.add(name)
+        path = MISSION_STORE.upload_dir / (secrets.token_hex(10) + "-" + Path(name).name)
         path.write_text(deliverable, "utf-8")
-        artifact = MISSION_STORE.add_artifact({
-            "name": task.get("title", "deliverable") + ".md",
-            "mime": "text/markdown", "size": len(deliverable.encode("utf-8")),
-            "kind": "document", "path": str(path),
-            "missionId": mission_id, "conversationId": mission.get("conversationId"),
+        artifact_rows.append(MISSION_STORE.add_artifact({
+            "name": name, "mime": "text/markdown",
+            "size": len(deliverable.encode("utf-8")), "kind": "document",
+            "path": str(path), "missionId": mission_id,
+            "conversationId": mission.get("conversationId"),
             "uploadedBy": task.get("assigneeId"), "extractedText": deliverable,
             "extraction": "text",
-        })
+        }))
+    if not artifact_rows:
+        raise missions.MissionError(
+            "交付物没有生成可下载文件，任务未标记完成；请重试",
+            "deliverable_missing", 502,
+        )
+    artifact_ids = [row["id"] for row in artifact_rows]
+    with MISSION_STORE.lock:
+        for raw in MISSION_STORE.data.get("missions", []):
+            if raw.get("id") != mission_id:
+                continue
+            for raw_task in raw.get("tasks", []):
+                if raw_task.get("id") == task_id:
+                    raw_task["artifactIds"] = artifact_ids
+                    raw_task["deliverable"] = deliverable
+                    raw_task["updatedAt"] = now_iso()
+            MISSION_STORE._save()
     with MISSION_STORE.lock:
         message = MISSION_STORE.post_message(mission.get("conversationId"), {
             "senderId": task.get("assigneeId"),
@@ -1910,14 +2166,13 @@ def run_mission_task(mission_id, task_id, preferred=""):
             "text": report.get("summary"),
             "report": report,
             "taskId": task_id,
-            "attachmentIds": [artifact["id"]] if artifact else [],
+            "attachmentIds": artifact_ids,
             "usage": usage,
         })
     return {"task": MISSION_STORE.public_task(task, mission),
-            "message": message, "artifact": artifact, "provider": provider_id,
+            "message": message, "artifact": artifact_rows[0],
+            "artifacts": artifact_rows, "provider": provider_id,
             "usage": usage}
-
-
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
 MCP_TOOLS = [
@@ -3491,6 +3746,40 @@ class Handler(BaseHTTPRequestHandler):
                 mission = MISSION_STORE.get_mission(mission_id)
                 self.send_json({"ok": True, "mission": mission}, 202)
                 return
+            if path.startswith("/missions/") and path.endswith("/rerun"):
+                parts = path.split("/")
+                if len(parts) == 6 and parts[3] == "tasks":
+                    with MISSION_STORE.lock:
+                        mission = MISSION_STORE.find_mission(parts[2])
+                        _, task = MISSION_STORE.find_task(parts[4])
+                        if not mission or not task or task.get("missionId") != parts[2]:
+                            self.send_json({"error": "task not found"}, 404)
+                            return
+                        old_artifacts = list(task.get("artifactIds") or [])
+                        if not old_artifacts:
+                            old_artifacts = [
+                                artifact.get("id") for artifact in MISSION_STORE.data.get("artifacts", [])
+                                if artifact.get("missionId") == parts[2]
+                                and artifact.get("name") == str(task.get("title") or "") + ".md"
+                                and artifact.get("uploadedBy") == task.get("assigneeId")
+                            ]
+                        task["status"] = "assigned"
+                        task["progress"] = 15
+                        task["report"] = None
+                        task["artifactIds"] = []
+                        task["updatedAt"] = now_iso()
+                        mission["status"] = "active"
+                        MISSION_STORE._save()
+                    result = run_mission_task(
+                        parts[2], parts[4], str(body.get("providerId") or ""))
+                    # Remove only the old placeholder files; real user or rich
+                    # artifacts are retained as history.
+                    for artifact_id in old_artifacts:
+                        artifact = MISSION_STORE.find_artifact(artifact_id)
+                        if artifact and int(artifact.get("size") or 0) < 80:
+                            MISSION_STORE.delete_artifact(artifact_id)
+                    self.send_json({"ok": True, **result})
+                    return
             if path.startswith("/missions/") and path.endswith("/run"):
                 parts = path.split("/")
                 if len(parts) == 6 and parts[3] == "tasks":
@@ -3780,6 +4069,42 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"artifacts": MISSION_STORE.list_artifacts(
                     mission_id, conversation_id)})
                 return
+            if path.startswith("/missions/") and path.endswith("/deliverables.zip"):
+                parts = path.split("/")
+                if len(parts) == 4:
+                    mission = MISSION_STORE.get_mission(parts[2])
+                    if not mission:
+                        self.send_json({"error": "mission not found"}, 404)
+                        return
+                    artifacts = MISSION_STORE.list_artifacts(parts[2])
+                    buf = io.BytesIO()
+                    used = set()
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                        manifest = ["# " + str(mission.get("title") or "") + " deliverables", ""]
+                        for artifact in artifacts:
+                            raw_path = next((a.get("path") for a in MISSION_STORE.data.get("artifacts", [])
+                                             if a.get("id") == artifact.get("id")), "")
+                            if not raw_path or not Path(raw_path).exists():
+                                continue
+                            name = str(artifact.get("name") or artifact.get("id") or "file").replace("\\", "/").lstrip("/")
+                            name = "/".join(part for part in name.split("/") if part not in ("", ".", ".."))
+                            if not name:
+                                name = str(artifact.get("id") or "file")
+                            if name in used:
+                                name = str(artifact.get("uploadedBy") or "task") + "/" + name
+                            suffix = 2
+                            base = name
+                            while name in used:
+                                stem, dot, ext = base.rpartition(".")
+                                name = (stem if dot else base) + "-" + str(suffix) + (("." + ext) if dot else "")
+                                suffix += 1
+                            used.add(name)
+                            zf.write(raw_path, name)
+                            manifest.append("- " + name + "  (" + str(artifact.get("size") or 0) + " bytes)")
+                        zf.writestr("MANIFEST.md", "\n".join(manifest) + "\n")
+                    self.send_bytes(buf.getvalue(), "application/zip",
+                                    (str(mission.get("title") or "mission") + "-deliverables.zip").replace(" ", "-"))
+                    return
             if path.startswith("/missions/") and path.count("/") == 2:
                 mission = MISSION_STORE.get_mission(path.split("/")[2])
                 if not mission:

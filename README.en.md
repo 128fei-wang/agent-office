@@ -372,6 +372,8 @@ The function bar title folds or expands it; the **☰** button opens the full fu
 - **QQ** — blue accent and QQ-style bubbles.
 - **WeChat** — green accent and WeChat-style bubbles.
 
+**Deliverable quality gate**: a task is never marked done from a one-line “done” placeholder. The bridge retries for a focused, substantive deliverable, accepts `files`/`file:path` output as downloadable artifacts, exposes task-level files and a ZIP manifest, and leaves the task unfinished with an actionable error when no usable output exists. Old placeholder deliverables show a warning and a Regenerate action instead of silently counting as complete.
+
 **Company memory** (Settings → Company memory, or `Cmd/Ctrl+K` → Company memory) stores cross-mission judgments, preferences and facts locally. Entries can be workspace- or agent-scoped, tagged, pinned and searched; later mission discussions, task runs and chat replies receive them as reference material, not instructions.
 
 **Universal search** in `Cmd/Ctrl+K` queries the local `/search` endpoint across missions, tasks, conversations, messages, files, memories and agents, with grouped keyboard-selectable results and deep links into the exact task drawer, conversation message or file.

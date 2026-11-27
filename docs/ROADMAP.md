@@ -53,7 +53,8 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Workspace and agent memory with retrieval and prompt injection (1.21.0); citations and expiry remain open.
 - [ ] Budget-aware model routing and price table.
 - [ ] Agent registry/health and A2A interoperability.
-- [ ] Provider-backed evaluation of task deliverables and independent QA verification.
+- [x] Deliverable quality gate, focused regeneration, per-task files and ZIP bundles (1.21.1).
+- [ ] Provider-backed independent evaluation of deliverable correctness.
 - [ ] Estimate calibration from historical actual/estimate variance per role and agent.
 - [x] Global search across missions, tasks, chats, messages, files, memories and agents (1.21.0); retention/export remain open.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.

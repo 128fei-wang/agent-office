@@ -124,6 +124,7 @@
       this.taskAgentFilter = "";
       this.artifactFocus = null;
       this.artifactBusy = false;
+      this.rerunTaskId = "";
       this.mobileDetail = false;
       this.stream = null;
       this.pollTimer = null;
@@ -351,6 +352,8 @@
         }
         const resumeTask = event.target.closest("[data-task-resume]");
         if (resumeTask) { self.patchTask(resumeTask.getAttribute("data-task-resume"), { status: "in_progress" }); return; }
+        const rerunTask = event.target.closest("[data-task-rerun]");
+        if (rerunTask) { self.rerunTask(rerunTask.getAttribute("data-task-rerun")); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
         const autorun = event.target.closest("[data-mission-autorun]");
         if (autorun) {
@@ -1545,6 +1548,21 @@
     taskHTML(task) {
       const approval = (this.mission.approvals || []).find((a) => a.taskId === task.id);
       const pct = taskProgressPercent(task);
+      const allArtifacts = (this.mission && this.mission.artifacts) || [];
+      let taskArtifacts = allArtifacts.filter((artifact) =>
+        (task.artifactIds || []).indexOf(artifact.id) >= 0);
+      if (!taskArtifacts.length && task.report) {
+        taskArtifacts = allArtifacts.filter((artifact) =>
+          artifact.name === task.title + ".md" && artifact.uploadedBy === task.assigneeId);
+      }
+      const usableDeliverable = taskArtifacts.some((artifact) => Number(artifact.size || 0) >= 200);
+      const deliverableHTML = taskArtifacts.length ?
+        '<div class="mission-task-deliverables"><b>' + esc(this.t("missionDeliverables")) + '</b>' +
+        taskArtifacts.map((artifact) => '<button type="button" data-artifact-open="' + esc(artifact.id) +
+          '"><i>FILE</i><span>' + esc(artifact.name) + '</span><em>' + fmtSize(artifact.size) +
+          '</em></button>').join("") + "</div>" : "";
+      const deliverableWarning = task.status === "done" && !usableDeliverable ?
+        '<p class="mission-deliverable-warning">' + esc(this.t("missionDeliverableMissing")) + "</p>" : "";
       const current = task.id === this.currentTaskId() &&
         task.status !== "done";
       return '<details class="mission-task ' + this.taskClass(task.status) +
@@ -1578,6 +1596,7 @@
         (task.report ? '<div class="mission-report compact"><b>' + esc(this.t("missionReport")) + '</b><p>' +
           esc(task.report.summary) + '</p><span class="mission-solution">' + esc(this.t("missionSolution")) +
           '：' + esc(task.report.solution) + '</span></div>' : '') +
+        deliverableHTML + deliverableWarning +
         '<div class="mission-task-actions"><button type="button" data-dm-agent="' +
         esc(task.assigneeId) + '">' + esc(this.t("missionDmAgent")) + '</button>' +
         (task.status !== "done" && !this.isExternalAgent(task.assigneeId) ?
@@ -1604,6 +1623,9 @@
           }).join("") + '</select>' : '') +
         '<button type="button" data-copy-protocol="' + esc(task.id) + '">' +
         esc(this.t("missionCopyProtocol")) + '</button>' +
+        (task.status === "done" ? '<button type="button" data-task-rerun="' + esc(task.id) + '"' +
+          (this.rerunTaskId === task.id ? " disabled" : "") + '>' +
+          esc(this.rerunTaskId === task.id ? this.t("missionRerunning") : this.t("missionRerun")) + '</button>' : '') +
         (task.status !== "done" ? '<button type="button" data-task-edit="' + esc(task.id) +
           '">' + esc(this.t("missionEditTask")) + '</button>' : '') +
         '</div></details>';
@@ -1717,7 +1739,11 @@
         esc(this.filesUploading ? this.t("missionFileUploading") : this.t("missionFileUpload")) +
         '<input type="file" id="missionFilesUpload" multiple' +
         (this.filesUploading ? " disabled" : "") + ' /></label>' : "";
-      return '<div class="mission-panel mission-files">' + upload +
+      const downloadAll = this.mission && artifacts.length ?
+        '<a class="mission-file-add mission-download-all" href="' + esc(this.bridge() +
+          "/missions/" + encodeURIComponent(this.mission.id) + "/deliverables.zip") +
+        '" download>↓ ' + esc(this.t("missionDownloadAll")) + '</a>' : "";
+      return '<div class="mission-panel mission-files">' + upload + downloadAll +
         (artifacts.length ? artifacts.map((a) =>
           this.artifactRow(a)).join("") : '<div class="mission-empty small">' +
           esc(this.t("missionNoFiles")) + '</div>') + '</div>';

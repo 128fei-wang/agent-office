@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.21.1] - 2026-11-27
+
+### Fixed
+- **No more placeholder deliverables**: a task is never marked done when the model returns only “已完成任务并提交交付物” or another empty/placeholder text. The bridge asks the model once for the actual deliverable, and if that still fails the task stays unfinished with an actionable error instead of fabricating a 36-byte file.
+- **Long deliverables no longer truncate into invalid JSON**: task and discussion calls now use larger prompt/output budgets and a balanced JSON extractor; failed structured output falls back to a focused deliverable request.
+- **Usable files are persisted**: model output can include a `files` array or fenced `file:path` blocks; each file becomes a downloadable artifact linked to the task, and the report stores the deliverable text.
+- **Task-level deliverable UI**: completed tasks show their files, a warning when a deliverable is missing or too short, a “重新交付” action, and the mission files tab can download every deliverable as one ZIP with a manifest.
+
+### Added
+- Regression tests for placeholder rejection and the repaired-report path.
+- Focused deliverable generation for implementation/QA/release/risk work; implementation tasks can produce code, tests and scripts instead of a single summary.
+
 ## [1.21.0] - 2026-11-27
 
 ### Added

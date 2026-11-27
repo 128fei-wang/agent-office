@@ -377,6 +377,16 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 左侧顶部「群消息」和「沟通」里的已有群组列表都会直接进入新工作台，不必先打开一个空的建群表单。Mission Control 里的群组/私聊行、「建群」「私聊」按钮和「聊天工作台」按钮也统一进入同一个工作台；旧的 NEW GROUP 弹窗和旧群聊面板不再从这些入口出现。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)、[docs/MEMORY.md](docs/MEMORY.md)。
 
+## 交付物质量门禁
+
+任务完成不再只看一句“已完成任务并提交交付物”：
+
+- 模型返回的正文过短、只有占位句或没有实际交付物时，bridge 会单独再请求一次完整交付物。
+- 仍然不可用时，任务**不会**被标记完成；自动执行会报出明确错误并由老板重试。
+- 实现/验收/发布/风险任务可以输出 `files` 或 `file:路径` 代码块，保存为独立可下载文件；任务卡直接显示交付物，任务群汇报也带附件。
+- 文件页可以一键下载全部交付物 ZIP（含 MANIFEST），单个任务也可以点“重新交付”。
+- 旧任务如果只有占位文件，会显示“交付物缺失或过短”的警告和重新交付按钮，不会静默当成完成。
+
 ## 团队记忆与全局搜索
 
 **团队记忆**（设置 → 团队记忆，或 `Cmd/Ctrl+K` → 团队记忆）把跨任务有效的判断、偏好和事实保存到本机 bridge。记忆有团队/Agent 两种范围，支持标题、Markdown 正文、标签、固定和搜索；之后的任务讨论、任务执行和聊天回复会自动把它作为参考资料注入，而不是当成命令。
@@ -848,7 +858,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.21.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.21.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
