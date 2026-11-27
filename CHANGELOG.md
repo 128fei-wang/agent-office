@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.18.1] - 2026-11-27
+
+### Fixed
+- **Stale local install made the left feature rail unstyled**: AgentOffice.app runs `/Users/hashmai/agent-office`, which was still a partial 1.7-era copy without `features.css` / `demo-mode.css`. The repo was verified, but the actual installed app was not. The installed copy is now synced to 1.18.1 and the running bridge restarted with the current code.
+- Added `scripts/sync-local.sh` to copy the working tree into the installed app while preserving local state/secrets.
+- Added a browser regression check asserting the feature rail has real width/border-radius and horizontal labels, so a missing CSS install fails self-checks instead of silently rendering an unstyled rail.
+- Documented the stale-install symptom and fix in `docs/GUIDE.md`.
+
+### Changed
+- Version bumped to 1.18.1.
+
 ## [1.18.0] - 2026-11-26
 
 ### Added

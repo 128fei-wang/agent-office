@@ -32,6 +32,12 @@
     await wait(120);
     check('command palette closes',!!$('#commandRoot')&&$('#commandRoot').hidden);
     check('feature rail in left panel',!!$('#featureRail')&&$$('#featureRail [data-rail-section]').length>=4);
+    const railRect=$('#featureRail').getBoundingClientRect();
+    check('feature rail styled',railRect.width>=45&&parseFloat(w.getComputedStyle($('#featureRail')).borderTopLeftRadius)>0,
+      'width='+railRect.width+' radius='+w.getComputedStyle($('#featureRail')).borderTopLeftRadius);
+    const workLabel=$('#featureRail [data-rail-section="work"] span');
+    check('rail labels horizontal',!!workLabel&&workLabel.getBoundingClientRect().height<16,
+      'label='+(workLabel&&workLabel.getBoundingClientRect().height));
     const railFont=w.getComputedStyle($('#featureRail [data-rail-section] span')).fontSize;
     check('rail labels readable',parseFloat(railFont)>=9,railFont);
     check('topbar decluttered',!$('#missionBtn').offsetParent&&!$('#companyBtn').offsetParent&&!$('#updateBtn').offsetParent&&!$('#themeBtn').offsetParent);
