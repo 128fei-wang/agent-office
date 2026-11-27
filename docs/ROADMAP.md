@@ -41,6 +41,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Real-external-agent-first recommendations, editable external job appointments, and built-in/custom avatar selection.
 - [x] Pinned left function bar, settings center and QQ/WeChat chat-window styles.
 - [x] Two-pane group/DM chat workspace with unread/read state, pin/mute/rename, search, safe Markdown, quote/copy, attachments, @mentions, drafts, details/files and mobile sheet (1.19.0).
+- [x] Group creation moved to Communication, built groups listed there, and Mission Control group/DM/chat-workspace entries routed to the new workspace (1.19.1).
 - [ ] Token-level streaming replies, message editing/branching and cross-conversation full-text search.
 - [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
 - [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.

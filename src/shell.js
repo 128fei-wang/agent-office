@@ -211,12 +211,21 @@
         if (this.shell) this.shell.guide.open();
         return;
       }
-      if (action === "group" || action === "mission") {
+      if (action === "group") {
+        this.close();
+        if (!chat) return;
+        try {
+          await chat.openHub("group");
+          chat.renderGroupForm();
+        } catch (err) {}
+        return;
+      }
+      if (action === "mission") {
         this.close();
         if (!deps.missionView) return;
         try {
           await deps.missionView.open();
-          deps.missionView.openForm(action === "group" ? "group" : "mission");
+          deps.missionView.openForm("mission");
         } catch (err) {}
         return;
       }
@@ -262,6 +271,16 @@
         if (event.target.closest("[data-rail-open-all]")) {
           self.close();
           if (self.shell && self.shell.drawer) self.shell.drawer.open();
+          return;
+        }
+        const railChat = event.target.closest("[data-rail-chat-conv]");
+        if (railChat) {
+          const id = railChat.getAttribute("data-rail-chat-conv");
+          self.close();
+          const chat = self.shell && self.shell.chat;
+          if (chat) {
+            chat.openHub("all").then(function () { return chat.openConversation(id); });
+          }
           return;
         }
         const style = event.target.closest("[data-chat-style]");
@@ -318,6 +337,32 @@
       this.flyout.innerHTML = this.render(section);
       this.position(anchor);
       this.syncStyle();
+      if (section === "chat") this.loadChatList();
+    }
+
+    async loadChatList() {
+      const box = this.flyout && this.flyout.querySelector("#railChatList");
+      if (!box) return;
+      const ext = this.renderer && this.renderer.external;
+      const base = String((ext && ext.bridgeUrl) || AO.BRIDGE_DEFAULT || "").replace(/\/+$/, "");
+      try {
+        const res = await fetch(base + "/conversations?kind=group", { cache: "no-store" });
+        const data = await res.json();
+        const rows = (data.conversations || []).filter((c) => c.kind === "group").slice(0, 6);
+        if (!rows.length) {
+          box.innerHTML = '<div class="rail-chat-empty">' + esc(AO.t("featureNoGroups")) + "</div>";
+          return;
+        }
+        box.innerHTML = rows.map(function (c) {
+          const title = String(c.title || "").replace(/^#\s*/, "") || AO.t("chatGroupTitle");
+          const preview = (c.lastMessage && c.lastMessage.text) || AO.t("chatNoMessagesPreview");
+          return '<button type="button" class="rail-chat-row" data-rail-chat-conv="' + esc(c.id) + '">' +
+            '<b>#</b><span><strong>' + esc(title) + '</strong><em>' + esc(preview) + '</em></span>' +
+            (c.unreadCount ? '<i>' + (c.unreadCount > 99 ? "99+" : c.unreadCount) + "</i>" : "") + "</button>";
+        }).join("");
+      } catch (err) {
+        box.innerHTML = '<div class="rail-chat-empty">' + esc(AO.t("chatError")) + "</div>";
+      }
     }
 
     position(anchor) {
@@ -347,8 +392,8 @@
           this.actionRow("external", "⇢", t("featureAddExternal"), "连接码 / 模型 API / MCP");
       } else if (section === "create") {
         title = t("featureCreate");
-        body = this.actionRow("group", "＋", t("featureCreateGroup"), "群聊 / 任务群 / 私聊") +
-          this.actionRow("mission", "▦", t("featureCreateTask"), "章程 / 自动拆解 / 审批");
+        body = this.actionRow("mission", "▦", t("featureCreateTask"), "章程 / 自动拆解 / 审批") +
+          '<p class="rail-real-note">' + esc(t("featureChatMoved")) + "</p>";
       } else if (section === "settings") {
         title = t("featureSettingsGroup");
         const style = readChatStyle();
@@ -378,8 +423,12 @@
         }
       } else {
         title = t("featureComms");
-        body = this.actionRow("group-chat", "#", t("featureGroupChat"), "群聊 / 任务群浮窗") +
-          this.actionRow("direct-chat", "@", t("featureDirectChat"), "和任一 Agent 私聊");
+        body = this.actionRow("group-chat", "#", t("featureGroupChat"), "已建群组 / 任务群") +
+          this.actionRow("group", "＋", t("featureNewGroup"), "选择成员 / 新建群组") +
+          this.actionRow("direct-chat", "@", t("featureDirectChat"), "和任一 Agent 私聊") +
+          '<div class="rail-chat-section"><span>' + esc(t("featureExistingGroups")) +
+          '</span><div class="rail-chat-list" id="railChatList"><div class="rail-chat-empty">' +
+          esc(t("chatLoading")) + "</div></div></div>";
       }
       return '<header class="rail-flyout-head"><div><span>WORKSPACE</span><h3>' + esc(title) +
         '</h3></div><button type="button" data-rail-close>×</button></header>' +

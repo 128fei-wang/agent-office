@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.19.1] - 2026-11-27
+
+### Changed
+- **Group creation moved to Communication**: the Create flyout now contains task creation only; group messages, new group and direct messages live under Communication, with a notice explaining the move.
+- **Existing groups are visible in the rail**: Communication now lists built groups and task groups with their latest message and unread badge; selecting one opens the new chat workspace directly.
+- **Mission Control uses the new workspace**: built group/DM rows, the “建群” and “私聊” header actions, and the new “聊天工作台” header action all open the ChatHub instead of the old inline group form or Mission chat. The header action opens the conversation list when no conversation is active.
+- **No more old “NEW GROUP” modal from the UI**: the feature drawer, rail, Mission Control and mission header all route group creation into the ChatHub group form.
+- **Composer stays inside the window**: constrained the ChatHub grid row so the message list shrinks instead of pushing the composer below the window edge; added a regression check (`dev-chat.html`, 60 checks).
+
+### Added
+- Regression coverage for the moved navigation, Communication group list, rail group creation, built-group routing, direct routing and Mission Control chat-workspace entry.
+
 ## [1.19.0] - 2026-11-27
 
 ### Added

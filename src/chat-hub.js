@@ -780,6 +780,14 @@
         "</div></div>";
     }
 
+    renderGroupForm() {
+      if (!this.root || this.root.hidden) return;
+      this.captureDraft();
+      this.view = "new-group";
+      this.root.classList.add("chat-show-main");
+      this.renderMain();
+    }
+
     groupFormHTML() {
       const selected = new Set(this.agents.slice(0, 2).map((agent) => agent.id));
       return '<div class="chat-create-pane">' +

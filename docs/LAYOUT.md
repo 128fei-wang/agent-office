@@ -19,8 +19,8 @@ These public projects were reviewed for navigation patterns; no code was copied:
 
 ## Decision
 
-- **One navigation source of truth**: the left rail owns work, people, create,
-  settings and chat.
+- **One navigation source of truth**: the left rail owns work, people, task
+  creation, settings and communication (groups and DMs).
 - **Top bar is for simulation state only**: scenario, play/pause and speed.
   Task, company, tools, theme, language, meeting, incident and reset moved into
   rail flyouts so customers do not see the same action twice.

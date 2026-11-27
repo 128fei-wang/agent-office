@@ -63,6 +63,11 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       groupId=shell.active&&shell.active.id;
       check('group created and opened',!!shell.active&&shell.active.kind==='group',groupId);
       check('chat header',!!$('.chat-head')&&/自检|聊天自检/.test($('.chat-head').textContent));
+      const winRect=$('.chat-window.chat-hub').getBoundingClientRect();
+      const msgRect=$('#chatMessages').getBoundingClientRect();
+      const compRect=$('.chat-composer-wrap').getBoundingClientRect();
+      check('composer stays inside window',compRect.bottom<=winRect.bottom+1&&msgRect.bottom<=compRect.top+1,
+        'win='+Math.round(winRect.bottom)+' composer='+Math.round(compRect.bottom)+' messages='+Math.round(msgRect.bottom));
       check('composer textarea',!!$('#chatDraft'));
       check('send button',!!$('#chatSendBtn'));
       check('send disabled while empty',$('#chatSendBtn')&&$('#chatSendBtn').disabled);

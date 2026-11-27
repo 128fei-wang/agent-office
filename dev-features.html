@@ -62,14 +62,21 @@
     if(topQq){topQq.click();await wait(120);check('rail chat style saves',w.localStorage.getItem('agent-office.chat.style.v1')==='qq');}
     const createRail=$('#featureRail [data-rail-section="create"]');
     if(createRail){createRail.click();await wait(150);}
-    check('create rail actions',/创建群组/.test($('#railFlyout').textContent)&&/创建任务/.test($('#railFlyout').textContent));
+    check('create rail task only',/创建任务/.test($('#railFlyout').textContent)&&!/新建群组|创建群组/.test($('#railFlyout').textContent));
+    const chatRail=$('#featureRail [data-rail-section="chat"]');
+    if(chatRail){chatRail.click();await wait(500);}
+    check('groups live under communication',/群组消息/.test($('#railFlyout').textContent)&&/新建群组/.test($('#railFlyout').textContent)&&/已建群组/.test($('#railFlyout').textContent));
+    const railNewGroup=$('#railFlyout [data-feature-action="group"]');
+    if(railNewGroup){railNewGroup.click();await wait(800);}
+    check('rail new group opens chat hub',!!$('.chat-window.chat-hub')&&!!$('#chatGroupForm'));
+    shell.chat.close();await wait(200);
     const allRail=$('#featureRail [data-rail-section="all"]');
     if(allRail){allRail.click();await wait(200);}
     check('full drawer opens',!$('#featureDrawer').hidden);
     check('three functional groups',$$('#featureDrawer .feature-group').length>=4);
     check('six grouped actions',$$('#featureDrawer [data-feature-action]').length>=6);
     check('people group',/人脉/.test($('#featureDrawer').textContent)&&/添加好友/.test($('#featureDrawer').textContent));
-    check('create group/task',/创建群组/.test($('#featureDrawer').textContent)&&/创建任务/.test($('#featureDrawer').textContent));
+    check('group creation moved to comms',/新建群组/.test($('#featureDrawer').textContent)&&/创建任务/.test($('#featureDrawer').textContent));
     check('settings center',/设置中心/.test($('#featureDrawer').textContent)&&/工具/.test($('#featureDrawer').textContent));
     check('feature cleanup no capture',!$('[data-feature-action="capture"]'));
     const closeDrawer=$('[data-feature-close]');if(closeDrawer)closeDrawer.click();await wait(120);

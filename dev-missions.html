@@ -21,7 +21,7 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
   f.src='index.html?intro=0&ticks=0&noStream=1&missions=1&theme=day&lang=zh';
   f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;finish();}),2600));
   async function run(){
-    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 45s');failed++;finish();},45000);
+    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 75s');failed++;finish();},75000);
     const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
     const $=(s)=>d.querySelector(s);
     check('app exposed',!!app);
@@ -365,50 +365,32 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       await wait(80);
     }
 
+    const features=app.renderer.features;
     $('[data-mission-new="group"]').click();
-    await wait(200);
-    const groupForm=$('#missionCreateForm');
-    const groupBoxes=groupForm?Array.from(groupForm.querySelectorAll('input[name="memberIds"]')):[];
-    check('group form opens',groupBoxes.length>=2);
-    if(groupBoxes.length>=2){
-      groupBoxes[0].checked=true;groupBoxes[1].checked=true;
-      groupForm.elements.title.value='自检群聊';
-      groupForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
-      await wait(800);
-      check('group chat created',view.conversation&&view.conversation.kind==='group');
-      const groupId=view.conversation&&view.conversation.id;
-      if(groupId){
-        const msg=await fetch(bridge+'/conversations/'+groupId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({senderId:'boss',senderType:'boss',type:'text',text:'群聊自检'})});
-        check('group message accepted',msg.status===201);
-        await view.selectConversation(groupId,'group');
-        await wait(300);
-        check('group message rendered',/群聊自检/.test($('#missionMessages').textContent));
-        await fetch(bridge+'/conversations/'+groupId,{method:'DELETE'});
-      }
-    }
-
+    await wait(650);
+    check('group entry opens chat workspace',!!$('.chat-window.chat-hub')&&!!d.querySelector('#chatGroupForm'));
+    if(features.chat)features.chat.close();
+    await view.open();await view.selectMission(mission.id);await wait(300);
     $('[data-mission-new="direct"]').click();
-    await wait(200);
-    const directForm=$('#missionCreateForm');
-    const radio=directForm&&directForm.querySelector('input[name="memberId"]');
-    check('direct form opens',!!radio);
-    if(radio){
-      radio.checked=true;
-      directForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
-      await wait(800);
-      check('direct chat created',view.conversation&&view.conversation.kind==='direct');
-      const directId=view.conversation&&view.conversation.id;
-      if(directId){
-        const msg=await fetch(bridge+'/conversations/'+directId+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({senderId:'boss',senderType:'boss',type:'text',text:'私聊自检'})});
-        check('direct message accepted',msg.status===201);
-        await view.selectConversation(directId,'direct');
-        await wait(300);
-        check('direct message rendered',/私聊自检/.test($('#missionMessages').textContent));
-        await fetch(bridge+'/conversations/'+directId,{method:'DELETE'});
-      }
-    }
+    await wait(600);
+    check('direct entry opens chat workspace',!!$('.chat-window.chat-hub')&&/私聊/.test(($('.chat-side')||{}).textContent||''));
+    if(features.chat)features.chat.close();
+    await view.open();await view.selectMission(mission.id);await wait(300);
+    const routeGroup=await (await fetch(bridge+'/conversations',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind:'group',title:'路由自检群',memberIds:mission.members.slice(0,2).map(m=>m.id)})})).json();
+    const routeGroupId=routeGroup.conversation&&routeGroup.conversation.id;
+    await view.refreshAll(false);view.sideTab='groups';view.render();await wait(200);
+    const routeConv=d.querySelector('[data-mission-conv="'+routeGroupId+'"]');
+    check('built group appears in group list',!!routeConv);
+    if(routeConv){routeConv.click();await wait(700);}
+    check('clicking built group opens chat workspace',!!$('.chat-window.chat-hub')&&(!$('#missionLab')||$('#missionLab').hidden));
+    if(features.chat)features.chat.close();
+    if(routeGroupId)await fetch(bridge+'/conversations/'+routeGroupId,{method:'DELETE'});
+    await view.open();view.sideTab='missions';await view.selectMission(mission.id);await wait(300);
+    $('[data-mission-chat-hub]').click();await wait(600);
+    check('mission header opens chat workspace',!!$('.chat-window.chat-hub')&&!$('#chatGroupForm'));
+    if(features.chat)features.chat.close();
+    await view.open();view.sideTab='missions';await view.selectMission(mission.id);await wait(300);
 
     await view.selectMission(mission.id);await wait(400);
     await view.archiveMission();

@@ -1,6 +1,6 @@
 # 9.8 验收评分卡
 
-> 版本：1.19.0 · 更新：2026-11-27
+> 版本：1.19.1 · 更新：2026-11-27
 >
 > 这是按用户设定的 9.8 验收口径做的自评：以 GitHub 同类开源产品的最好水平为 10 分，9.8 表示达到头部水平，只保留非阻塞的边缘增强。
 
@@ -27,11 +27,18 @@
 
 ## 1.19 验收证据
 
+### 入口与路由（1.19.1）
+
+- **创建/沟通分工**：左侧「创建」只保留任务管理；「沟通」提供群组消息、新建群组、私聊，并直接列出已建群组和任务群（最新消息 + 未读角标）。
+- **不再出现旧建群弹窗**：完整功能抽屉、左侧浮动面板、Mission Control 的「建群」按钮都路由到新聊天工作台的建群表单，不再打开旧 NEW GROUP 弹窗。
+- **群组直达新工作台**：点击「已有群组」或 Mission Control 的群组/私聊行，打开 900×650 新工作台；Mission Control 新增「聊天工作台」按钮，没有活跃会话时打开会话列表，不误入建群表单。
+- **回归**：`dev-features.html` 54 PASS；`dev-missions.html` 110 PASS（含群组列表、私聊入口、建群入口、头部入口和工作台路由）；`dev-chat.html` 60 PASS。
+
 ### 聊天工作台（1.19.0）
 
 - 参考 GitHub 上 AI 对话与浮窗产品的成功实践（Open WebUI、NextChat、LobeHub、LibreChat、Chatwoot），拆解为双栏会话、未读、固定/静音、搜索、Markdown、引用、附件、@提及、草稿、详情和移动端。
 - 900×650 双栏工作台：左侧会话搜索/过滤/未读/固定/静音/重命名/删除；右侧日期分隔、发送者分组、Markdown/代码复制、引用回复、任务入口、附件与文件详情。
-- bridge 持久化 `readSeq`、`pinned`、`muted`，新增会话 PATCH；`dev-chat.html` 覆盖 59 项交互，包含未读、重命名、附件、引用和移动端。
+- bridge 持久化 `readSeq`、`pinned`、`muted`，新增会话 PATCH；`dev-chat.html` 覆盖 60 项交互，包含未读、重命名、附件、引用和移动端。
 - 浅色主题、430px 全屏移动布局、焦点陷阱、`focus-visible`、Enter/Shift+Enter、Cmd/Ctrl+F、reduced-motion 全部纳入验收。
 - 聊天窗口订阅本机 `/missions/stream` 的增量消息事件，新消息和 AI 回复不再只等轮询；轮询保留为 3 秒兜底。
 
@@ -52,7 +59,7 @@
 
 ### 安装版亲测（2026-11-27）
 
-- 实测对象是 `AgentOffice.app` 实际加载的 `$HOME/agent-office`，不是开发仓库：`/health` 返回 1.19.0，静态资源带 `v=1.19.0` 且 `Cache-Control: no-store`。
+- 实测对象是 `AgentOffice.app` 实际加载的 `$HOME/agent-office`，不是开发仓库：`/health` 返回 1.19.1，静态资源带 `v=1.19.1` 且 `Cache-Control: no-store`。
 - 真实模式：关闭演示后办公室显示 5 个外部 Agent 像素角色；`dev-demo-mode.html` 的 67 项检查全部 PASS。
 - 真实任务联动：通过本机 bridge 新建临时任务并启动自动执行，Codex 角色在 415ms 内进入工作态，显示「需求边界与验收」任务气泡、进度条和 `workType` 工作动画；4 个空闲角色在 4.6 秒内移动到新工位；页面没有 `sim-paused` 冻结；停止并删除临时任务后，用户原有任务和 5 个外部 Agent 均保留（验收过程未改写真实任务内容）。
 - 真实任务群聊：自动执行状态为 `running` 时在任务群发消息，输入态出现；收到 Codex 回复「当前进度：测试说明已进入准备阶段…」后输入态清除，随后临时任务被清理。任务群里的自动执行汇报不再误清输入态。
@@ -103,7 +110,7 @@ scripts/sync-local.sh
 ```bash
 python3 -m unittest discover -s tests
 bash scripts/check.sh
-# 浏览器自检：24 个 dev-*.html 页面
+# 浏览器自检：26 个 dev-*.html 页面
 ```
 
-当前结果：66 个 Python 测试通过；24 个浏览器自检页面全部 PASS；安装版 bridge 1.19.0。
+当前结果：66 个 Python 测试通过；26 个浏览器自检页面全部通过（22 PASS、2 CLEAN、1 Trace 运行完成、1 调试页），安装版 bridge 1.19.1。

@@ -357,11 +357,13 @@ See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker 
 
 ## Left function bar and chat workspace
 
-The TEAM panel pins six actions at the top in three groups:
+The left function rail is organised into five groups:
 
+- **Work** — task center, one-person company, meetings, incidents, reset.
 - **People** — add a local friend/agent, add an external agent.
-- **Create** — create a group, task manager / create a task.
-- **Settings center** — tools, settings.
+- **Create** — task manager / create a task only; group creation has moved to Communication.
+- **Settings center** — tools, settings, theme, language.
+- **Communication** — group messages, new group, built groups, direct messages.
 
 The function bar title folds or expands it; the **☰** button opens the full function drawer. The top bar includes a **chat window style** switch:
 
@@ -369,7 +371,9 @@ The function bar title folds or expands it; the **☰** button opens the full fu
 - **QQ** — blue accent and QQ-style bubbles.
 - **WeChat** — green accent and WeChat-style bubbles.
 
-Group and direct chats are now a **900×650 two-pane workspace**, not a tiny floating box: a conversation rail with search, all/group/direct filters, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search and a full-screen mobile sheet. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
+Group and direct chats are now a **900×650 two-pane workspace**, not a tiny floating box: a conversation rail with search, all/group/direct filters, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search and a full-screen mobile sheet.
+
+Communication lists built groups and task groups with their latest message and unread badge, and opens the new workspace in one click instead of showing an empty create form. Group/DM rows, the New group/DM header actions and the Chat workspace button in Mission Control all route to the same workspace, so the old NEW GROUP modal no longer appears from these entry points. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
 
 ## AI setup in 3 steps + full auto-run
 
@@ -545,7 +549,7 @@ The page runs both scenarios and reports completion, task states, meeting/review
 - `dev-update.html` — tools entry, automatic update, manual section, file selection, backup, confirmation, progress, restart detection and completion state.
 - `dev-update-manual.html` — local archive selection, upload headers, progress and completion state.
 - `dev-missions.html` — task creation, free team selection, recommendation cards, per-task executors, brand logos, estimated/actual usage, the Eval tab, auto plan/no-idle coverage, document/image attachments, groups, DMs, approval resolution, report solution validation, token budget editor and cleanup.
-- `dev-chat.html` — the two-pane chat workspace, Markdown/code, copy/quote, search, attachments, pin, rename, unread and mobile layout. `dev-features.html` — left navigation rail, six actions, add friend/external-agent entry points, chat entry points, settings center, AI settings and MCP deployment.
+- `dev-chat.html` — the two-pane chat workspace, Markdown/code, copy/quote, search, attachments, pin, rename, unread and mobile layout. `dev-features.html` — left navigation rail, Create/Communication grouping, add friend/external-agent entry points, chat entry points, settings center, AI settings and MCP deployment.
 - `dev-ai-setup.html` — 3-step AI setup, environment credentials, test-before-save and auto-run state.
 - `dev-mission-live.html` — homepage MISSION LIVE HUD, external agent hot desk, team activity and task bubble.
 - `dev-demo-mode.html` — demo shutdown, real-agent-only recommendations, REAL OPS board/feed and restoring demo.

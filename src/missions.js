@@ -202,7 +202,19 @@
           return;
         }
         const add = event.target.closest("[data-mission-new]");
-        if (add) { self.openForm(add.getAttribute("data-mission-new")); return; }
+        if (add) {
+          const addMode = add.getAttribute("data-mission-new");
+          if (addMode === "group" || addMode === "direct") {
+            self.openChatWorkspace("", addMode);
+            return;
+          }
+          self.openForm(addMode);
+          return;
+        }
+        if (event.target.closest("[data-mission-chat-hub]")) {
+          self.openChatWorkspace((self.conversation && self.conversation.id) || "", "all");
+          return;
+        }
         const tab = event.target.closest("[data-mission-side-tab]");
         if (tab) { self.sideTab = tab.getAttribute("data-mission-side-tab"); self.render(); return; }
         if (event.target.closest("[data-mobile-back]")) {
@@ -219,7 +231,11 @@
         const mission = event.target.closest("[data-mission-id]");
         if (mission) { self.selectMission(mission.getAttribute("data-mission-id")); return; }
         const conversation = event.target.closest("[data-mission-conv]");
-        if (conversation) { self.selectConversation(conversation.getAttribute("data-mission-conv"), conversation.getAttribute("data-conv-kind")); return; }
+        if (conversation) {
+          self.openChatWorkspace(conversation.getAttribute("data-mission-conv"),
+            conversation.getAttribute("data-conv-kind"));
+          return;
+        }
         if (event.target.closest("[data-mission-approvals]")) {
           self.viewMode = "approvals";
           self.detailTab = "approvals";
@@ -874,6 +890,26 @@
       } catch (err) {}
     }
 
+    async openChatWorkspace(conversationId, mode) {
+      const chat = this.renderer && this.renderer.features && this.renderer.features.chat;
+      if (!chat) return false;
+      this.close();
+      try {
+        if (conversationId) {
+          await chat.openHub("all");
+          await chat.openConversation(conversationId);
+        } else if (mode === "direct") {
+          await chat.openHub("direct");
+        } else if (mode === "group") {
+          await chat.openHub("group");
+          if (chat.renderGroupForm) chat.renderGroupForm();
+        } else {
+          await chat.openHub("all");
+        }
+      } catch (err) {}
+      return true;
+    }
+
     async selectMission(id) {
       this.activeType = "mission";
       this.activeId = id;
@@ -1048,6 +1084,8 @@
         esc(this.t("missionGroupNew")) + '</button>' +
         '<button class="mission-head-btn" type="button" data-mission-new="direct">＋ ' +
         esc(this.t("missionDmNew")) + '</button>' +
+        '<button class="mission-head-btn" type="button" data-mission-chat-hub># ' +
+        esc(this.t("missionChatHub")) + '</button>' +
         this.approveBadge() +
         '<button class="mission-head-btn ghost" type="button" data-mission-lang>' +
         (AO.lang === "en" ? "中" : "EN") + '</button>' +
