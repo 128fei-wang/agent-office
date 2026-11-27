@@ -364,6 +364,34 @@ class MissionTest(unittest.TestCase):
         _, design_after = self.store.find_task(design["id"])
         self.assertEqual(design_after["status"], "assigned")
 
+    def test_memory_crud_context_and_search(self):
+        workspace = self.store.create_memory({
+            "title": "Launch rollback",
+            "text": "Always rehearse a rollback before a public launch.",
+            "scope": "workspace",
+            "tags": ["launch", "risk"],
+            "pinned": True,
+        })
+        agent = self.store.create_memory({
+            "title": "Kai test preference",
+            "text": "Prefer integration tests before visual polish.",
+            "scope": "agent",
+            "agentId": "ext-test",
+        })
+        self.assertEqual(len(self.store.list_memories()), 2)
+        self.assertEqual(len(self.store.list_memories(scope="workspace")), 1)
+        self.assertEqual(len(self.store.list_memories(agent_id="ext-test")), 2)
+        self.assertIn("rollback", self.store.memory_context(["ext-test"]).lower())
+        self.assertIn("integration tests", self.store.memory_context(["ext-test"]).lower())
+        updated = self.store.update_memory(workspace["id"], {
+            "title": "Launch rollback drill", "pinned": False
+        })
+        self.assertEqual(updated["title"], "Launch rollback drill")
+        found = self.store.search("rollback")
+        self.assertTrue(any(m["id"] == workspace["id"] for m in found["memories"]))
+        self.assertTrue(self.store.delete_memory(agent["id"]))
+        self.assertEqual(len(self.store.list_memories()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -372,9 +372,13 @@ The function bar title folds or expands it; the **☰** button opens the full fu
 - **QQ** — blue accent and QQ-style bubbles.
 - **WeChat** — green accent and WeChat-style bubbles.
 
+**Company memory** (Settings → Company memory, or `Cmd/Ctrl+K` → Company memory) stores cross-mission judgments, preferences and facts locally. Entries can be workspace- or agent-scoped, tagged, pinned and searched; later mission discussions, task runs and chat replies receive them as reference material, not instructions.
+
+**Universal search** in `Cmd/Ctrl+K` queries the local `/search` endpoint across missions, tasks, conversations, messages, files, memories and agents, with grouped keyboard-selectable results and deep links into the exact task drawer, conversation message or file.
+
 Group and direct chats are now a **1020×700 Signal Studio workspace**, not a tiny floating box: a 300px conversation rail with search, all/group/direct filters, pinned/recent/earlier sections, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, role labels, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, quick progress/decision/file actions, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search, ink/warm-paper themes and a full-screen mobile sheet.
 
-The top-of-rail Group messages shortcut and Communication’s built-group list both open the new workspace in one click instead of showing an empty create form. Group/DM rows, the New group/DM header actions and the Chat workspace button in Mission Control all route to the same workspace, so the old NEW GROUP modal no longer appears from these entry points. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
+The top-of-rail Group messages shortcut and Communication’s built-group list both open the new workspace in one click instead of showing an empty create form. Group/DM rows, the New group/DM header actions and the Chat workspace button in Mission Control all route to the same workspace, so the old NEW GROUP modal no longer appears from these entry points. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the chat design and [docs/MEMORY.md](docs/MEMORY.md) for company memory and universal search.
 
 ## AI setup in 3 steps + full auto-run
 

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Memory self-check</title>
+<style>body{background:#0b1118;color:#cfe0ee;font:12px/1.6 ui-monospace,Menlo,monospace;padding:14px}iframe{position:fixed;left:-3800px;top:0;width:1440px;height:900px;border:0}pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radius:8px;padding:12px}</style>
+</head><body><h1>MEMORY SELF-CHECK</h1><pre id="out">running…</pre><iframe id="f"></iframe><script>
+(function(){
+  const out=document.getElementById('out'),lines=[];let failed=0;
+  function check(n,ok,extra){lines.push((ok?'PASS':'FAIL')+'  '+n+(extra?'  '+extra:''));if(!ok)failed++;}
+  function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+  function finish(){out.textContent=lines.join('\n')+'\n\n'+(failed?'FAILED: '+failed:'ALL CHECKS PASS');document.title=failed?'FAIL':'PASS';document.body.setAttribute('data-result',failed?'fail':'pass');}
+  let watchdog=null;
+  function done(){if(watchdog)clearTimeout(watchdog);finish();}
+  const f=document.getElementById('f');
+  f.src='index.html?intro=0&ticks=0&noStream=1&lang=zh';
+  f.addEventListener('load',()=>setTimeout(()=>run().catch(err=>{lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;done();}),3000));
+  async function run(){
+    watchdog=setTimeout(function(){lines.push('FAIL  watchdog timeout 45s');failed++;done();},45000);
+    const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp;
+    const $=(s)=>d.querySelector(s),$$=(s)=>Array.from(d.querySelectorAll(s));
+    check('app exposed',!!app&&!!app.renderer&&!!app.renderer.features);
+    if(!app){done();return;}
+    const memory=app.renderer.features.memory;
+    check('memory panel constructed',!!memory);
+    if(!memory){done();return;}
+    const title='浏览器自检记忆 '+Date.now().toString().slice(-5);
+    let createdId='';
+    try{
+      memory.open();await wait(800);
+      check('memory panel opens',!$('#memoryRoot').hidden&&!!$('.memory-window'));
+      check('memory title',/团队记忆/.test($('.memory-window').textContent));
+      check('memory search',!!$('#memorySearch'));
+      check('memory filters',$$('[data-memory-filter]').length===3);
+      check('memory new control',!!$('[data-memory-new]'));
+      const api=async(path,options)=>{const res=await fetch(memory.bridge()+path,Object.assign({cache:'no-store',headers:{'Content-Type':'application/json'}},options||{}));return {status:res.status,data:await res.json().catch(()=>({}))};};
+      // create through UI
+      $('[data-memory-new]').click();await wait(250);
+      const form=$('#memoryForm');
+      check('memory editor opens',!!form&&!!form.elements.title&&!!form.elements.text);
+      if(form){
+        form.elements.title.value=title;
+        form.elements.text.value='发布前必须完成回滚演练，并且由负责人记录命令。';
+        form.elements.tags.value='发布, 风险';
+        form.elements.pinned.checked=true;
+        form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+        await wait(1100);
+      }
+      const list=await api('/memories');
+      const row=(list.data.memories||[]).find(m=>m.title===title);
+      check('memory created',!!row);
+      createdId=row&&row.id||'';
+      check('memory appears in list',new RegExp(title).test($('#memoryList').textContent));
+      check('memory detail opens',/回滚演练/.test($('#memoryMain').textContent));
+      if(row){
+        // edit through UI
+        const edit=$('[data-memory-edit="'+row.id+'"]');
+        if(edit){edit.click();await wait(160);}
+        const editForm=$('#memoryForm');
+        check('memory edit form',!!editForm);
+        if(editForm){
+          editForm.elements.title.value=title+' 已更新';
+          editForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+          await wait(900);
+        }
+        const edited=await api('/memories');
+        check('memory edit persisted',(edited.data.memories||[]).some(m=>m.id===row.id&&/已更新/.test(m.title)));
+        // pin
+        const pin=$('[data-memory-pin="'+row.id+'"]');
+        if(pin){pin.click();await wait(700);}
+        const pinned=(await api('/memories')).data.memories.find(m=>m.id===row.id);
+        check('memory pin persisted',!!pinned&&pinned.pinned===false);
+        // scope filter
+        const agentFilter=$('[data-memory-filter="agent"]');
+        if(agentFilter){agentFilter.click();await wait(200);}
+        check('memory filter switches',!!$('[data-memory-filter="agent"]')&&$('[data-memory-filter="agent"]').classList.contains('active'));
+        const allFilter=$('[data-memory-filter="all"]');if(allFilter)allFilter.click();await wait(200);
+        // command palette search
+        d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}));
+        await wait(200);
+        const cmd=$('#commandInput');
+        if(cmd){cmd.value=title;cmd.dispatchEvent(new w.Event('input',{bubbles:true}));}
+        await wait(900);
+        check('command palette searches memory',/团队记忆/.test($('.command-list').textContent));
+        d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(150);
+        // bring the memory back to the front, then delete through UI (two-step)
+        memory.open(row.id);await wait(650);
+        const del=$('[data-memory-delete="'+row.id+'"]');
+        if(del){del.click();await wait(120);}
+        const del2=$('[data-memory-delete="'+row.id+'"]');
+        if(del2){del2.click();await wait(800);}
+        const after=(await api('/memories')).data.memories||[];
+        check('memory deleted',!after.some(m=>m.id===row.id));
+        createdId='';
+      }
+      // cleanup any leftover test rows
+      const leftovers=(await api('/memories')).data.memories||[];
+      for(const item of leftovers){
+        if(/浏览器自检记忆/.test(item.title||'')) await api('/memories/'+encodeURIComponent(item.id),{method:'DELETE'});
+      }
+      memory.close();await wait(150);
+      check('memory closes',!!$('#memoryRoot')&&$('#memoryRoot').hidden);
+      done();
+    }catch(err){
+      if(createdId){try{await fetch(memory.bridge()+'/memories/'+encodeURIComponent(createdId),{method:'DELETE'});}catch(e){}}
+      lines.push('FAIL  exception '+((err&&err.stack)||err));failed++;done();
+    }
+  }
+})();
+</script></body></html>

@@ -401,6 +401,29 @@ class BridgeTest(unittest.TestCase):
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
 
+    def test_memory_api_and_search(self):
+        status, created = self.request("/memories", "POST", {
+            "title": "Rollback drill",
+            "text": "Always rehearse a rollback before a public launch.",
+            "scope": "workspace",
+            "tags": ["launch", "risk"],
+            "pinned": True,
+        })
+        self.assertEqual(status, 201)
+        memory_id = created["memory"]["id"]
+        status, listing = self.request("/memories")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(row["id"] == memory_id for row in listing["memories"]))
+        status, found = self.request("/search?q=" + urllib.parse.quote("rollback"))
+        self.assertEqual(status, 200)
+        self.assertTrue(any(row["id"] == memory_id for row in found["memories"]))
+        status, updated = self.request("/memories/" + memory_id, "PATCH", {
+            "title": "Rollback drill v2", "pinned": False
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["memory"]["title"], "Rollback drill v2")
+        self.assertEqual(self.request("/memories/" + memory_id, "DELETE")[0], 200)
+
     def test_conversation_unread_pin_mute_and_rename(self):
         status, directory = self.request("/missions/agents")
         self.assertEqual(status, 200)

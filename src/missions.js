@@ -928,6 +928,21 @@
       this.startStream();
     }
 
+    async openTask(missionId, taskId) {
+      await this.open();
+      await this.selectMission(missionId);
+      this.detailTab = "tasks";
+      this.render();
+      const node = this.root && this.root.querySelector(
+        '.mission-task[data-mission-task="' + taskId + '"]');
+      if (node) {
+        node.open = true;
+        node.classList.add("mission-task-target");
+        try { node.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (err) {}
+        window.setTimeout(function () { node.classList.remove("mission-task-target"); }, 2400);
+      }
+    }
+
     async selectConversation(id, kind) {
       this.activeType = kind || "group";
       this.activeId = id;

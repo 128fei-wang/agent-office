@@ -788,3 +788,6 @@ html[data-theme="day"] .chat-hub.chat-v2 .chat-quote { background: rgba(14, 139,
     scroll-behavior: auto !important;
   }
 }
+
+/* global search result target */
+.chat-hub.chat-v2 .chat-msg-target .chat-bubble { outline: 2px solid var(--chat-accent); outline-offset: 2px; }

@@ -1,6 +1,6 @@
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [团队记忆](docs/MEMORY.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -367,7 +367,7 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **设置**：工具（含 AI / MCP 部署）、设置、主题、语言。
 - **沟通**：新建群组、私聊、已有群组（群消息入口已固定在左侧顶部）。
 
-顶部栏只保留场景选择、暂停/速度等运行控制，不再重复任务、公司、工具、主题、语言等入口。点击左侧图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
+顶部栏只保留场景选择、暂停/速度等运行控制，不再重复任务、公司、工具、主题、语言等入口。点击左侧图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。**`Cmd/Ctrl+K`** 现在同时搜索任务、任务项、会话、消息、文件、团队记忆和 Agent，并可直接跳转到目标。设置面板里还有 **聊天窗口风格** 切换：
 
 - **Agent**：Agent Office 默认外观。
 - **QQ**：蓝色强调色和 QQ 式气泡。
@@ -375,7 +375,13 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 群聊 / 单聊不再是只能发一句话的小气泡，而是 **1020×700 的 Signal Studio 聊天工作台**：左侧是 300px 会话栏（搜索、全部/群聊/私聊、固定/今天/更早分段、未读角标、固定、静音、重命名、删除），右侧是消息区（日期分隔、发送者分组、角色标签、Markdown/代码、复制、引用、任务入口、附件、详情和文件）。支持草稿、同步进度/请求拍板/上传文件快捷动作、`@` 成员建议、拖放/粘贴上传、`Cmd/Ctrl+F` 消息搜索和移动端全屏。墨色夜间与暖纸白天两套主题、在线团队头像条和重新设计的输入 dock 一起使用；消息走本地 bridge，AI 回复显示输入态和 provider 标记。
 
-左侧顶部「群消息」和「沟通」里的已有群组列表都会直接进入新工作台，不必先打开一个空的建群表单。Mission Control 里的群组/私聊行、「建群」「私聊」按钮和「聊天工作台」按钮也统一进入同一个工作台；旧的 NEW GROUP 弹窗和旧群聊面板不再从这些入口出现。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)。
+左侧顶部「群消息」和「沟通」里的已有群组列表都会直接进入新工作台，不必先打开一个空的建群表单。Mission Control 里的群组/私聊行、「建群」「私聊」按钮和「聊天工作台」按钮也统一进入同一个工作台；旧的 NEW GROUP 弹窗和旧群聊面板不再从这些入口出现。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)、[docs/MEMORY.md](docs/MEMORY.md)。
+
+## 团队记忆与全局搜索
+
+**团队记忆**（设置 → 团队记忆，或 `Cmd/Ctrl+K` → 团队记忆）把跨任务有效的判断、偏好和事实保存到本机 bridge。记忆有团队/Agent 两种范围，支持标题、Markdown 正文、标签、固定和搜索；之后的任务讨论、任务执行和聊天回复会自动把它作为参考资料注入，而不是当成命令。
+
+**全局搜索**通过 `Cmd/Ctrl+K` 调用本机 `/search`：任务、任务项、会话、消息、文件、记忆和 Agent 分组返回，支持方向键和回车，直接打开任务抽屉、会话消息或文件。
 
 ## AI 三步接入与全自动执行
 
@@ -610,6 +616,7 @@ agent-office/
 │   ├── update.js       工具面板、自动/手动升级、进度、重启检测、回滚
 │   ├── missions.js     任务工作台、群聊/私聊、文件、审批、AI 讨论/执行
 │   ├── chat-ui.js      安全 Markdown、时间/附件/头像渲染
+│   ├── memory.js       团队记忆面板与 CRUD
 │   ├── chat-hub.js     双栏聊天工作台、未读/固定/静音、草稿、附件、@提及
 │   ├── shell.js        左侧导航栏、设置和聊天窗口风格
 │   ├── render.js       DOM 渲染、办公室搭建、面板更新
@@ -633,6 +640,7 @@ agent-office/
 ├── dev-update-manual.html 自检本地升级包选择、上传、进度和完成态
 ├── dev-missions.html   自检任务、群聊、私聊、附件、审批、无空岗和汇报
 ├── dev-chat.html       自检聊天工作台、未读、搜索、引用、附件和响应式布局
+├── dev-memory.html     团队记忆 CRUD、搜索和 command palette 深链自检
 ├── dev-features.html   自检功能抽屉、聊天入口、设置和聊天风格
 ├── dev-ai-setup.html   自检 3 步 AI 接入、环境凭据、测试保存和任务自动执行
 ├── dev-mission-live.html 自检首页 MISSION LIVE、外部 Agent 热桌和任务气泡
@@ -649,6 +657,7 @@ agent-office/
 ├── demo-mode.css       演示关闭 / REAL OPS 首页 / 真实任务看板样式
 ├── features.css        功能栏 / 设置 / 聊天窗口风格样式
 ├── chat-v2.css         Signal Studio 聊天工作台视觉系统
+├── memory.css          团队记忆面板样式
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
 ├── ocr_vision.swift    macOS Vision 本地图片识别兜底
@@ -666,6 +675,7 @@ agent-office/
 ├── docs/TRENDS.md      2026 Agent 平台趋势、差距与本项目路线
 ├── docs/ANIMATION.md   任务联动、完成态一次性动画和空转看门狗
 ├── docs/CHAT_UI.md     聊天工作台设计、参考产品与 Gemini 验收清单
+├── docs/MEMORY.md      团队记忆与全局搜索设计/API/验收
 ├── docs/GUIDE.md       使用指南：关闭演示、接 Agent、AI、任务与下一轮
 ├── docs/UPGRADING.md   自行升级、备份、回滚和安全边界
 └── start.sh            本地静态服务器 + bridge
@@ -834,11 +844,11 @@ python3 -m unittest discover -s tests -v
 - 安全边界：[SECURITY.md](SECURITY.md)
 - 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - 架构：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- 聊天工作台设计与参考：[docs/CHAT_UI.md](docs/CHAT_UI.md)
+- 聊天工作台设计与参考：[docs/CHAT_UI.md](docs/CHAT_UI.md)、[docs/MEMORY.md](docs/MEMORY.md)
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.20.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.21.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

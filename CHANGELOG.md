@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.21.0] - 2026-11-27
+
+### Added
+- **Company Memory**: persistent workspace and per-agent memory entries with titles, Markdown content, tags, pinning, search and scope filters. The bridge injects relevant memory into mission discussion, task execution and chat replies as reference material, never as instructions.
+- **Universal search in the command palette**: Cmd/Ctrl+K now searches missions, tasks, conversations, messages, files, memories and agents in addition to static commands. Results are grouped, keyboard-selectable and deep-link to the exact mission, task, message, file or memory.
+- **Memory manager UI**: a two-pane memory workspace opened from the command palette, Settings rail or the full drawer; create/edit/delete, two-step delete, pin, tags and workspace/agent scope.
+- **Deep links**: search result tasks open the mission task drawer; message results open the conversation and scroll to the message.
+
+### Changed
+- Mission context packs and chat system prompts now include pinned/recent memory; empty memory costs nothing.
+- Version 1.21.0 adds `memory.css`, `memory.js`, the memory modal and `dev-memory.html` (18 checks).
+
+### Fixed
+- Command-palette search cancels stale requests, groups remote results and keeps the static command list usable while remote results load.
+
 ## [1.20.0] - 2026-11-27
 
 ### Added

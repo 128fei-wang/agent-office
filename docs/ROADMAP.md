@@ -43,17 +43,19 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Two-pane group/DM chat workspace with unread/read state, pin/mute/rename, search, safe Markdown, quote/copy, attachments, @mentions, drafts, details/files and mobile sheet (1.19.0).
 - [x] Group creation moved to Communication, built groups listed there, and Mission Control group/DM/chat-workspace entries routed to the new workspace (1.19.1).
 - [x] Signal Studio chat redesign, 1020×700 workspace, top-of-rail Group messages shortcut, conversation sections and composer quick actions (1.20.0).
-- [ ] Token-level streaming replies, message editing/branching and cross-conversation full-text search.
+- [x] Company memory (workspace/agent scope, tags, pinning, prompt injection) and universal command-palette search (1.21.0).
+- [x] Cross-conversation full-text search across messages and conversations (1.21.0).
+- [ ] Token-level streaming replies and message editing/branching.
 - [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
 - [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.
 - [x] Per-mission token cap with stop/resume and one-shot auto-retry for failed tasks.
 - [ ] Durable queue/scheduler, checkpoints and idempotent resume.
-- [ ] Cross-mission memory with retrieval, citations and expiry.
+- [x] Workspace and agent memory with retrieval and prompt injection (1.21.0); citations and expiry remain open.
 - [ ] Budget-aware model routing and price table.
 - [ ] Agent registry/health and A2A interoperability.
 - [ ] Provider-backed evaluation of task deliverables and independent QA verification.
 - [ ] Estimate calibration from historical actual/estimate variance per role and agent.
-- [ ] Retention, search and export for mission history and uploaded artifacts.
+- [x] Global search across missions, tasks, chats, messages, files, memories and agents (1.21.0); retention/export remain open.
 - [ ] Accessibility audit and keyboard-only pass for all drawers/modals.
 - [ ] i18n (zh-CN / en) beyond the README.
 - [ ] Packaging: Docker or a `start.sh` that waits for/reuses a healthy bridge.
@@ -67,7 +69,7 @@ This is an early open-source prototype, not a production observability or agent-
 - Self-update never installs in the background. Automatic update reads the official GitHub release; manual update accepts a local archive newer than the running version. Both require the local bridge to apply/restart. Versions before 1.3.0 need one manual upgrade.
 - Mission AI discussion/run requires a reachable model service. Local provider gateways are probed; when none is available the rule plan remains, but agents cannot generate AI deliverables.
 - PDF extraction needs `pdftotext`; image OCR needs a vision model or `tesseract`. QR login is an approval gate, not a provider OAuth implementation.
-- Mission data is a local JSON store without search/retention or multi-user authentication.
+- Mission data is a local JSON store with search but without retention/export or multi-user authentication.
 - Model API calls are one-shot; auto-run retries a failed task once, but there is no streaming, durable checkpoint or provider price calculation.
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.

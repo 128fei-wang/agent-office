@@ -21,7 +21,7 @@ rsync -a \
   --exclude='last-update.json' \
   --exclude='update.lock' \
   "$SRC/" "$DEST/"
-for required in index.html styles.css features.css chat-v2.css demo-mode.css missions.css src/main.js src/shell.js bridge.py missions.py; do
+for required in index.html styles.css features.css chat-v2.css memory.css demo-mode.css missions.css src/main.js src/shell.js src/memory.js bridge.py missions.py; do
   if [ ! -e "$DEST/$required" ]; then
     echo "Sync incomplete: missing $required" >&2
     exit 1

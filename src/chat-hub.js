@@ -1307,6 +1307,18 @@
       }
     }
 
+    async openConversationAt(id, messageId) {
+      await this.openConversation(id);
+      window.setTimeout(() => {
+        const box = this.messagesBox();
+        const node = box && box.querySelector('[data-msg-id="' + messageId + '"]');
+        if (!node) return;
+        node.classList.add("chat-msg-target");
+        try { node.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (err) {}
+        window.setTimeout(function () { node.classList.remove("chat-msg-target"); }, 2400);
+      }, 280);
+    }
+
     async ensureDirect(agentId) {
       try {
         const existing = this.conversations.find((conversation) =>

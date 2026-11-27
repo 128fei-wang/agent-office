@@ -40,6 +40,7 @@
     ".company-lab:not([hidden])",
     ".trace-lab:not([hidden])",
     ".command-root:not([hidden])",
+    ".memory-root:not([hidden])",
     ".chat-window",
     "#detailDrawer.open"
   ].join(", ");
@@ -119,6 +120,10 @@
 
     close() {
       if (!this.root) return;
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+      this.searchToken += 1;
+      this.dynamic = [];
       this.root.hidden = true;
       this.root.setAttribute("aria-hidden", "true");
       if (this.backdrop) this.backdrop.hidden = true;
@@ -209,6 +214,11 @@
       if (action === "guide") {
         this.close();
         if (this.shell) this.shell.guide.open();
+        return;
+      }
+      if (action === "memory") {
+        this.close();
+        if (this.shell && this.shell.memory) this.shell.memory.open();
         return;
       }
       if (action === "group") {
@@ -429,6 +439,7 @@
         title = t("featureSettingsGroup");
         const style = readChatStyle();
         body = this.actionRow("tools", "⚙", t("featureTools"), "升级 / AI / MCP") +
+          this.actionRow("memory", "◇", t("memoryTitle"), t("memoryRailHint", "跨任务记忆与偏好")) +
           this.actionRow("settings", "☷", t("featureSettings"), "设置中心") +
           this.actionRow("demo", "◌", t("settingsDemo"), t("settingsDemoHint")) +
           this.actionRow("guide", "?", t("guideButton"), "关闭演示 / 接入 AI / 任务流程") +
@@ -622,6 +633,10 @@
 
     close() {
       if (!this.root) return;
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+      this.searchToken += 1;
+      this.dynamic = [];
       this.root.hidden = true;
       this.root.innerHTML = "";
       syncAppInert();
@@ -818,6 +833,10 @@
 
     close() {
       if (!this.root) return;
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+      this.searchToken += 1;
+      this.dynamic = [];
       this.root.hidden = true;
       this.root.innerHTML = "";
       syncAppInert();
@@ -834,9 +853,12 @@
       this.root = document.getElementById("commandRoot");
       this.actions = [];
       this.visible = [];
+      this.dynamic = [];
       this.active = 0;
       this.query = "";
       this.lastFocus = null;
+      this.searchTimer = null;
+      this.searchToken = 0;
       this.bind();
     }
 
@@ -844,6 +866,7 @@
       if (!this.root) return;
       this.lastFocus = document.activeElement;
       this.query = "";
+      this.dynamic = [];
       this.actions = this.buildActions();
       this.root.hidden = false;
       this.root.setAttribute("aria-hidden", "false");
@@ -855,6 +878,10 @@
 
     close() {
       if (!this.root) return;
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+      this.searchToken += 1;
+      this.dynamic = [];
       this.root.hidden = true;
       this.root.setAttribute("aria-hidden", "true");
       this.root.innerHTML = "";
@@ -903,6 +930,12 @@
       this.add(list, "⇢ 接入外部 Agent", "⇢ Connect external agent", "Codex / Claude / 豆包 / DeepSeek",
         "Codex / Claude / Doubao / DeepSeek", "external agent connect 外部 接入 配对",
         function () { if (renderer.external) renderer.external.open(); });
+      this.add(list, "◇ 团队记忆", "◇ Company memory", "跨任务的判断、偏好与事实",
+        "Cross-mission facts, choices and preferences", "memory remember 记忆 经验 偏好",
+        function () {
+          const memory = renderer.features && renderer.features.memory;
+          if (memory) memory.open();
+        });
       this.add(list, "✦ 接入 AI 模型", "✦ Connect AI", "3 步接入本机模型服务",
         "3-step local model setup", "ai model setup provider 接入 模型",
         function () { if (AO.aiSetup) AO.aiSetup.open(); });
@@ -968,21 +1001,114 @@
 
     filter() {
       const q = String(this.query || "").trim().toLowerCase();
-      this.visible = !q ? this.actions.slice(0, 18) : this.actions.filter(function (action) {
+      const local = !q ? this.actions.slice(0, 14) : this.actions.filter(function (action) {
         return (action.label + " " + action.hint + " " + action.keywords).toLowerCase().indexOf(q) >= 0;
-      }).slice(0, 12);
+      }).slice(0, 10);
+      this.visible = local.concat(q ? this.dynamic : []).slice(0, q ? 26 : 18);
       if (this.active >= this.visible.length) this.active = Math.max(0, this.visible.length - 1);
+    }
+
+    bridge() {
+      const ext = this.renderer && this.renderer.external;
+      return String((ext && ext.bridgeUrl) || AO.BRIDGE_DEFAULT || "").replace(/\/+$/, "");
+    }
+
+    queueSearch(q) {
+      const self = this;
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      if (!q) { this.dynamic = []; return; }
+      this.searchTimer = window.setTimeout(function () { self.search(q); }, 170);
+    }
+
+    async search(q) {
+      const token = ++this.searchToken;
+      try {
+        const res = await fetch(this.bridge() + "/search?" + new URLSearchParams({
+          q: q, limit: "6"
+        }).toString(), { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (token !== this.searchToken || this.query.trim() !== q.trim()) return;
+        this.dynamic = this.searchActions(data);
+        this.active = 0;
+        this.render();
+      } catch (err) {}
+    }
+
+    searchActions(data) {
+      const renderer = this.renderer;
+      const view = renderer.missions;
+      const chat = renderer.features && renderer.features.chat;
+      const memory = renderer.features && renderer.features.memory;
+      const zh = AO.lang !== "en";
+      const out = [];
+      const add = function (group, label, hint, run) {
+        out.push({ label: label, hint: hint, group: group, keywords: label + " " + hint, run: run });
+      };
+      (data.missions || []).forEach(function (item) {
+        add(zh ? "任务" : "Missions", "▤ " + item.title, (item.status || "") + " · " + (item.priority || ""),
+          function () {
+            if (!view) return;
+            Promise.resolve(view.open()).then(function () { return view.selectMission(item.id); }).catch(function () {});
+          });
+      });
+      (data.tasks || []).forEach(function (item) {
+        add(zh ? "任务项" : "Tasks", "◇ " + item.title,
+          (item.missionTitle || "") + " · " + (item.status || ""), function () {
+            if (!view) return;
+            Promise.resolve(view.open()).then(function () {
+              if (view.openTask) return view.openTask(item.missionId, item.id);
+              return view.selectMission(item.missionId);
+            }).catch(function () {});
+          });
+      });
+      (data.conversations || []).forEach(function (item) {
+        add(zh ? "会话" : "Conversations", "# " + (item.title || ""), item.kind === "group" ? (zh ? "群组" : "Group") : (zh ? "私聊" : "DM"),
+          function () {
+            if (!chat) return;
+            Promise.resolve(chat.openHub("all")).then(function () { return chat.openConversation(item.id); }).catch(function () {});
+          });
+      });
+      (data.messages || []).forEach(function (item) {
+        add(zh ? "消息" : "Messages", "“" + String(item.text || "").slice(0, 70) + "”",
+          (item.conversationTitle || "") + " · " + (item.senderName || ""), function () {
+            if (!chat) return;
+            Promise.resolve(chat.openHub("all")).then(function () {
+              return chat.openConversationAt ? chat.openConversationAt(item.conversationId, item.id) : chat.openConversation(item.conversationId);
+            }).catch(function () {});
+          });
+      });
+      (data.files || []).forEach(function (item) {
+        add(zh ? "文件" : "Files", "▣ " + (item.name || ""), zh ? "打开文件" : "Open file", function () {
+          window.open(renderer.external ? renderer.external.bridgeUrl + item.url : item.url, "_blank", "noopener");
+        });
+      });
+      (data.memories || []).forEach(function (item) {
+        add(zh ? "团队记忆" : "Memory", "✦ " + (item.title || ""), String(item.text || "").slice(0, 70),
+          function () { if (memory) memory.open(item.id); });
+      });
+      (data.agents || []).forEach(function (item) {
+        add(zh ? "Agent" : "Agents", "◇ " + (item.name || item.id), (item.role || "") + (item.online ? " · " + (zh ? "在线" : "online") : ""),
+          function () { renderer.openExternalDrawer(item.id); });
+      });
+      return out;
     }
 
     render() {
       if (!this.root) return;
       this.filter();
       const zh = AO.lang !== "en";
-      const rows = this.visible.map((action, index) =>
-        '<button type="button" class="command-item' + (index === this.active ? " active" : "") +
-        '" data-command-index="' + index + '"><span><b>' + esc(action.label) + '</b><em>' +
-        esc(action.hint) + '</em></span><kbd>' + (index === this.active ? "↵" : "") + '</kbd></button>'
-      ).join("");
+      let lastGroup = "";
+      const rows = this.visible.map((action, index) => {
+        let head = "";
+        if (action.group && action.group !== lastGroup) {
+          lastGroup = action.group;
+          head = '<div class="command-group">' + esc(action.group) + "</div>";
+        }
+        return head + '<button type="button" class="command-item' + (index === this.active ? " active" : "") +
+          '" data-command-index="' + index + '"><span><b>' + esc(action.label) + '</b><em>' +
+          esc(action.hint) + '</em></span><kbd>' + (index === this.active ? "↵" : "") + '</kbd></button>';
+      }).join("");
       this.root.innerHTML =
         '<div class="command-backdrop" data-command-close></div>' +
         '<section class="command-card" role="dialog" aria-modal="true" aria-labelledby="commandTitle">' +
@@ -1018,6 +1144,7 @@
         if (event.target.id !== "commandInput") return;
         self.query = event.target.value;
         self.active = 0;
+        self.queueSearch(String(self.query || "").trim());
         self.render();
       });
       this.root.addEventListener("click", function (event) {
@@ -1058,6 +1185,7 @@
       this.chat = new ChatHub(renderer);
       this.settings = new SettingsCenter(renderer);
       this.guide = new GuideCenter(renderer);
+      this.memory = AO.MemoryPanel ? new AO.MemoryPanel(renderer) : null;
       this.drawer = new FeatureDrawer(renderer, deps, this);
       this.rail = new RailMenu(renderer, this);
       this.command = new CommandPalette(renderer);

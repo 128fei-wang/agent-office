@@ -2091,3 +2091,6 @@ html[data-theme="day"] .mission-command-btn.primary { color: #1f6f64; background
 html[data-theme="day"] .mission-copy:hover { background: #f4ecdf; }
 html[data-density="comfortable"] .mission-message-text .chat-markdown,
 html[data-density="comfortable"] .mission-report-summary .chat-markdown { font-size: 9.5px; line-height: 1.6; }
+
+/* search result target */
+.mission-task-target { border-color: rgba(85, 214, 194, 0.55) !important; box-shadow: 0 0 0 3px rgba(85, 214, 194, 0.09); }

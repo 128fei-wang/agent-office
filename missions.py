@@ -414,6 +414,7 @@ class MissionStore:
             "messages": [],
             "approvals": [],
             "artifacts": [],
+            "memories": [],
             "next": {"message": 1},
         }
 
@@ -427,6 +428,7 @@ class MissionStore:
                     data.setdefault("messages", [])
                     data.setdefault("approvals", [])
                     data.setdefault("artifacts", [])
+                    data.setdefault("memories", [])
                     data.setdefault("next", {"message": 1})
                     for conv in data.get("conversations", []):
                         conv.setdefault("pinned", False)
@@ -498,6 +500,213 @@ class MissionStore:
         ]
         out["attachments"] = [a for a in out["attachments"] if a]
         out.pop("attachmentIds", None)
+        return out
+
+    # --------------------------------------------------------------- memory
+
+    def public_memory(self, memory):
+        if not memory:
+            return None
+        return {k: memory.get(k) for k in (
+            "id", "title", "text", "scope", "agentId", "tags", "pinned",
+            "createdAt", "updatedAt",
+        )}
+
+    def list_memories(self, query="", scope="all", agent_id=""):
+        q = str(query or "").strip().lower()
+        sc = str(scope or "all")
+        aid = str(agent_id or "")
+        with self.lock:
+            rows = [m for m in self.data.get("memories", []) if m.get("text")]
+            if sc in ("workspace", "agent"):
+                rows = [m for m in rows if m.get("scope") == sc]
+            if aid:
+                rows = [m for m in rows if m.get("scope") == "workspace" or m.get("agentId") == aid]
+            if q:
+                rows = [m for m in rows if q in (
+                    str(m.get("title") or "") + " " + str(m.get("text") or "") + " " +
+                    " ".join(str(t) for t in (m.get("tags") or []))
+                ).lower()]
+            rows.sort(key=lambda m: (not bool(m.get("pinned")), -float(m.get("updatedTs") or 0)))
+            return [self.public_memory(m) for m in rows]
+
+    def create_memory(self, body):
+        title = _text(body.get("title"), 120)
+        text = _text(body.get("text"), 6000)
+        if len(text) < 3:
+            raise MissionError("memory text is too short", "bad_memory", 400)
+        scope = str(body.get("scope") or "workspace")
+        if scope not in ("workspace", "agent"):
+            raise MissionError("memory scope must be workspace or agent", "bad_scope", 400)
+        agent_id = _text(body.get("agentId"), 80) if scope == "agent" else ""
+        if scope == "agent" and not agent_id:
+            raise MissionError("agent memory needs an agentId", "bad_agent", 400)
+        tags = []
+        for tag in body.get("tags") or []:
+            tag = _text(tag, 32)
+            if tag and tag not in tags:
+                tags.append(tag)
+        now = now_iso()
+        with self.lock:
+            memory = {
+                "id": "mem-" + secrets.token_hex(6),
+                "title": title or ("团队记忆" if scope == "workspace" else "Agent 记忆"),
+                "text": text,
+                "scope": scope,
+                "agentId": agent_id,
+                "tags": tags[:8],
+                "pinned": bool(body.get("pinned")),
+                "createdAt": now,
+                "updatedAt": now,
+                "updatedTs": time.time(),
+            }
+            self.data.setdefault("memories", []).append(memory)
+            self._save()
+        return self.public_memory(memory)
+
+    def update_memory(self, memory_id, body):
+        with self.lock:
+            memory = next((m for m in self.data.get("memories", [])
+                           if m.get("id") == memory_id), None)
+            if not memory:
+                raise MissionError("memory not found", "not_found", 404)
+            if "title" in body:
+                memory["title"] = _text(body.get("title"), 120) or memory.get("title") or "记忆"
+            if "text" in body:
+                text = _text(body.get("text"), 6000)
+                if len(text) < 3:
+                    raise MissionError("memory text is too short", "bad_memory", 400)
+                memory["text"] = text
+            if "pinned" in body:
+                memory["pinned"] = bool(body.get("pinned"))
+            if "scope" in body:
+                scope = str(body.get("scope") or "workspace")
+                if scope not in ("workspace", "agent"):
+                    raise MissionError("memory scope must be workspace or agent", "bad_scope", 400)
+                memory["scope"] = scope
+            if "agentId" in body:
+                memory["agentId"] = _text(body.get("agentId"), 80)
+            if memory.get("scope") == "agent" and not memory.get("agentId"):
+                raise MissionError("agent memory needs an agentId", "bad_agent", 400)
+            if memory.get("scope") == "workspace":
+                memory["agentId"] = ""
+            if "tags" in body:
+                tags = []
+                for tag in body.get("tags") or []:
+                    tag = _text(tag, 32)
+                    if tag and tag not in tags:
+                        tags.append(tag)
+                memory["tags"] = tags[:8]
+            memory["updatedAt"] = now_iso()
+            memory["updatedTs"] = time.time()
+            self._save()
+        return self.public_memory(memory)
+
+    def delete_memory(self, memory_id):
+        with self.lock:
+            old = len(self.data.get("memories", []))
+            self.data["memories"] = [m for m in self.data.get("memories", [])
+                                     if m.get("id") != memory_id]
+            changed = len(self.data.get("memories", [])) != old
+            if changed:
+                self._save()
+            return changed
+
+    def memory_context(self, agent_ids=None, limit=8, chars=2600):
+        agent_ids = set(str(a) for a in (agent_ids or []) if a)
+        with self.lock:
+            rows = [m for m in self.data.get("memories", [])
+                    if m.get("text") and (
+                        m.get("scope") == "workspace" or
+                        (m.get("scope") == "agent" and str(m.get("agentId")) in agent_ids)
+                    )]
+            rows.sort(key=lambda m: (not bool(m.get("pinned")), -float(m.get("updatedTs") or 0)))
+            rows = rows[:limit]
+        parts = []
+        for memory in rows:
+            label = "团队记忆" if memory.get("scope") == "workspace" else "Agent 记忆"
+            body = str(memory.get("text") or "").strip()
+            if not body:
+                continue
+            parts.append("- [%s] %s：%s" % (
+                label, str(memory.get("title") or "记忆")[:120],
+                body[:700]))
+        text = "\n".join(parts).strip()
+        return text[:chars] if text else ""
+
+    # --------------------------------------------------------------- search
+
+    def search(self, query, limit=8):
+        q = str(query or "").strip().lower()
+        if not q:
+            return {"query": "", "missions": [], "tasks": [], "conversations": [],
+                    "messages": [], "files": [], "memories": []}
+        n = max(1, min(20, int(limit or 8)))
+        out = {"query": q, "missions": [], "tasks": [], "conversations": [],
+               "messages": [], "files": [], "memories": []}
+        with self.lock:
+            for mission in self.data.get("missions", []):
+                hay = " ".join([
+                    str(mission.get("title") or ""), str(mission.get("description") or ""),
+                    str(mission.get("acceptance") or "")
+                ]).lower()
+                if q in hay:
+                    out["missions"].append({
+                        "id": mission.get("id"), "title": mission.get("title"),
+                        "status": mission.get("status"),
+                        "priority": mission.get("priority"),
+                    })
+                for task in mission.get("tasks") or []:
+                    hay = " ".join([
+                        str(task.get("title") or ""), str(task.get("brief") or ""),
+                        str(task.get("acceptance") or "")
+                    ]).lower()
+                    if q in hay:
+                        out["tasks"].append({
+                            "id": task.get("id"), "missionId": mission.get("id"),
+                            "missionTitle": mission.get("title"), "title": task.get("title"),
+                            "status": task.get("status"), "assigneeName": task.get("assigneeName"),
+                        })
+                for artifact in self.data.get("artifacts", []):
+                    if artifact.get("missionId") != mission.get("id"):
+                        continue
+                    hay = (str(artifact.get("name") or "") + " " +
+                           str(artifact.get("extractedText") or "") + " " +
+                           str(artifact.get("visionSummary") or "")).lower()
+                    if q in hay:
+                        out["files"].append({
+                            "id": artifact.get("id"), "name": artifact.get("name"),
+                            "missionId": mission.get("id"),
+                            "conversationId": artifact.get("conversationId"),
+                            "url": "/files/" + str(artifact.get("id") or "") + "/raw",
+                        })
+            for conv in self.data.get("conversations", []):
+                hay = str(conv.get("title") or "").lower()
+                if q in hay:
+                    out["conversations"].append({
+                        "id": conv.get("id"), "title": conv.get("title"),
+                        "kind": conv.get("kind"), "updatedAt": conv.get("updatedAt"),
+                    })
+            for message in self.data.get("messages", []):
+                hay = str(message.get("text") or "").lower()
+                if q not in hay:
+                    continue
+                conv = self.find_conversation(message.get("conversationId"))
+                snippet = str(message.get("text") or "")[:220]
+                out["messages"].append({
+                    "id": message.get("id"), "conversationId": message.get("conversationId"),
+                    "conversationTitle": conv.get("title") if conv else "",
+                    "senderName": message.get("senderName"), "text": snippet,
+                    "createdAt": message.get("createdAt"),
+                })
+            for memory in self.data.get("memories", []):
+                hay = (str(memory.get("title") or "") + " " + str(memory.get("text") or "") + " " +
+                       " ".join(str(t) for t in (memory.get("tags") or []))).lower()
+                if q in hay:
+                    out["memories"].append(self.public_memory(memory))
+            for key in ("missions", "tasks", "conversations", "files", "memories"):
+                out[key] = out[key][:n]
+            out["messages"] = out["messages"][-n:] if len(out["messages"]) > n else out["messages"]
         return out
 
     def _workload(self, mission):

@@ -1670,3 +1670,14 @@ html[data-theme="day"] .rail-chat-moved { border-color: #cfe5dd; background: #f2
   .rail-chat-shortcut { min-width: 52px; min-height: 40px; }
   .rail-chat-rule { display: none; }
 }
+
+/* command palette global search */
+.command-group {
+  margin: 10px 8px 4px;
+  color: #6f8798;
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.command-group:first-child { margin-top: 2px; }
