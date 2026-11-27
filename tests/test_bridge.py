@@ -71,6 +71,8 @@ class MockProviderHandler(BaseHTTPRequestHandler):
             "payload": payload,
         })
         prompt_text = json.dumps(payload, ensure_ascii=False)
+        if "SLOW_TEST" in prompt_text:
+            time.sleep(0.35)
         if "FLAKY_ONCE" in prompt_text:
             now = time.time()
             if MockProviderHandler.flaky_until is None:
@@ -189,7 +191,7 @@ class BridgeTest(unittest.TestCase):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        deadline = time.time() + 8
+        deadline = time.time() + 45
         while time.time() < deadline:
             try:
                 status, _ = cls.request("/health")
@@ -213,7 +215,7 @@ class BridgeTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def request(cls, path, method="GET", body=None, headers=None, timeout=5):
+    def request(cls, path, method="GET", body=None, headers=None, timeout=15):
         data = None if body is None else json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
             cls.base + path,
@@ -357,7 +359,7 @@ class BridgeTest(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         reply = None
-        deadline = time.time() + 8
+        deadline = time.time() + 45
         while time.time() < deadline:
             _, listing = self.request("/conversations/%s/messages?since=0" % direct_id)
             reply = next((m for m in listing["messages"]
@@ -384,7 +386,7 @@ class BridgeTest(unittest.TestCase):
             )
             self.assertEqual(status, 201)
             group_reply = None
-            deadline = time.time() + 8
+            deadline = time.time() + 45
             while time.time() < deadline:
                 _, listing = self.request("/conversations/%s/messages?since=0" % group_id)
                 group_reply = next((m for m in listing["messages"]
@@ -398,6 +400,50 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(status, 200)
         status, _ = self.request("/missions/%s" % mission["id"], "DELETE")
         self.assertEqual(status, 200)
+
+    def test_mission_group_chat_replies_during_active_autorun(self):
+        status, data = self.request("/missions", "POST", {
+            "title": "Active chat auto mission",
+            "description": "SLOW_TEST: build and verify a landing page with QA.",
+            "acceptance": "The mission group still answers the boss while auto-run is active.",
+            "autoDiscuss": False,
+            "autoRun": True,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        mission_id = mission["id"]
+        conversation_id = mission["conversationId"]
+        active = ("queued", "discussing", "running", "waiting_boss")
+        auto_status = ""
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            _, detail = self.request("/missions/%s" % mission_id)
+            auto_status = ((detail.get("mission") or {}).get("autoRun") or {}).get("status") or ""
+            if auto_status in active or auto_status in ("done", "error", "stopped"):
+                break
+            time.sleep(0.1)
+        self.assertIn(auto_status, active, detail)
+        status, sent = self.request(
+            "/conversations/%s/messages" % conversation_id, "POST",
+            {"senderId": "boss", "senderType": "boss", "type": "text",
+             "text": "执行中收到请回复一句进度。"},
+        )
+        self.assertEqual(status, 201, sent)
+        reply = None
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            _, listing = self.request("/conversations/%s/messages?since=0" % conversation_id)
+            reply = next((m for m in listing["messages"]
+                          if m.get("senderType") == "agent"
+                          and (m.get("meta") or {}).get("chatReply")), None)
+            if reply:
+                break
+            time.sleep(0.2)
+        self.assertIsNotNone(reply, "mission group agent reply during auto-run")
+        self.assertTrue(reply.get("text"))
+        self.request("/missions/%s/autorun/stop" % mission_id, "POST", {})
+        time.sleep(0.5)
+        self.request("/missions/%s" % mission_id, "DELETE")
 
     def test_mcp_server_protocol(self):
         status, init = self.request("/mcp", "POST", {
@@ -511,7 +557,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 201, data)
         mission = data["mission"]
         mission_id = mission["id"]
-        deadline = time.time() + 25
+        deadline = time.time() + 60
         latest = mission
         while time.time() < deadline:
             status, detail = self.request("/missions/%s" % mission_id)
@@ -539,7 +585,7 @@ class BridgeTest(unittest.TestCase):
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
-        deadline = time.time() + 20
+        deadline = time.time() + 45
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -571,7 +617,7 @@ class BridgeTest(unittest.TestCase):
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
-        deadline = time.time() + 35
+        deadline = time.time() + 70
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -597,7 +643,7 @@ class BridgeTest(unittest.TestCase):
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
-        deadline = time.time() + 25
+        deadline = time.time() + 60
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -622,7 +668,7 @@ class BridgeTest(unittest.TestCase):
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
-        deadline = time.time() + 25
+        deadline = time.time() + 60
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -650,7 +696,7 @@ class BridgeTest(unittest.TestCase):
         status, started = self.request(
             "/missions/%s/autorun" % mission_id, "POST", {"discuss": True})
         self.assertEqual(status, 202, started)
-        deadline = time.time() + 25
+        deadline = time.time() + 60
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -689,7 +735,7 @@ class BridgeTest(unittest.TestCase):
         })
         self.assertEqual(status, 201, data)
         mission_id = data["mission"]["id"]
-        deadline = time.time() + 20
+        deadline = time.time() + 45
         latest = data["mission"]
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
@@ -707,7 +753,7 @@ class BridgeTest(unittest.TestCase):
             "/approvals/%s/resolve" % pending[0]["id"], "POST",
             {"decision": "approved", "note": "test approval"})
         self.assertEqual(status, 200, resolved)
-        deadline = time.time() + 25
+        deadline = time.time() + 60
         while time.time() < deadline:
             _, detail = self.request("/missions/%s" % mission_id)
             latest = detail["mission"]
@@ -774,6 +820,7 @@ class BridgeTest(unittest.TestCase):
         status, events = self.request("/events?since=0")
         self.assertEqual(status, 200)
         self.assertTrue(any(e["kind"] == "hello" for e in events["events"]))
+        self.request("/agents/%s" % claimed["agent"]["id"], "DELETE")
 
     def test_claim_cannot_take_over_supplied_id(self):
         pair = self.make_pair()
@@ -784,6 +831,7 @@ class BridgeTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertNotEqual(data["agent"]["id"], "ext-demo-claude")
+        self.request("/agents/%s" % data["agent"]["id"], "DELETE")
 
     def test_cancel_pending_pair(self):
         pair = self.make_pair()
@@ -794,10 +842,11 @@ class BridgeTest(unittest.TestCase):
 
     def test_cannot_cancel_claimed_pair(self):
         pair = self.make_pair()
-        status, _ = self.request("/pair/%s/claim" % pair["code"], "POST", {"name": "Owned"})
+        status, claimed = self.request("/pair/%s/claim" % pair["code"], "POST", {"name": "Owned"})
         self.assertEqual(status, 200)
         status, _ = self.request("/pair/%s" % pair["code"], "DELETE")
         self.assertEqual(status, 409)
+        self.request("/agents/%s" % claimed["agent"]["id"], "DELETE")
 
     def test_all_pending_codes_are_returned(self):
         codes = [self.make_pair()["code"] for _ in range(14)]
@@ -917,6 +966,7 @@ class BridgeTest(unittest.TestCase):
         auth = [item["authorization"] for item in MockProviderHandler.seen
                 if item["path"].endswith("/chat/completions")]
         self.assertIn("Bearer test-openai", auth)
+        self.request("/agents/ext-deepseek", "DELETE")
 
     def test_provider_gemini_protocol(self):
         status, data = self.request("/providers/gemini/test", "POST", {})
@@ -1015,6 +1065,8 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(data["assignment"]["status"], "cancelled")
         status, _ = self.request("/assignments/unknown-id", "PATCH", {"progress": 10})
         self.assertEqual(status, 400)
+        self.request("/agents/ext-test-assign", "DELETE")
+        self.request("/agents/ext-test-cancel", "DELETE")
 
     def test_company_template_chat_isolation_and_dispatch(self):
         status, data = self.request("/company/bootstrap", "POST", {

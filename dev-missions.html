@@ -340,6 +340,31 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     }
     view.viewMode='chat';view.render();await wait(150);
 
+    // A running mission posts reports into the group; those must not kill the chat typing state.
+    await view.selectConversation(mission.conversationId,'group');
+    await wait(220);
+    if(view.conversation){
+      view.replyPending=true;
+      view.replyPendingConversation=view.conversation.id;
+      view.render();
+      await wait(80);
+      check('typing indicator shown',!!$('#missionMessages .mission-typing'));
+      const reportMsg={id:'selftest-run',seq:999999,senderId:mission.members[0].id,
+        senderName:mission.members[0].name,senderType:'agent',type:'text',
+        text:'自动执行阶段汇报',meta:{autoRun:true},createdAt:new Date().toISOString()};
+      view.appendMessage(reportMsg);
+      check('typing survives auto-run report',!!$('#missionMessages .mission-typing'));
+      const chatMsg={id:'selftest-chat-reply',seq:1000000,senderId:mission.members[0].id,
+        senderName:mission.members[0].name,senderType:'agent',type:'text',
+        text:'这是聊天回复',meta:{chatReply:true},createdAt:new Date().toISOString()};
+      view.appendMessage(chatMsg);
+      check('typing clears on chat reply',!$('#missionMessages .mission-typing'));
+      view.replyPending=false;
+      view.replyPendingConversation='';
+      view.render();
+      await wait(80);
+    }
+
     $('[data-mission-new="group"]').click();
     await wait(200);
     const groupForm=$('#missionCreateForm');

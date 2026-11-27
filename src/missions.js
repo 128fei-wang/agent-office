@@ -2513,9 +2513,10 @@
       const box = this.root.querySelector("#missionMessages");
       if (!box) return;
       const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
-      if (message && message.senderType === "agent") this.clearReplyPending();
+      const isChatReply = !!(message && message.meta && message.meta.chatReply);
+      if (isChatReply) this.clearReplyPending();
       const typing = box.querySelector(".mission-typing");
-      if (typing) typing.remove();
+      if (isChatReply && typing) typing.remove();
       const empty = box.querySelector(".mission-empty");
       if (empty) empty.remove();
       box.insertAdjacentHTML("beforeend", this.messageHTML(message));
@@ -2567,7 +2568,9 @@
             this.messages.push(message);
             this.lastSeq = Math.max(Number(this.lastSeq) || 0, Number(message.seq) || 0);
             this.appendMessage(message);
-            if (message.senderType === "agent") gotAgent = true;
+            if (message.senderType === "agent" && message.meta && message.meta.chatReply) {
+              gotAgent = true;
+            }
           });
           if (gotAgent) this.clearReplyPending();
         } catch (err) {}
@@ -3167,7 +3170,8 @@
         this.uploadCache = {};
         this.uploading = false;
         const repliedEarly = this.messages.some(function (item) {
-          return item.senderType === "agent" && Number(item.seq) > Number(res.message.seq);
+          return item.senderType === "agent" && item.meta && item.meta.chatReply &&
+            Number(item.seq) > Number(res.message.seq);
         });
         if (res.replyPending && !repliedEarly) this.waitForReply(this.conversation.id);
         this.render();

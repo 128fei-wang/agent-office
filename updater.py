@@ -397,7 +397,7 @@ def _py_compile(path, root):
     try:
         result = subprocess.run(
             [sys.executable, "-I", "-m", "py_compile", str(path)],
-            cwd=str(root), capture_output=True, text=True, timeout=20,
+            cwd=str(root), capture_output=True, text=True, timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise UpdateError("could not validate %s: %s" % (path.name, exc),

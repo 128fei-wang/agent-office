@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.18.5] - 2026-11-27
+
+### Fixed
+- **Floating chat** (the QQ/WeChat-style window) now shows “Agent 正在输入…” and refreshes the AI reply through its existing poll, not only Mission Control.
+- Mission task groups can also receive AI member replies; the previous active-auto-run guard no longer suppresses them.
+- Added a polling fallback for Mission Control chat replies in case the message SSE is unavailable.
+- Mission Control's “Agent 正在输入…” state now survives auto-run reports and clears only for the actual chat reply; sending a chat message while reports arrive no longer drops the typing state or skips the reply wait.
+- Update verification now allows 60 seconds for Python byte-compilation, so a slow or heavily loaded disk no longer rolls back a valid update.
+
+### Changed
+- Added regression coverage for mission-group chat during an active auto-run, and cleaned up test agents between bridge tests so full-suite results are deterministic.
+- Version bumped to 1.18.5.
+
 ## [1.18.4] - 2026-11-27
 
 ### Added
@@ -37,7 +50,7 @@
 ## [1.18.1] - 2026-11-27
 
 ### Fixed
-- **Stale local install made the left feature rail unstyled**: AgentOffice.app runs `/Users/hashmai/agent-office`, which was still a partial 1.7-era copy without `features.css` / `demo-mode.css`. The repo was verified, but the actual installed app was not. The installed copy is now synced to 1.18.1 and the running bridge restarted with the current code.
+- **Stale local install made the left feature rail unstyled**: AgentOffice.app runs `$HOME/agent-office`, which was still a partial 1.7-era copy without `features.css` / `demo-mode.css`. The repo was verified, but the actual installed app was not. The installed copy is now synced to 1.18.1 and the running bridge restarted with the current code.
 - Added `scripts/sync-local.sh` to copy the working tree into the installed app while preserving local state/secrets.
 - Added a browser regression check asserting the feature rail has real width/border-radius and horizontal labels, so a missing CSS install fails self-checks instead of silently rendering an unstyled rail.
 - Documented the stale-install symptom and fix in `docs/GUIDE.md`.

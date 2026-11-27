@@ -4439,11 +4439,6 @@ def _chat_reply_worker(conversation_id, trigger_text):
             member = _chat_reply_member(conversation, trigger_text)
             if not member:
                 return
-            mission = MISSION_STORE.find_mission(conversation.get("missionId") or "")
-            if mission:
-                auto = mission.get("autoRun") or {}
-                if auto.get("status") in ("running", "discussing", "queued", "starting"):
-                    return
             rows = MISSION_STORE.list_messages(conversation_id)
             members = conversation.get("members") or []
         history = []
@@ -4522,18 +4517,6 @@ def queue_chat_reply(conversation_id, message):
         return False
     text = str(message.get("text") or "").strip()
     if not text:
-        return False
-    try:
-        with MISSION_STORE.lock:
-            conversation = MISSION_STORE.find_conversation(conversation_id)
-            if not conversation:
-                return False
-            mission = MISSION_STORE.find_mission(conversation.get("missionId") or "")
-            if mission:
-                auto = mission.get("autoRun") or {}
-                if auto.get("status") in ("running", "discussing", "queued", "starting"):
-                    return False
-    except Exception:
         return False
     with CHAT_REPLY_LOCK:
         if conversation_id in CHAT_REPLY_ACTIVE:

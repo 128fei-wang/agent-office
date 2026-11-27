@@ -154,6 +154,9 @@
       this.stopPoll();
       this.active = null;
       this.messages = [];
+      this.replyPending = false;
+      this.replySeq = 0;
+      this.replyTimer = null;
       this.view = "closed";
       if (this.root) {
         this.root.hidden = true;
@@ -405,10 +408,18 @@
       try {
         const data = await this.api("/conversations/" + encodeURIComponent(this.active.id) + "/messages");
         this.messages = data.messages || [];
+        if (this.replyPending && this.messages.some((message) => {
+          return message.senderType === "agent" && message.meta && message.meta.chatReply &&
+            Number(message.seq) > Number(this.replySeq || 0);
+        })) {
+          this.clearReplyPending();
+        }
         const box = this.root && this.root.querySelector("#chatWindowMessages");
         if (!box) return;
-        box.innerHTML = this.messages.length ? this.messages.map((m) => this.messageHTML(m)).join("") :
-          '<div class="chat-empty">' + esc(this.t("chatEmpty")) + '</div>';
+        box.innerHTML = (this.messages.length ? this.messages.map((m) => this.messageHTML(m)).join("") :
+          '<div class="chat-empty">' + esc(this.t("chatEmpty")) + '</div>') +
+          (this.replyPending ? '<div class="chat-typing"><span><i></i><i></i><i></i></span>' +
+            esc(this.t("missionTyping")) + '</div>' : "");
         if (scroll) box.scrollTop = box.scrollHeight;
       } catch (err) {
         const box = this.root && this.root.querySelector("#chatWindowMessages");
@@ -438,6 +449,15 @@
         '<p>' + esc(text) + '</p></div></div>';
     }
 
+    clearReplyPending() {
+      this.replyPending = false;
+      this.replySeq = 0;
+      if (this.replyTimer) {
+        window.clearTimeout(this.replyTimer);
+        this.replyTimer = null;
+      }
+    }
+
     startPoll() {
       this.stopPoll();
       const self = this;
@@ -459,12 +479,21 @@
         return false;
       }
       try {
-        await this.api("/conversations/" + encodeURIComponent(this.active.id) + "/messages", {
+        const sent = await this.api("/conversations/" + encodeURIComponent(this.active.id) + "/messages", {
           method: "POST",
           body: JSON.stringify({ senderId: "boss", senderType: "boss", type: "text", text: value })
         });
         const input = this.root && this.root.querySelector("#chatSendForm textarea");
         if (input) input.value = "";
+        if (sent && sent.replyPending) {
+          this.replyPending = true;
+          this.replySeq = Number(sent.message && sent.message.seq) || 0;
+          if (this.replyTimer) window.clearTimeout(this.replyTimer);
+          this.replyTimer = window.setTimeout(() => {
+            this.replyPending = false;
+            this.loadMessages(true);
+          }, 90000);
+        }
         await this.loadMessages(true);
         return true;
       } catch (err) {
