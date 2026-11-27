@@ -30,9 +30,22 @@
     check('demo off lands in real workspace',!!$('#realStageNote')&&!$('#realStageNote').hidden);
     check('real panel label available',/面板/.test(($('#realOpsBtn')||{}).textContent||''));
     check('preset team cards hidden',$$('.team-card[data-agent]').length===0);
-    check('real office agent activity rendered',$$('.real-agent-desk').length>=1||$$('.mission-desk-chip').length>=1,'desks='+$$('.real-agent-desk').length+' chips='+$$('.mission-desk-chip').length);
+    check('real office agent activity rendered',$$('.real-char').length>=1,'agents='+$$('.real-char').length);
     check('char layer hidden by css',w.getComputedStyle($('.char-layer')).display==='none');
     check('top stats show real metrics',w.getComputedStyle($('.top-stats')).display!=='none'&&/\//.test(($('#statTasks')||{}).textContent||''));
+    const live=w.AgentOffice.missionLive;
+    const realAgent=app.renderer.external.agents[0];
+    live.stop();
+    live.applyOverview({approvals:[],missions:[{id:'real-anim-test',title:'真实动画测试',archived:false,
+      stats:{tasks:8,done:2,progress:25,approvals:0},members:[realAgent],
+      autoRun:{status:'running',currentAgentId:realAgent.id,currentTaskTitle:'真实任务动画',
+        currentRole:'engineer',completed:2,total:8}}]});
+    await wait(300);
+    check('real active agent working',!!$('.real-char.is-working'));
+    check('real active task bubble',/真实任务动画/.test(($('.real-char.is-working .rc-bubble.show')||{}).textContent||''));
+    check('real active progress bar',!!$('.real-char.is-working .rc-progress.show'));
+    await live.poll();
+    await wait(300);
     check('office title becomes real ops',($('#officeName')||{}).textContent==='REAL OPS');
     check('team subtitle says real mode',/真实模式|Real mode/.test(($('#teamSub')||{}).textContent||''));
     check('real board rendered',!!$('.real-board'));
@@ -129,7 +142,7 @@
     await wait(500);
     check('html marks demo on',d.documentElement.dataset.demo==='on');
     check('cover hidden again',!!$('#realModeCover')&&$('#realModeCover').hidden);
-    check('real office agents cleared',$$('.real-agent-desk').length===0);
+    check('real office agents cleared',$$('.real-char').length===0);
     check('preset team cards restored',$$('.team-card[data-agent]').length>=6);
     check('char layer visible again',w.getComputedStyle($('.char-layer')).display!=='none');
     check('board title restored',($('#boardTitle')||{}).textContent==='SPRINT BOARD');

@@ -22,7 +22,7 @@ fi
 
 required=(
   index.html styles.css trace.css hiring.css external.css theme.css company.css update.css missions.css features.css ai-setup.css logos.css mission-live.css demo-mode.css favicon.svg
-  start.sh update.sh scripts/sync-local.sh bridge.py updater.py missions.py ocr_vision.swift README.md README.en.md LICENSE CONTRIBUTING.md
+  start.sh update.sh serve.py scripts/sync-local.sh bridge.py updater.py missions.py ocr_vision.swift README.md README.en.md LICENSE CONTRIBUTING.md
   CODE_OF_CONDUCT.md SECURITY.md CHANGELOG.md VERSION
   src/data.js src/i18n.js src/sprites.js src/logos.js src/demo-mode.js src/engine.js src/fx.js src/trace.js
   src/hiring.js src/external.js src/company.js src/update.js src/ai-setup.js src/mission-live.js src/missions.js src/shell.js src/render.js src/main.js

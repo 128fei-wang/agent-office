@@ -35,7 +35,7 @@ cd agent-office
 Or start both processes manually:
 
 ```bash
-python3 -m http.server 5173
+python3 serve.py 5173
 python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 ```
 

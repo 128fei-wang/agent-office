@@ -35,7 +35,7 @@ cd agent-office
 或者手动启动两个进程：
 
 ```bash
-python3 -m http.server 5173
+python3 serve.py 5173
 python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 ```
 
@@ -829,7 +829,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.18.2`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.18.3`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

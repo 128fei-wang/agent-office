@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.18.3] - 2026-11-27
+
+### Fixed
+- **Real-mode tasks now have visible office animation**: external agents are rendered as animated pixel characters at desks, the active mission agent gets a bright working animation, a task bubble and a progress bar, and idle agents walk between desks. No more empty/frozen real-mode stage.
+- **Cache staleness**: added `serve.py` with `Cache-Control: no-store` and version query strings on CSS/JS, so a stale cached bundle cannot show an old note/PAUSED UI after an update.
+- Fixed the real-agent sprite hash producing an undefined hair color (only one agent rendered).
+- Real external agents are refreshed into the office on external-agent updates, not only on the next mission poll.
+
+### Changed
+- Version bumped to 1.18.3.
+
 ## [1.18.2] - 2026-11-27
 
 ### Fixed

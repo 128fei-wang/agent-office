@@ -32,6 +32,9 @@
       this.timerTick = null;
       this.activity = null;
       this.lastActive = null;
+      this.realEls = {};
+      this.realWander = 0;
+      this.realTimer = null;
       this.completedUntil = 0;
       this.lastSignature = "";
       const localHost = ["127.0.0.1", "localhost", "::1"].indexOf(location.hostname) >= 0;
@@ -50,6 +53,7 @@
         if (!this.noStream) this.startStream();
         this.timer = window.setInterval(this.poll.bind(this), 2500);
         this.timerTick = window.setInterval(this.renderTimers.bind(this), 1000);
+        this.realTimer = window.setInterval(this.tickRealOffice.bind(this), 3800);
       }
     }
 
@@ -103,6 +107,43 @@
       document.addEventListener("agent-office:demo-change", () => {
         window.setTimeout(() => this.poll(), 120);
       });
+      document.addEventListener("agent-office:external-agents", () => {
+        if (AO.DemoMode && !AO.DemoMode.enabled) this.renderRealDesks();
+      });
+    }
+
+    realAgentLook(agent) {
+      const text = String(agent.id || agent.name || "agent");
+      let hash = 0;
+      for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+      const skins = ["#f2c6a0", "#d9a066", "#8d5524", "#ffdbac", "#c68642"];
+      const hairs = ["#2b2118", "#4a2c1a", "#1c1c24", "#5b3a29", "#a86b3c"];
+      const pairs = [
+        ["#7cb7ff", "#b58cff"], ["#55d6c2", "#f2b544"], ["#ff9ec0", "#74d6a3"],
+        ["#e3a06c", "#9b9cff"], ["#8fa5b7", "#ffb45e"]
+      ];
+      const pair = pairs[hash % pairs.length];
+      const shirt = agent.logoColor && /^#[0-9a-f]{6}$/i.test(agent.logoColor)
+        ? agent.logoColor : pair[0];
+      return {
+        id: agent.id,
+        name: agent.name || agent.id,
+        role: "engineer",
+        skin: skins[hash % skins.length],
+        hair: hairs[(hash >>> 3) % hairs.length],
+        shirt: shirt,
+        hairStyle: hash % 4 === 0 ? "long" : "short"
+      };
+    }
+
+    realMissionFor(agentId) {
+      const overview = this.lastOverview;
+      const missions = (overview && overview.missions) || [];
+      return missions.find(function (mission) {
+        const auto = mission.autoRun || {};
+        return !mission.archived && auto.currentAgentId === agentId &&
+          ["running", "discussing", "queued", "waiting_boss", "scheduled"].indexOf(auto.status) >= 0;
+      }) || null;
     }
 
     renderRealDesks() {
@@ -110,33 +151,103 @@
       const demoOff = AO.DemoMode && !AO.DemoMode.enabled;
       if (!demoOff) {
         this.lastRealDeskSig = "";
+        this.realEls = {};
         this.layer.innerHTML = "";
         return;
       }
       const agents = (this.renderer.external && this.renderer.external.agents) || [];
-      const sig = agents.slice(0, 4).map(function (agent) {
-        return [agent.id, agent.name, agent.status, agent.logoText,
-          agent.logoColor, agent.avatar].join(":");
-      }).join("|");
-      if (sig === this.lastRealDeskSig) return;
-      this.lastRealDeskSig = sig;
+      const visible = agents.slice(0, 6);
+      const keep = {};
+      visible.forEach((agent) => {
+        keep[agent.id] = true;
+        let el = this.realEls[agent.id];
+        if (!el) {
+          el = document.createElement("button");
+          el.type = "button";
+          el.className = "real-char";
+          el.setAttribute("data-real-desktop-agent", agent.id);
+          const look = this.realAgentLook(agent);
+          el.innerHTML =
+            '<span class="rc-shadow"></span>' +
+            '<span class="rc-sprite">' + AO.spriteSVG(look, 38) + '</span>' +
+            '<span class="rc-logo' + AO.logoClass(agent) + '" style="--c:' +
+            esc(agent.logoColor || "#55d6c2") + '">' + AO.logoMarkHTML(agent) + '</span>' +
+            '<span class="rc-name">' + esc(agent.name || agent.id) + '</span>' +
+            '<span class="rc-bubble"></span>' +
+            '<span class="rc-progress"><i></i></span>';
+          this.layer.appendChild(el);
+          this.realEls[agent.id] = el;
+        }
+        el.classList.toggle("online", agent.status === "online");
+        el.title = (agent.name || agent.id) + " · 点击查看档案";
+      });
+      Object.keys(this.realEls).forEach((id) => {
+        if (keep[id]) return;
+        this.realEls[id].remove();
+        delete this.realEls[id];
+      });
+      this.tickRealOffice();
+    }
+
+    tickRealOffice() {
+      if (!this.layer) return;
+      const demoOff = AO.DemoMode && !AO.DemoMode.enabled;
+      if (!demoOff) return;
+      this.realWander += 1;
+      const agents = (this.renderer.external && this.renderer.external.agents) || [];
       const hot = AO.DESKS.filter(function (desk) { return desk.hot; });
       const rest = AO.DESKS.filter(function (desk) { return !desk.hot; });
-      const anchors = hot.concat(rest).slice(0, 4);
-      this.layer.innerHTML = agents.slice(0, anchors.length).map((agent, index) => {
-        const anchor = anchors[index];
-        const online = agent.status === "online";
-        const left = Math.max(10, anchor.x + 38);
-        const top = Math.max(70, anchor.y - 52);
-        return '<button type="button" class="real-agent-desk ' + (online ? "online" : "") +
-          '" data-real-desktop-agent="' + esc(agent.id) + '" style="left:' + left + "px;top:" +
-          top + 'px;--c:' + esc(agent.logoColor || "#55d6c2") + '" title="' +
-          esc((agent.name || agent.id) + " · " + (online ? "在线" : "离线") + " · 点击查看档案") +
-          '"><span class="rad-logo' + AO.logoClass(agent) + '">' + AO.logoMarkHTML(agent) +
-          '</span><span class="rad-copy"><b>' + esc(agent.name || agent.id) +
-          '</b><em>' + esc(online ? "ONLINE" : "OFFLINE") + '</em></span>' +
-          '<i class="rad-dot"></i></button>';
-      }).join("");
+      const idleSpots = rest.concat([
+        { x: 145, y: 545 }, { x: 605, y: 545 }, { x: 320, y: 545 }, { x: 490, y: 545 }
+      ]);
+      agents.slice(0, 6).forEach((agent, index) => {
+        const el = this.realEls[agent.id];
+        if (!el) return;
+        const mission = this.realMissionFor(agent.id);
+        const auto = (mission && mission.autoRun) || {};
+        const active = !!mission;
+        let spot;
+        let moving = false;
+        if (active) {
+          spot = hot[index % Math.max(1, hot.length)] || hot[0] || { x: 435, y: 230 };
+        } else {
+          const spotIndex = (index + Math.floor(this.realWander / 2)) % idleSpots.length;
+          spot = idleSpots[spotIndex];
+          moving = true;
+        }
+        const left = Math.max(20, spot.x + 8);
+        const top = Math.max(70, spot.y - 34);
+        el.style.left = left + "px";
+        el.style.top = top + "px";
+        el.style.zIndex = String(520 + Math.round(top));
+        el.classList.toggle("is-working", active);
+        el.classList.toggle("is-idle", !active);
+        el.classList.toggle("is-offline", agent.status !== "online");
+        if (moving && !el.classList.contains("is-walking")) {
+          el.classList.add("is-walking");
+          window.setTimeout(function () { el.classList.remove("is-walking"); }, 1300);
+        }
+        const bubble = el.querySelector(".rc-bubble");
+        const progress = el.querySelector(".rc-progress");
+        if (active) {
+          const task = auto.currentTaskTitle || (mission.stats && mission.stats.progress + "%") || "";
+          if (bubble) {
+            bubble.textContent = task;
+            bubble.classList.add("show");
+          }
+          if (progress) {
+            const done = Number(auto.completed || 0);
+            const total = Number(auto.total || (mission.stats && mission.stats.tasks) || 0);
+            const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+            progress.classList.add("show");
+            const bar = progress.querySelector("i");
+            if (bar) bar.style.width = pct + "%";
+          }
+        } else {
+          if (bubble) bubble.classList.remove("show");
+          if (progress) progress.classList.remove("show");
+        }
+      });
     }
 
     bridge() {
@@ -202,6 +313,7 @@
     applyOverview(data) {
       this.lastOverview = data || null;
       this.syncTopbar(data || {});
+      if (AO.DemoMode && !AO.DemoMode.enabled) this.renderRealDesks();
       if (AO.DemoMode && AO.DemoMode.refreshCover) AO.DemoMode.refreshCover();
       const demoSafe = !(AO.DemoMode && !AO.DemoMode.enabled);
       if (!demoSafe && this.renderer) {
@@ -350,6 +462,10 @@
 
     renderStage(item) {
       if (!this.layer) return;
+      if (AO.DemoMode && !AO.DemoMode.enabled) {
+        this.renderRealDesks();
+        return;
+      }
       const external = item.external && item.agent;
       if (!external) {
         this.renderRealDesks();
@@ -473,7 +589,10 @@
         this.hud.hidden = true;
         this.hud.innerHTML = "";
       }
-      if (this.layer) this.layer.innerHTML = "";
+      if (this.layer) {
+        this.layer.innerHTML = "";
+        this.realEls = {};
+      }
       if (this.renderer.charEls) {
         Object.keys(this.renderer.charEls).forEach((id) => {
           const el = this.renderer.charEls[id];
@@ -488,6 +607,10 @@
     stop() {
       if (this.timer) window.clearInterval(this.timer);
       if (this.timerTick) window.clearInterval(this.timerTick);
+      if (this.realTimer) {
+        window.clearInterval(this.realTimer);
+        this.realTimer = null;
+      }
       if (this.eventStream) {
         this.eventStream.close();
         this.eventStream = null;

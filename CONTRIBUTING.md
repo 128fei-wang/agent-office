@@ -15,7 +15,7 @@ cd agent-office
 If port 5173 is already occupied:
 
 ```bash
-python3 -m http.server 5173
+python3 serve.py 5173
 python3 bridge.py
 ```
 

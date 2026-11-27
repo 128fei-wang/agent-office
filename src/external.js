@@ -513,6 +513,7 @@
       if (this.renderer && this.renderer.drawerMode === "external") {
         this.renderer.renderDrawer();
       }
+      document.dispatchEvent(new CustomEvent("agent-office:external-agents"));
     }
 
     agentById(id) {

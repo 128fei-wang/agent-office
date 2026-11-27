@@ -48,4 +48,4 @@ fi
 if command -v open >/dev/null 2>&1; then
   (sleep 0.6 && open "$URL") >/dev/null 2>&1 &
 fi
-python3 -m http.server "$PORT"
+python3 serve.py "$PORT"
