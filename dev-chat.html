@@ -37,6 +37,9 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     await shell.openGroupPicker();
     await wait(650);
     check('hub window',!!$('.chat-window.chat-hub'));
+    check('chat v2 skin',!!$('.chat-window.chat-hub.chat-v2'));
+    check('conversation sections',$$('.chat-side-section').length>=1);
+    check('team presence strip',!!$('.chat-side-presence'));
     check('conversation rail',!!$('.chat-side')&&$('.chat-side').getBoundingClientRect().width>=220,
       'width='+($('.chat-side')?Math.round($('.chat-side').getBoundingClientRect().width):0));
     check('all/group/direct tabs',$$('[data-chat-filter]').length===3);
@@ -63,6 +66,10 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       groupId=shell.active&&shell.active.id;
       check('group created and opened',!!shell.active&&shell.active.kind==='group',groupId);
       check('chat header',!!$('.chat-head')&&/自检|聊天自检/.test($('.chat-head').textContent));
+      check('channel header label',!!$('.chat-head-eyebrow')&&!!$('.chat-head-live'));
+      check('quick prompts',$$('[data-chat-quick]').length===3);
+      const sendDisplay=$('#chatSendBtn')?w.getComputedStyle($('#chatSendBtn')).display:'';
+      check('send button horizontal',/flex/.test(sendDisplay),sendDisplay);
       const winRect=$('.chat-window.chat-hub').getBoundingClientRect();
       const msgRect=$('#chatMessages').getBoundingClientRect();
       const compRect=$('.chat-composer-wrap').getBoundingClientRect();
@@ -71,6 +78,10 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       check('composer textarea',!!$('#chatDraft'));
       check('send button',!!$('#chatSendBtn'));
       check('send disabled while empty',$('#chatSendBtn')&&$('#chatSendBtn').disabled);
+      const quick=$('[data-chat-quick="progress"]');
+      if(quick){quick.click();await wait(100);}
+      check('quick prompt inserts draft',/同步一下当前进度/.test(($('#chatDraft')||{}).value||''));
+      if($('#chatDraft')){$('#chatDraft').value='';$('#chatDraft').dispatchEvent(new w.Event('input',{bubbles:true}));}
       check('empty state or messages',!!$('.chat-conv-empty')||!!$('.chat-msg')||!!$('.chat-event'));
       check('chat SSE created',!!shell.eventStream&&!!fakeStream&&/missions\/stream/.test(fakeStream.url||''),
         fakeStream&&fakeStream.url);
@@ -215,6 +226,16 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     } else {
       check('direct free contact available',false,'all agents already have direct chats');
     }
+    f.style.width='430px';f.style.height='900px';
+    w.dispatchEvent(new w.Event('resize'));
+    await wait(250);
+    const mobileRect=$('.chat-window')?$('.chat-window').getBoundingClientRect():null;
+    check('mobile full-screen chat',!!mobileRect&&mobileRect.width<=431&&mobileRect.height>=899,
+      mobileRect?Math.round(mobileRect.width)+'x'+Math.round(mobileRect.height):'missing');
+    check('mobile thread hides rail',!!$('.chat-side')&&w.getComputedStyle($('.chat-side')).display==='none');
+    const mobileComposer=$('.chat-composer-wrap');
+    check('mobile composer inside viewport',!!mobileComposer&&mobileComposer.getBoundingClientRect().bottom<=901,
+      mobileComposer?Math.round(mobileComposer.getBoundingClientRect().bottom):'missing');
     shell.close();
     await wait(120);
     check('hub closes',!$('.chat-hub')&&$('#chatHubRoot').hidden);

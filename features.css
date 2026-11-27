@@ -1621,3 +1621,52 @@ html[data-theme="day"] .chat-hub .chat-dialog { background: #fffdf8; }
 }
 .rail-chat-empty { padding: 9px 4px; color: #6f8798; font-size: 7px; text-align: center; }
 .feature-chat-moved { margin: 8px 2px 0; color: #6f8798; font-size: 7px; line-height: 1.45; }
+
+/* rail: prominent group-message shortcut above Work */
+.rail-chat-shortcut {
+  position: relative;
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  border: 1px solid rgba(85, 214, 194, 0.3);
+  border-radius: 8px;
+  background:
+    radial-gradient(38px 28px at 50% 0%, rgba(85, 214, 194, 0.16), transparent 75%),
+    rgba(85, 214, 194, 0.065);
+  color: var(--cyan);
+  cursor: pointer;
+}
+.rail-chat-shortcut b {
+  color: #8df2de;
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+.rail-chat-shortcut span {
+  color: #a9ded5;
+  font-size: 9.5px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.rail-chat-shortcut:hover { border-color: rgba(85, 214, 194, 0.55); background-color: rgba(85, 214, 194, 0.12); }
+.rail-chat-shortcut .rail-badge { background: #f2b544; }
+.rail-chat-rule { width: 72%; height: 1px; margin: 1px 0; background: rgba(255, 255, 255, 0.08); }
+.rail-chat-moved { border-color: rgba(85, 214, 194, 0.2); background: rgba(85, 214, 194, 0.05); color: #8fb7b1; }
+html[data-theme="day"] .rail-chat-shortcut {
+  border-color: #a9d8cd;
+  background: linear-gradient(180deg, #e9f8f3, #f7fcf9);
+}
+html[data-theme="day"] .rail-chat-shortcut b { color: #0b7f70; }
+html[data-theme="day"] .rail-chat-shortcut span { color: #47736b; }
+html[data-theme="day"] .rail-chat-rule { background: #e2d4c2; }
+html[data-theme="day"] .rail-chat-moved { border-color: #cfe5dd; background: #f2faf7; color: #52756e; }
+@media (max-width: 980px) {
+  .rail-chat-shortcut { min-width: 52px; min-height: 40px; }
+  .rail-chat-rule { display: none; }
+}

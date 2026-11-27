@@ -66,7 +66,7 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat workspace** |
-| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Signal Studio chat](docs/screenshots/chat-popup.jpg) |
 | **真实品牌 Logo** | **首页任务联动** |
 | ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
 | **AI 三步接入** | **测试并启用** |
@@ -360,11 +360,12 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 
 左侧新增独立 **功能导航栏**，图标从上到下为：
 
+- **群消息**：位于「工作」上方，直接打开群组聊天工作台，显示未读角标。
 - **工作**：任务中心、一人公司、拉会、制造意外、重置模拟。
 - **人脉**：添加好友（本地 Agent）、添加外部 Agent。
 - **创建**：任务管理 / 创建任务（群组入口已移至「沟通」）。
 - **设置**：工具（含 AI / MCP 部署）、设置、主题、语言。
-- **沟通**：群组消息、新建群组、已有群组、私聊。
+- **沟通**：新建群组、私聊、已有群组（群消息入口已固定在左侧顶部）。
 
 顶部栏只保留场景选择、暂停/速度等运行控制，不再重复任务、公司、工具、主题、语言等入口。点击左侧图标会打开旁边的浮动操作面板；底部 **☰** 打开完整功能抽屉。设置面板里还有 **聊天窗口风格** 切换：
 
@@ -372,9 +373,9 @@ bridge 只绑定 `127.0.0.1`，不把 API key 放前端；外部 endpoint 目前
 - **QQ**：蓝色强调色和 QQ 式气泡。
 - **微信**：绿色强调色和微信式气泡。
 
-群聊 / 单聊不再是只能发一句话的小气泡，而是 **900×650 的双栏工作台**：左侧是会话列表（搜索、全部/群聊/私聊、未读角标、固定、静音、重命名、删除），右侧是消息区（日期分隔、发送者分组、Markdown/代码、复制、引用、任务入口、附件、详情和文件）。支持草稿、`@` 成员建议、拖放/粘贴上传、`Cmd/Ctrl+F` 消息搜索和移动端全屏。消息走本地 bridge，AI 回复显示输入态和 provider 标记。
+群聊 / 单聊不再是只能发一句话的小气泡，而是 **1020×700 的 Signal Studio 聊天工作台**：左侧是 300px 会话栏（搜索、全部/群聊/私聊、固定/今天/更早分段、未读角标、固定、静音、重命名、删除），右侧是消息区（日期分隔、发送者分组、角色标签、Markdown/代码、复制、引用、任务入口、附件、详情和文件）。支持草稿、同步进度/请求拍板/上传文件快捷动作、`@` 成员建议、拖放/粘贴上传、`Cmd/Ctrl+F` 消息搜索和移动端全屏。墨色夜间与暖纸白天两套主题、在线团队头像条和重新设计的输入 dock 一起使用；消息走本地 bridge，AI 回复显示输入态和 provider 标记。
 
-「沟通」浮层会直接列出已建群组和任务群，点一下即进入新工作台，不必先打开一个空的建群表单。Mission Control 里的群组/私聊行、「建群」「私聊」按钮和「聊天工作台」按钮也统一进入同一个工作台；旧的 NEW GROUP 弹窗和旧群聊面板不再从这些入口出现。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)。
+左侧顶部「群消息」和「沟通」里的已有群组列表都会直接进入新工作台，不必先打开一个空的建群表单。Mission Control 里的群组/私聊行、「建群」「私聊」按钮和「聊天工作台」按钮也统一进入同一个工作台；旧的 NEW GROUP 弹窗和旧群聊面板不再从这些入口出现。设计参考和验收清单见 [docs/CHAT_UI.md](docs/CHAT_UI.md)。
 
 ## AI 三步接入与全自动执行
 
@@ -646,7 +647,8 @@ agent-office/
 ├── update.css          工具与升级面板样式
 ├── missions.css        任务工作台 / 群聊 / 私聊 / 审批样式
 ├── demo-mode.css       演示关闭 / REAL OPS 首页 / 真实任务看板样式
-├── features.css        功能栏 / 聊天工作台 / 设置 / 聊天窗口风格样式
+├── features.css        功能栏 / 设置 / 聊天窗口风格样式
+├── chat-v2.css         Signal Studio 聊天工作台视觉系统
 ├── bridge.py           外部 Agent 本地 bridge（配对 / 模型 API / 任务 / 文件 / 审批 / 升级）
 ├── missions.py         任务章程、自动分配、群聊、文件、审批和汇报规则
 ├── ocr_vision.swift    macOS Vision 本地图片识别兜底
@@ -836,7 +838,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.19.1`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.20.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 

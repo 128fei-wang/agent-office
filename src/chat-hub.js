@@ -167,6 +167,55 @@
       return String((ext && ext.bridgeUrl) || AO.BRIDGE_DEFAULT || "").replace(/\/+$/, "");
     }
 
+    syncRailBadge() {
+      const badge = document.getElementById("railChatBadge");
+      if (!badge) return;
+      const count = this.conversations.reduce(function (sum, row) {
+        if (row.kind !== "group") return sum;
+        return sum + (row.muted ? 0 : Number(row.unreadCount || 0));
+      }, 0);
+      badge.textContent = count > 99 ? "99+" : String(count);
+      badge.hidden = !count;
+    }
+
+    syncUnreadTotal() {
+      const title = this.root && this.root.querySelector("#chatHubTitle");
+      if (!title) return;
+      const count = this.conversations.reduce(function (sum, row) {
+        return sum + (row.muted ? 0 : Number(row.unreadCount || 0));
+      }, 0);
+      let badge = title.querySelector(".chat-unread-total");
+      if (!count) {
+        if (badge) badge.remove();
+        return;
+      }
+      if (!badge) {
+        badge = document.createElement("b");
+        badge.className = "chat-unread-total";
+        title.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? "99+" : String(count);
+    }
+
+    hydrateMemberPresence(row) {
+      if (!row || !Array.isArray(row.members)) return row;
+      const directory = new Map(this.agents.map(function (agent) { return [agent.id, agent]; }));
+      row.members = row.members.map(function (member) {
+        const fresh = directory.get(member.id);
+        return fresh ? Object.assign({}, member, {
+          online: !!fresh.online,
+          lastSeen: fresh.lastSeen,
+          lastSeenTs: fresh.lastSeenTs
+        }) : member;
+      });
+      return row;
+    }
+
+    hydrateAllPresence() {
+      this.conversations.forEach((row) => this.hydrateMemberPresence(row));
+      if (this.active) this.hydrateMemberPresence(this.active);
+    }
+
     t(key, vars) {
       return AO.t(key, vars);
     }
@@ -484,10 +533,12 @@
         ]);
         this.conversations = convRes.conversations || [];
         this.agents = agentRes.agents || [];
+        this.syncRailBadge();
         if (this.active) {
           const fresh = this.conversations.find((row) => row.id === this.active.id);
           if (fresh) this.active = fresh;
         }
+        this.hydrateAllPresence();
       } catch (err) {
         this.loadError = this.t("chatError");
       }
@@ -505,10 +556,13 @@
         if (sig === this.convSig) return;
         this.convSig = sig;
         this.conversations = rows;
+        this.syncRailBadge();
+        this.syncUnreadTotal();
         if (this.active) {
           const fresh = rows.find((row) => row.id === this.active.id);
           if (fresh) this.active = Object.assign({}, this.active, fresh);
         }
+        this.hydrateAllPresence();
         this.renderConversationList();
       } catch (err) {}
     }
@@ -534,7 +588,7 @@
       this.root.setAttribute("aria-hidden", "false");
       this.root.innerHTML =
         '<div class="chat-hub-backdrop" data-chat-close></div>' +
-        '<section class="chat-window chat-hub' + (this.maximized ? " is-max" : "") +
+        '<section class="chat-window chat-hub chat-v2' + (this.maximized ? " is-max" : "") +
         " style-" + esc(readStyle()) + '" role="dialog" aria-modal="true" aria-label="' +
         esc(this.t("chatMessages", "消息")) + '">' +
         '<aside class="chat-side" aria-label="' + esc(this.t("chatMessages", "消息")) + '">' +
@@ -552,9 +606,12 @@
       const unread = this.conversations.reduce(function (sum, row) {
         return sum + (row.muted ? 0 : Number(row.unreadCount || 0));
       }, 0);
+      const onlineAgents = this.agents.filter(isOnline);
+      const stackAgents = onlineAgents.concat(this.agents.filter((agent) => !isOnline(agent))).slice(0, 4);
       side.innerHTML =
         '<header class="chat-side-head">' +
-        '<div class="chat-side-title"><span class="chat-eyebrow">MESSAGES</span><h2 id="chatHubTitle">' +
+        '<div class="chat-side-brand"><div class="chat-side-title">' +
+        '<span class="chat-eyebrow">SIGNAL / MESSAGES</span><h2 id="chatHubTitle">' +
         esc(this.t("chatMessages", "消息")) +
         (unread ? '<b class="chat-unread-total">' + (unread > 99 ? "99+" : unread) + "</b>" : "") +
         '</h2></div><div class="chat-side-actions">' +
@@ -564,7 +621,14 @@
         '<button type="button" class="chat-icon-btn" data-chat-close title="' +
         esc(this.t("chatClose", "关闭")) + '" aria-label="' +
         esc(this.t("chatClose", "关闭")) + '">' + icon("close", 18) + "</button>" +
-        "</div></header>" +
+        '</div></div><p class="chat-side-sub">' +
+        esc(this.t("chatSideSub", "团队频道与私聊")) + "</p></header>" +
+        '<div class="chat-side-presence"><span>' +
+        esc(this.t("chatOnlineTeam", "在线团队")) + '</span><div class="chat-presence-stack">' +
+        stackAgents.map((agent) => '<span class="chat-presence-person' +
+          (isOnline(agent) ? " online" : "") + '">' + CUI.avatar(agent, { size: 22 }) +
+          "</span>").join("") +
+        '</div><b>' + onlineAgents.length + '</b></div>' +
         '<div class="chat-side-search">' + icon("search", 15) +
         '<input id="chatConvSearch" type="search" autocomplete="off" placeholder="' +
         esc(this.t("chatSearchConversations", "搜索会话或成员")) + '" value="' +
@@ -607,19 +671,33 @@
           if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
           return timeValue(b.updatedAt) - timeValue(a.updatedAt);
         });
-      const rowsHTML = rows.map((row) => this.conversationRow(row)).join("");
+      let rowsHTML = "";
+      if (query) {
+        rowsHTML = rows.map((row) => this.conversationRow(row)).join("");
+      } else {
+        const today = CUI.dayKey(new Date());
+        const sections = [
+          ["chatSectionPinned", rows.filter((row) => row.pinned)],
+          ["chatSectionRecent", rows.filter((row) => !row.pinned && CUI.dayKey(row.updatedAt) === today)],
+          ["chatSectionEarlier", rows.filter((row) => !row.pinned && CUI.dayKey(row.updatedAt) !== today)]
+        ];
+        rowsHTML = sections.map((section) => {
+          if (!section[1].length) return "";
+          return '<div class="chat-side-section"><span>' + esc(this.t(section[0])) +
+            "</span><em>" + section[1].length + "</em></div>" +
+            section[1].map((row) => this.conversationRow(row)).join("");
+        }).join("");
+      }
       const contacts = this.filter === "direct" ? this.agentContacts(query) : "";
-      list.innerHTML = rowsHTML ||
-        '<div class="chat-list-empty">' + icon("sparkle", 20) +
+      list.innerHTML = (rowsHTML || '<div class="chat-list-empty">' + icon("sparkle", 20) +
         '<b>' + esc(query ? this.t("chatNoResults", "没有匹配的会话") :
           this.filter === "direct" ? this.t("chatNoDirects", "还没有私聊") :
           this.t("chatNoGroups", "还没有群聊，创建一个吧。")) + "</b><span>" +
         esc(query ? this.t("chatSearchTryOther", "换个关键词试试") :
-          this.t("chatStartHint", "和 Agent 团队同步进度、风险与决策")) + "</span></div>" +
-        (rowsHTML ? "" : "");
+          this.t("chatStartHint", "和 Agent 团队同步进度、风险与决策")) + "</span></div>");
       if (contacts) {
-        list.innerHTML += '<div class="chat-side-section">' + esc(this.t("chatAgentContacts", "Agent 联系人")) +
-          "</div>" + contacts;
+        list.innerHTML += '<div class="chat-side-section"><span>' +
+          esc(this.t("chatAgentContacts", "Agent 联系人")) + "</span></div>" + contacts;
       }
       this.applyStyle();
     }
@@ -718,10 +796,16 @@
         '<button type="button" class="chat-back-btn" data-chat-sidebar-back aria-label="' +
         esc(this.t("chatBack", "返回会话")) + '">' + icon("back", 18) + "</button>" +
         '<div class="chat-head-id">' +
-        (conversation.kind === "direct" ? CUI.avatar(member, { size: 36 }) : this.groupAvatar(conversation, 36)) +
-        '<div class="chat-head-copy"><b>' + esc(title) + "</b><span>" +
-        '<i class="chat-presence ' + (online ? "online" : "") + '"></i>' + esc(subtitle) + "</span></div></div>" +
+        (conversation.kind === "direct" ? CUI.avatar(member, { size: 40 }) : this.groupAvatar(conversation, 40)) +
+        '<div class="chat-head-copy"><span class="chat-head-eyebrow">CHANNEL · ' +
+        esc(conversation.kind === "direct" ? this.t("chatDirectTitle", "私聊") :
+          this.t("chatGroupTitle", "群聊")) + "</span><b>" + esc(title) + "</b><span>" +
+        '<i class="chat-presence ' + (online ? "online" : "") + '"></i>' + esc(subtitle) +
+        '<em class="chat-head-live">LIVE</em></span></div></div>' +
         '<div class="chat-head-actions">' +
+        (conversation.missionId ? '<button type="button" class="chat-head-task" data-chat-open-mission="' +
+          esc(conversation.missionId) + '">' + icon("external", 14) + '<span>' +
+          esc(this.t("chatHeadTask", "任务")) + "</span></button>" : "") +
         '<button type="button" class="chat-icon-btn" data-chat-search-toggle title="' +
         esc(this.t("chatSearchMessages", "搜索消息")) + '" aria-label="' +
         esc(this.t("chatSearchMessages", "搜索消息")) + '">' + icon("search", 17) + "</button>" +
@@ -824,7 +908,16 @@
         esc(String(this.replyTo.text || "").slice(0, 180)) + "</span></div>" +
         '<button type="button" class="chat-icon-btn small" data-chat-quote-close aria-label="' +
         esc(this.t("chatCancelReply", "取消引用")) + '">' + icon("close", 14) + "</button></div>" : "";
-      return '<div class="chat-composer-wrap">' + reply +
+      const quick = '<div class="chat-quick-row" aria-label="' +
+        esc(this.t("chatQuickLabel", "快捷")) + '"><span class="chat-quick-label">' +
+        esc(this.t("chatQuickLabel", "快捷")) + "</span>" +
+        '<button type="button" data-chat-quick="progress">' + icon("sparkle", 13) +
+        esc(this.t("chatQuickProgress", "同步进度")) + "</button>" +
+        '<button type="button" data-chat-quick="decision">' + icon("quote", 13) +
+        esc(this.t("chatQuickDecision", "请求拍板")) + "</button>" +
+        '<button type="button" data-chat-quick="files">' + icon("clip", 13) +
+        esc(this.t("chatQuickFiles", "上传文件")) + "</button></div>";
+      return '<div class="chat-composer-wrap">' + reply + quick +
         (pending ? '<div class="chat-pending-files" id="chatPendingFiles">' + pending + "</div>" : "") +
         '<form class="chat-composer" id="chatSendForm">' +
         '<textarea id="chatDraft" rows="1" maxlength="8000" placeholder="' +
@@ -837,11 +930,14 @@
         esc(this.t("chatEmoji", "插入表情")) + '" aria-label="' + esc(this.t("chatEmoji", "插入表情")) + '">' +
         icon("smile", 17) + '</button><button type="button" class="chat-tool-btn" data-chat-mention title="' +
         esc(this.t("chatMention", "提及成员")) + '" aria-label="' + esc(this.t("chatMention", "提及成员")) + '">' +
-        icon("at", 17) + '</button></div><div class="chat-composer-send">' +
+        icon("at", 17) + '</button></div><span class="chat-composer-hint">' +
+        esc(this.t("chatComposerHint", "Enter 发送 · Shift+Enter 换行")) +
+        '</span><div class="chat-composer-send">' +
         '<span class="chat-char-count" id="chatCharCount"></span><button type="submit" class="chat-send-btn" id="chatSendBtn"' +
         (sendDisabled ? " disabled" : "") + ' aria-label="' +
         esc(this.t("chatSend", "发送")) + '" title="' + esc(this.t("chatSend", "发送")) + '">' +
-        icon("send", 17) + "</button></div></div>" +
+        icon("send", 15) + '<span class="chat-send-label">' +
+        esc(this.t("chatSend", "发送")) + "</span></button></div></div>" +
         '<input type="file" id="chatFileInput" multiple hidden />' +
         '<div class="chat-emoji-pop" id="chatEmojiPop" hidden>' +
         ["😀", "😄", "👍", "🙏", "🎉", "🔥", "✅", "👀", "🤝", "💡", "⚠️", "🚀", "📌", "📎", "❤️", "👌"]
@@ -953,6 +1049,7 @@
         (grouped ? '<span class="chat-avatar-spacer"></span>' : CUI.avatar(member, { size: 30 })) +
         '<div class="chat-msg-body">' +
         (grouped ? "" : '<div class="chat-msg-head"><b>' + esc(memberName(member)) + "</b>" +
+          (mine ? "" : '<em class="chat-msg-role">' + esc(roleName(member)) + "</em>") +
           (replyMeta ? '<span class="chat-ai-chip">AI' + (provider ? " · " + esc(provider.slice(0, 12)) : "") +
             "</span>" : "") + (mine ? "" : '<time>' + esc(time) + "</time>") + "</div>") +
         '<div class="chat-bubble">' + CUI.quoteHTML(quote) +
@@ -1105,7 +1202,7 @@
         "<h3>" + esc(conversation.kind === "direct" ? this.t("chatDirectTitle", "私聊") :
           this.t("chatGroupTitle", "群聊")) + '</h3></div><button type="button" class="chat-icon-btn small" data-chat-info-toggle aria-label="' +
         esc(this.t("chatClose", "关闭")) + '">' + icon("close", 15) + "</button></div>" +
-        '<div class="chat-details-members"><span class="chat-details-label">' + esc(this.t("chatMembers", "成员")) +
+        '<div class="chat-details-members"><span class="chat-details-label">' + esc(this.t("chatMembersLabel", "成员")) +
         "</span>" + members.map((member) =>
           '<div class="chat-detail-member">' + CUI.avatar(member, { size: 30 }) +
           '<span><b>' + esc(memberName(member)) + '</b><em>' +
@@ -1165,7 +1262,7 @@
         const res = await this.api("/conversations/" + encodeURIComponent(id));
         const conversation = res.conversation;
         if (!conversation || !this.root || this.root.hidden) return;
-        this.active = conversation;
+        this.active = this.hydrateMemberPresence(conversation);
         this.view = "chat";
         this.messages = [];
         this.lastSeq = 0;
@@ -1576,6 +1673,8 @@
       const row = this.conversations.find((item) => item.id === id);
       if (row) { row.readSeq = seq; row.unreadCount = 0; }
       this.renderConversationList();
+      this.syncRailBadge();
+      this.syncUnreadTotal();
       if (this.readTimer) window.clearTimeout(this.readTimer);
       this.readTimer = window.setTimeout(async () => {
         try {
@@ -1590,6 +1689,7 @@
               Object.assign(this.active, res.conversation);
             }
             this.renderConversationList();
+            this.syncRailBadge();
           }
         } catch (err) {}
       }, 280);
@@ -1712,6 +1812,25 @@
 
     /* -------------------------------------------------------------- click */
 
+    useQuickPrompt(kind) {
+      if (!this.root || !this.active) return;
+      if (kind === "files") {
+        const file = this.root.querySelector("#chatFileInput");
+        if (file) file.click();
+        return;
+      }
+      const input = this.root.querySelector("#chatDraft");
+      if (!input) return;
+      const text = kind === "decision" ?
+        this.t("chatQuickDecisionText", "这里需要你拍板：") :
+        this.t("chatQuickProgressText", "同步一下当前进度、风险和下一步。");
+      const current = String(input.value || "");
+      input.value = current && !/\s$/.test(current) ? current + "\n" + text : current + text;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch (err) {}
+      input.focus();
+    }
+
     onClick(event) {
       const target = event.target;
       if (target.closest("[data-chat-close]")) { this.close(); return; }
@@ -1760,6 +1879,11 @@
         this.renderSidebar();
         const search = this.root.querySelector("#chatConvSearch");
         if (search) search.focus();
+        return;
+      }
+      const quick = target.closest("[data-chat-quick]");
+      if (quick) {
+        this.useQuickPrompt(quick.getAttribute("data-chat-quick"));
         return;
       }
       if (target.closest("[data-chat-cancel-new]")) {

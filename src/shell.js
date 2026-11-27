@@ -249,12 +249,44 @@
       this.flyout = document.getElementById("railFlyout");
       this.active = "";
       this.bind();
+      this.refreshChatBadge();
+      window.setInterval(() => {
+        if (!document.hidden) this.refreshChatBadge();
+      }, 20000);
+    }
+
+    bridgeBase() {
+      const ext = this.renderer && this.renderer.external;
+      return String((ext && ext.bridgeUrl) || AO.BRIDGE_DEFAULT || "").replace(/\/+$/, "");
+    }
+
+    async refreshChatBadge() {
+      const badge = document.getElementById("railChatBadge");
+      if (!badge) return;
+      try {
+        const res = await fetch(this.bridgeBase() + "/conversations", { cache: "no-store" });
+        const data = await res.json();
+        const count = (data.conversations || []).reduce(function (sum, row) {
+          if (row.kind !== "group") return sum;
+          return sum + (row.muted ? 0 : Number(row.unreadCount || 0));
+        }, 0);
+        badge.textContent = count > 99 ? "99+" : String(count);
+        badge.hidden = !count;
+      } catch (err) {}
     }
 
     bind() {
       const self = this;
       if (!this.root || !this.flyout) return;
       this.root.addEventListener("click", function (event) {
+        const chatShortcut = event.target.closest("[data-rail-chat-open]");
+        if (chatShortcut) {
+          self.close();
+          const chat = self.shell && self.shell.chat;
+          if (chat) chat.openHub("group");
+          self.refreshChatBadge();
+          return;
+        }
         const button = event.target.closest("[data-rail-section]");
         if (!button) return;
         const section = button.getAttribute("data-rail-section");
@@ -343,8 +375,7 @@
     async loadChatList() {
       const box = this.flyout && this.flyout.querySelector("#railChatList");
       if (!box) return;
-      const ext = this.renderer && this.renderer.external;
-      const base = String((ext && ext.bridgeUrl) || AO.BRIDGE_DEFAULT || "").replace(/\/+$/, "");
+      const base = this.bridgeBase();
       try {
         const res = await fetch(base + "/conversations?kind=group", { cache: "no-store" });
         const data = await res.json();
@@ -423,9 +454,9 @@
         }
       } else {
         title = t("featureComms");
-        body = this.actionRow("group-chat", "#", t("featureGroupChat"), "已建群组 / 任务群") +
-          this.actionRow("group", "＋", t("featureNewGroup"), "选择成员 / 新建群组") +
+        body = this.actionRow("group", "＋", t("featureNewGroup"), "选择成员 / 新建群组") +
           this.actionRow("direct-chat", "@", t("featureDirectChat"), "和任一 Agent 私聊") +
+          '<p class="rail-real-note rail-chat-moved">' + esc(t("featureGroupMessagesMoved")) + "</p>" +
           '<div class="rail-chat-section"><span>' + esc(t("featureExistingGroups")) +
           '</span><div class="rail-chat-list" id="railChatList"><div class="rail-chat-empty">' +
           esc(t("chatLoading")) + "</div></div></div>";

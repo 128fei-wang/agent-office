@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Agent Office · 自主协作模拟</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=1.19.1" />
-  <link rel="stylesheet" href="trace.css?v=1.19.1" />
-  <link rel="stylesheet" href="hiring.css?v=1.19.1" />
-  <link rel="stylesheet" href="external.css?v=1.19.1" />
-  <link rel="stylesheet" href="theme.css?v=1.19.1" />
-  <link rel="stylesheet" href="company.css?v=1.19.1" />
-  <link rel="stylesheet" href="update.css?v=1.19.1" />
-  <link rel="stylesheet" href="missions.css?v=1.19.1" />
-  <link rel="stylesheet" href="features.css?v=1.19.1" />
-  <link rel="stylesheet" href="ai-setup.css?v=1.19.1" />
-  <link rel="stylesheet" href="logos.css?v=1.19.1" />
-  <link rel="stylesheet" href="mission-live.css?v=1.19.1" />
-  <link rel="stylesheet" href="demo-mode.css?v=1.19.1" />
+  <link rel="stylesheet" href="styles.css?v=1.20.0" />
+  <link rel="stylesheet" href="trace.css?v=1.20.0" />
+  <link rel="stylesheet" href="hiring.css?v=1.20.0" />
+  <link rel="stylesheet" href="external.css?v=1.20.0" />
+  <link rel="stylesheet" href="theme.css?v=1.20.0" />
+  <link rel="stylesheet" href="company.css?v=1.20.0" />
+  <link rel="stylesheet" href="update.css?v=1.20.0" />
+  <link rel="stylesheet" href="missions.css?v=1.20.0" />
+  <link rel="stylesheet" href="features.css?v=1.20.0" />
+  <link rel="stylesheet" href="chat-v2.css?v=1.20.0" />
+  <link rel="stylesheet" href="ai-setup.css?v=1.20.0" />
+  <link rel="stylesheet" href="logos.css?v=1.20.0" />
+  <link rel="stylesheet" href="mission-live.css?v=1.20.0" />
+  <link rel="stylesheet" href="demo-mode.css?v=1.20.0" />
 </head>
 <body>
   <div class="boot" id="boot">
@@ -92,11 +93,16 @@
       <nav class="feature-rail" id="featureRail" aria-label="功能导航">
         <button type="button" class="rail-brand" data-rail-section="all" title="全部功能" aria-label="全部功能">▦</button>
         <div class="rail-groups">
+          <button type="button" class="rail-chat-shortcut" data-rail-chat-open title="群消息" data-i18n-title="featureGroupMessages" aria-label="群消息">
+            <b>#</b><span data-i18n="featureGroupMessages">群消息</span>
+            <i class="rail-badge" id="railChatBadge" hidden>0</i>
+          </button>
+          <span class="rail-chat-rule" aria-hidden="true"></span>
           <button type="button" data-rail-section="work" title="工作"><b>▤</b><span data-i18n="featureWork">工作</span><i class="rail-badge" id="railWorkBadge" hidden>0</i></button>
           <button type="button" data-rail-section="people" title="人脉"><b>＋</b><span data-i18n="featurePeople">人脉</span></button>
           <button type="button" data-rail-section="create" title="创建"><b>▦</b><span data-i18n="featureCreate">创建</span></button>
           <button type="button" data-rail-section="settings" title="设置中心"><b>⚙</b><span data-i18n="featureSettings">设置</span></button>
-          <button type="button" data-rail-section="chat" title="沟通"><b>#</b><span data-i18n="featureComms">消息</span></button>
+          <button type="button" data-rail-section="chat" title="沟通"><b>#</b><span data-i18n="featureComms">沟通</span></button>
         </div>
         <button type="button" class="rail-all" data-rail-section="all" title="全部功能" aria-label="全部功能">☰</button>
       </nav>
@@ -276,10 +282,10 @@
       <section class="feature-group feature-comms">
         <h3><i>04</i><span data-i18n="featureComms">沟通</span></h3>
         <div class="feature-chat-actions">
-          <button type="button" data-feature-action="group-chat"><b>#</b><span data-i18n="featureGroupChat">群组消息</span></button>
           <button type="button" data-feature-action="group"><b>＋</b><span data-i18n="featureNewGroup">新建群组</span></button>
           <button type="button" data-feature-action="direct-chat"><b>@</b><span data-i18n="featureDirectChat">私聊</span></button>
         </div>
+        <p class="feature-chat-moved" data-i18n="featureGroupMessagesMoved">群消息入口已移至左侧顶部</p>
       </section>
       <p class="feature-drawer-hint" data-i18n="featureHint">左侧功能抽屉 · 点按打开</p>
     </div>
@@ -301,25 +307,25 @@
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
   <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-modal="false" aria-label="详情面板" role="dialog"></aside>
 
-  <script src="src/data.js?v=1.19.1"></script>
-  <script src="src/i18n.js?v=1.19.1"></script>
-  <script src="src/sprites.js?v=1.19.1"></script>
-  <script src="src/logos.js?v=1.19.1"></script>
-  <script src="src/chat-ui.js?v=1.19.1"></script>
-  <script src="src/demo-mode.js?v=1.19.1"></script>
-  <script src="src/engine.js?v=1.19.1"></script>
-  <script src="src/fx.js?v=1.19.1"></script>
-  <script src="src/trace.js?v=1.19.1"></script>
-  <script src="src/hiring.js?v=1.19.1"></script>
-  <script src="src/external.js?v=1.19.1"></script>
-  <script src="src/company.js?v=1.19.1"></script>
-  <script src="src/update.js?v=1.19.1"></script>
-  <script src="src/ai-setup.js?v=1.19.1"></script>
-  <script src="src/mission-live.js?v=1.19.1"></script>
-  <script src="src/chat-hub.js?v=1.19.1"></script>
-  <script src="src/missions.js?v=1.19.1"></script>
-  <script src="src/shell.js?v=1.19.1"></script>
-  <script src="src/render.js?v=1.19.1"></script>
-  <script src="src/main.js?v=1.19.1"></script>
+  <script src="src/data.js?v=1.20.0"></script>
+  <script src="src/i18n.js?v=1.20.0"></script>
+  <script src="src/sprites.js?v=1.20.0"></script>
+  <script src="src/logos.js?v=1.20.0"></script>
+  <script src="src/chat-ui.js?v=1.20.0"></script>
+  <script src="src/demo-mode.js?v=1.20.0"></script>
+  <script src="src/engine.js?v=1.20.0"></script>
+  <script src="src/fx.js?v=1.20.0"></script>
+  <script src="src/trace.js?v=1.20.0"></script>
+  <script src="src/hiring.js?v=1.20.0"></script>
+  <script src="src/external.js?v=1.20.0"></script>
+  <script src="src/company.js?v=1.20.0"></script>
+  <script src="src/update.js?v=1.20.0"></script>
+  <script src="src/ai-setup.js?v=1.20.0"></script>
+  <script src="src/mission-live.js?v=1.20.0"></script>
+  <script src="src/chat-hub.js?v=1.20.0"></script>
+  <script src="src/missions.js?v=1.20.0"></script>
+  <script src="src/shell.js?v=1.20.0"></script>
+  <script src="src/render.js?v=1.20.0"></script>
+  <script src="src/main.js?v=1.20.0"></script>
 </body>
 </html>

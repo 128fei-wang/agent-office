@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.20.0] - 2026-11-27
+
+### Added
+- **Signal Studio chat workspace**: a full visual and interaction redesign of the group/DM window — 1020×700 desktop surface, 300px conversation rail, ink-and-paper day palette, grouped pinned/recent/earlier conversations, online-team presence strip, channel header with member roles and a LIVE marker, and a refined details drawer.
+- **Group messages at the top of the rail**: a dedicated 群消息 shortcut now sits above 工作, opens the chat workspace in group mode, and carries the total unread badge. 沟通 keeps new-group, DM and existing-group entry points and explains where group messages moved.
+- **Composer quick actions**: 同步进度 / 请求拍板 / 上传文件 insert a useful draft or open the file picker without leaving the conversation; the send action now has a visible label and keyboard hint.
+- **Conversation sections**: pinned, today's recent conversations and earlier threads are separated, with counts in the rail.
+
+### Changed
+- Chat styling moved into `chat-v2.css`, scoped to `.chat-hub.chat-v2`; the old CSS remains for compatibility with existing screenshots and settings.
+- The workspace uses a mint-to-sky signal accent, 13px message text, larger conversation rows, softer message cards, a floating composer dock and a below-header details drawer.
+
+### Fixed
+- The chat composer now stays inside the window after the quick-action row was added.
+- The details drawer starts below the channel header instead of covering its actions; the member section label is now “成员” rather than the form label.
+
 ## [1.19.1] - 2026-11-27
 
 ### Changed

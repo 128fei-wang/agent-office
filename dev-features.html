@@ -63,12 +63,21 @@
     const createRail=$('#featureRail [data-rail-section="create"]');
     if(createRail){createRail.click();await wait(150);}
     check('create rail task only',/创建任务/.test($('#railFlyout').textContent)&&!/新建群组|创建群组/.test($('#railFlyout').textContent));
+    const chatShortcut=$('#featureRail [data-rail-chat-open]');
+    check('group messages shortcut above work',!!chatShortcut&&!!workRail&&
+      chatShortcut.getBoundingClientRect().top<workRail.getBoundingClientRect().top);
     const chatRail=$('#featureRail [data-rail-section="chat"]');
     if(chatRail){chatRail.click();await wait(500);}
-    check('groups live under communication',/群组消息/.test($('#railFlyout').textContent)&&/新建群组/.test($('#railFlyout').textContent)&&/已建群组/.test($('#railFlyout').textContent));
+    check('communication keeps new group and existing groups',
+      /新建群组/.test($('#railFlyout').textContent)&&/私聊/.test($('#railFlyout').textContent)&&
+      /已建群组/.test($('#railFlyout').textContent)&&/群消息入口已移至左侧顶部/.test($('#railFlyout').textContent)&&
+      !/群组消息/.test($('#railFlyout').textContent));
     const railNewGroup=$('#railFlyout [data-feature-action="group"]');
     if(railNewGroup){railNewGroup.click();await wait(800);}
     check('rail new group opens chat hub',!!$('.chat-window.chat-hub')&&!!$('#chatGroupForm'));
+    shell.chat.close();await wait(200);
+    if(chatShortcut){chatShortcut.click();await wait(850);}
+    check('group shortcut opens chat hub in group mode',!!$('.chat-window.chat-hub')&&shell.chat.filter==='group');
     shell.chat.close();await wait(200);
     const allRail=$('#featureRail [data-rail-section="all"]');
     if(allRail){allRail.click();await wait(200);}

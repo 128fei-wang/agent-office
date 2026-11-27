@@ -66,7 +66,7 @@ python3 bridge.py          # external agent bridge on 127.0.0.1:8787
 | **Agent recommendation & per-task executors** | **Usage evaluation** |
 | ![Agent recommendation](docs/screenshots/missions-team.jpg) | ![Usage evaluation](docs/screenshots/missions-eval.jpg) |
 | **Function navigation rail** | **Group / DM chat workspace** |
-| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Chat popup](docs/screenshots/chat-popup.jpg) |
+| ![Function rail](docs/screenshots/feature-drawer.jpg) | ![Signal Studio chat](docs/screenshots/chat-popup.jpg) |
 | **Real brand logos** | **Live mission in the office** |
 | ![Brand logos](docs/screenshots/agent-logos.jpg) | ![Mission live](docs/screenshots/mission-live.jpg) |
 | **AI setup in 3 steps** | **Test & enable** |
@@ -357,13 +357,14 @@ See [docs/MISSIONS.md](docs/MISSIONS.md) for rules, API and the external-worker 
 
 ## Left function bar and chat workspace
 
-The left function rail is organised into five groups:
+The left function rail is organised into six entries:
 
+- **Group messages** — pinned above Work, opens the group-channel workspace and carries the unread badge.
 - **Work** — task center, one-person company, meetings, incidents, reset.
 - **People** — add a local friend/agent, add an external agent.
 - **Create** — task manager / create a task only; group creation has moved to Communication.
 - **Settings center** — tools, settings, theme, language.
-- **Communication** — group messages, new group, built groups, direct messages.
+- **Communication** — new group, DMs and built groups; the group-message entry now lives at the top of the rail.
 
 The function bar title folds or expands it; the **☰** button opens the full function drawer. The top bar includes a **chat window style** switch:
 
@@ -371,9 +372,9 @@ The function bar title folds or expands it; the **☰** button opens the full fu
 - **QQ** — blue accent and QQ-style bubbles.
 - **WeChat** — green accent and WeChat-style bubbles.
 
-Group and direct chats are now a **900×650 two-pane workspace**, not a tiny floating box: a conversation rail with search, all/group/direct filters, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search and a full-screen mobile sheet.
+Group and direct chats are now a **1020×700 Signal Studio workspace**, not a tiny floating box: a 300px conversation rail with search, all/group/direct filters, pinned/recent/earlier sections, unread badges, pin, mute, rename and delete, plus a message pane with date separators, sender grouping, role labels, safe Markdown/code, copy, quote reply, mission links, attachments, details/files, drafts, quick progress/decision/file actions, `@` mentions, drag/drop and paste uploads, `Cmd/Ctrl+F` search, ink/warm-paper themes and a full-screen mobile sheet.
 
-Communication lists built groups and task groups with their latest message and unread badge, and opens the new workspace in one click instead of showing an empty create form. Group/DM rows, the New group/DM header actions and the Chat workspace button in Mission Control all route to the same workspace, so the old NEW GROUP modal no longer appears from these entry points. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
+The top-of-rail Group messages shortcut and Communication’s built-group list both open the new workspace in one click instead of showing an empty create form. Group/DM rows, the New group/DM header actions and the Chat workspace button in Mission Control all route to the same workspace, so the old NEW GROUP modal no longer appears from these entry points. See [docs/CHAT_UI.md](docs/CHAT_UI.md) for the reference products and acceptance checklist.
 
 ## AI setup in 3 steps + full auto-run
 
