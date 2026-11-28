@@ -1,6 +1,40 @@
 (function () {
   "use strict";
 
+  // 把浏览器会话 token 附加到发往 bridge 的每个请求。serve.py 把它注入为
+  // window.AGENT_OFFICE_SESSION；bridge 据此判定「浏览器」调用方（伪造 Origin
+  // 的裸 curl 不算）。EventSource 无法设 header，由调用点改走 ?session=。
+  (function attachSession() {
+    window.__aoSessionQS = function () {
+      var s = window.AGENT_OFFICE_SESSION;
+      return s ? ("&session=" + encodeURIComponent(s)) : "";
+    };
+    var session = window.AGENT_OFFICE_SESSION;
+    if (!session) return;
+    var nativeFetch = window.fetch;
+    if (typeof nativeFetch !== "function") return;
+    window.fetch = function (input, init) {
+      try {
+        var url = typeof input === "string" ? input : (input && input.url) || "";
+        var host = "";
+        try { host = new URL(url, window.location.href).hostname; } catch (e) {}
+        if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
+          init = init || {};
+          var headers = init.headers;
+          if (headers && typeof headers.append === "function") {
+            var h = new Headers(headers);
+            if (!h.has("X-Agent-Office-Session")) h.set("X-Agent-Office-Session", session);
+            init.headers = h;
+          } else {
+            init.headers = Object.assign({}, headers);
+            init.headers["X-Agent-Office-Session"] = session;
+          }
+        }
+      } catch (e) {}
+      return nativeFetch.call(this, input, init);
+    };
+  })();
+
   const AO = (window.AgentOffice = window.AgentOffice || {});
 
   AO.STAGE = { w: 1000, h: 620 };

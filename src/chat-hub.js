@@ -1719,7 +1719,7 @@
         Math.max(0, ...this.conversations.map((row) => Number(row.lastSeq || 0)));
       try {
         this.eventStream = new EventSource(this.bridge() +
-          "/missions/stream?since=" + encodeURIComponent(since));
+          "/missions/stream?since=" + encodeURIComponent(since) + (window.__aoSessionQS ? window.__aoSessionQS() : ""));
         this.eventStream.addEventListener("message", function (event) {
           let message = null;
           try { message = JSON.parse(event.data || "{}"); } catch (err) {}

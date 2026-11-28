@@ -43,6 +43,7 @@ Phase 1 的 runner 以**同一 OS 用户**拉起 Claude Code / Codex。由此推
 | 证据 HMAC 签名（evidence.key） | 防事后篡改 + 审计锚 | 事后改文件 / 改证据库被检出 | 同 UID Agent 读 key 伪造 |
 | run 级哈希链 | 防证据历史整体替换 | 删除 / 重排 / 截断即断链 | 同 UID 重算整链 |
 | per-agent REST token（#1+#2） | 读隔离 | 非成员 Agent 读别的 mission | 同 UID 直接读 state 文件 |
+| 浏览器 session token（替代 Origin） | 护栏 + 留痕 | 伪造 Origin / 跨站 / DNS-rebinding 冒充浏览器拿全量读写 | 同 UID 进程读 `browser-session.token`（0600）或从 `serve.py` 的 index.html 里 curl 到 token |
 | run-scoped token（submit_evidence） | claim 归属校验 | 任意进程替任意 run 交 claim | 同 UID 读子进程 env |
 | 测试沙箱（execution.py seatbelt/bwrap） | 运行时强制 | 测试命令乱读网络 / home | Agent 主进程本身（不经沙箱） |
 

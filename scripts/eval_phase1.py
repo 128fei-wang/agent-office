@@ -230,11 +230,23 @@ def mcp_tool_call(port: int, name: str, arguments: dict,
 BROWSER_ORIGIN = "http://127.0.0.1:5173"  # a port in the bridge's allowlist
 
 
-def browser_post(port: int, path: str, body: dict | None = None):
-    """POST as a trusted browser (Origin header). Returns (status, parsed JSON)."""
+def browser_session(state_dir: Path) -> str:
+    """Read the browser-session token the bridge issued into its state dir."""
+    try:
+        return (state_dir / "browser-session.token").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def browser_post(port: int, path: str, body: dict | None = None, session: str = ""):
+    """POST as a trusted browser. The bridge now requires the session token
+    (an Origin header alone is client-forgeable), so the token is sent alongside
+    the Origin. Returns (status, parsed JSON)."""
+    headers = {"Content-Type": "application/json", "Origin": BROWSER_ORIGIN}
+    if session:
+        headers["X-Agent-Office-Session"] = session
     status, _, raw = http_request(
-        "POST", port, path, body=json.dumps(body or {}).encode(),
-        headers={"Content-Type": "application/json", "Origin": BROWSER_ORIGIN})
+        "POST", port, path, body=json.dumps(body or {}).encode(), headers=headers)
     try:
         return status, (json.loads(raw) if raw else None)
     except Exception:  # noqa: BLE001
@@ -885,7 +897,7 @@ def c_approval_modify_after(ctx: Ctx) -> Result:
                            f"status={(row or {}).get('status')!r} res={res}")
     # 批准（run 收集完）之后，工作区又被改动 → merge 必须失效
     (ctx.repo / "y.txt").write_text("tampered-after-approval", encoding="utf-8")
-    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge", session=browser_session(ctx.state_dir))
     if status == 409 and (payload or {}).get("code") == "worktree_modified":
         return Result.ok("批准后改动工作区应使审批失效并阻断 merge",
                          f"status={status} code={(payload or {}).get('code')!r}",
@@ -914,7 +926,7 @@ def c_approval_diff_base(ctx: Ctx) -> Result:
     subprocess.run(["git", "-C", str(ctx.repo), "add", "-A"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(ctx.repo), "commit", "-q", "-m", "advance base"],
                    check=True, capture_output=True)
-    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge", session=browser_session(ctx.state_dir))
     if status == 409 and (payload or {}).get("code") in ("base_mismatch", "worktree_modified"):
         return Result.ok("同一 diff 在不同 baseCommit 上不应通用（审批绑定 base）",
                          f"status={status} code={(payload or {}).get('code')!r}",
@@ -945,7 +957,7 @@ def c_approval_not_stopped(ctx: Ctx) -> Result:
         conn.commit()
     finally:
         conn.close()
-    status, payload = browser_post(ctx.port, "/runs/run-still-running/merge")
+    status, payload = browser_post(ctx.port, "/runs/run-still-running/merge", session=browser_session(ctx.state_dir))
     if status == 409 and (payload or {}).get("code") == "not_stopped":
         return Result.ok("run 未停止前应拒绝 merge",
                          f"status={status} code={(payload or {}).get('code')!r}",
@@ -1176,7 +1188,7 @@ def c_view_kill_5s(ctx: Ctx) -> Result:
     if not run_id:
         return Result.fail("runner 应进入 running 并记录 session_pgid", "未等到 running")
     t0 = time.time()
-    status, payload = browser_post(ctx.port, f"/runs/{run_id}/kill")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/kill", session=browser_session(ctx.state_dir))
     ok = False
     while time.time() - t0 < 5:
         row = get_run_row(ctx, run_id)
@@ -1286,7 +1298,7 @@ def c_metric_ttm(ctx: Ctx) -> Result:
     if not row or row["status"] != "waiting_approval":
         return Result.fail("run 应先进入 waiting_approval",
                            f"status={(row or {}).get('status')!r}")
-    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge", session=browser_session(ctx.state_dir))
     if status != 200:
         return Result.fail("merge 应成功", f"status={status} payload={payload}")
     row = get_run_row(ctx, run_id)

@@ -208,7 +208,11 @@ class BridgeTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
         )
         deadline = time.time() + 45
+        cls.session = ""
         while time.time() < deadline:
+            token_file = Path(cls.tmp.name) / "browser-session.token"
+            if token_file.exists():
+                cls.session = token_file.read_text("utf-8").strip()
             try:
                 status, _ = cls.request("/health")
                 if status == 200:
@@ -238,7 +242,8 @@ class BridgeTest(unittest.TestCase):
             data=data,
             method=method,
             headers={"Content-Type": "application/json",
-                     "Origin": "http://127.0.0.1:5173", **(headers or {})},
+                     "Origin": "http://127.0.0.1:5173",
+                     "X-Agent-Office-Session": cls.session, **(headers or {})},
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as res:
@@ -253,7 +258,8 @@ class BridgeTest(unittest.TestCase):
         req = urllib.request.Request(
             cls.base + path, data=body, method="POST",
             headers={"Content-Type": "application/octet-stream",
-                     "Origin": "http://127.0.0.1:5173", **(headers or {})},
+                     "Origin": "http://127.0.0.1:5173",
+                     "X-Agent-Office-Session": cls.session, **(headers or {})},
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as res:
@@ -369,7 +375,8 @@ class BridgeTest(unittest.TestCase):
         conn = HTTPConnection("127.0.0.1", self.port, timeout=5)
         try:
             conn.request("GET", "/files/%s/raw" % artifact["id"],
-                         headers={"Origin": "http://127.0.0.1:5173"})
+                         headers={"Origin": "http://127.0.0.1:5173",
+                                  "X-Agent-Office-Session": self.session})
             res = conn.getresponse()
             self.assertEqual(res.status, 200)
             self.assertIn(b"bridge document", res.read())
@@ -872,7 +879,8 @@ class BridgeTest(unittest.TestCase):
             "/missions/%s/tasks/%s/run" % (mission["id"], task["id"]), "POST", {})[0], 200)
         req = urllib.request.Request(
             self.base + "/missions/" + mission["id"] + "/deliverables.zip",
-            headers={"Origin": "http://127.0.0.1:5173"})
+            headers={"Origin": "http://127.0.0.1:5173",
+                     "X-Agent-Office-Session": self.session})
         with urllib.request.urlopen(req) as response:
             body = response.read()
             self.assertEqual(response.status, 200)
@@ -1209,6 +1217,21 @@ class BridgeTest(unittest.TestCase):
         status, data = self.anon_request("/missions")
         self.assertEqual(status, 401)
         self.assertEqual(data.get("code"), "unauthorized")
+
+    def test_forged_origin_without_session_is_rejected(self):
+        # P0 regression: an Origin header alone is client-controllable and must
+        # not grant browser read/write — only the browser-session token does.
+        forged = {"X-Agent-Office-Session": ""}
+        status, data = self.request("/missions", headers=forged)
+        self.assertEqual(status, 401)
+        self.assertEqual(data.get("code"), "unauthorized")
+
+        status, data = self.request("/missions", "POST", {
+            "title": "forged origin", "description": "no session",
+            "acceptance": "must be rejected", "autoDiscuss": False,
+        }, headers=forged)
+        self.assertEqual(status, 403)
+        self.assertEqual(data.get("code"), "forbidden")
 
     def test_cors_rejects_non_allowlisted_loopback_port(self):
         # P0-3: any localhost port that is not the app port must not be trusted.
@@ -1640,7 +1663,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 200)
         conn = HTTPConnection("127.0.0.1", self.port, timeout=8)
         try:
-            conn.request("GET", "/stream?since=0")
+            conn.request("GET", "/stream?since=0&session=" + urllib.parse.quote(self.session))
             res = conn.getresponse()
             self.assertEqual(res.status, 200)
             # Consume the initial ready frame.

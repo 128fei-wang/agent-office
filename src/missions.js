@@ -765,7 +765,7 @@
       } catch (err) {}
       const self = this;
       try {
-        this.stream = new EventSource(this.bridge() + "/missions/stream?since=" + this.lastSeq);
+        this.stream = new EventSource(this.bridge() + "/missions/stream?since=" + this.lastSeq + (window.__aoSessionQS ? window.__aoSessionQS() : ""));
         this.stream.addEventListener("overview", function () {
           window.clearTimeout(self.overviewRefreshTimer);
           self.overviewRefreshTimer = window.setTimeout(function () {

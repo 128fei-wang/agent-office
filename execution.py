@@ -558,21 +558,10 @@ def _prepare_runner(workspace, requested_command):
     python_files = _python_test_files(workspace)
     if python_files:
         unittest_style, pytest_style = _python_style(python_files)
-        if _pytest_available():
-            for path in python_files:
-                parent = path.parent
-                while parent != workspace and workspace in parent.parents:
-                    init = parent / "__init__.py"
-                    if not init.exists():
-                        try:
-                            init.write_text("", encoding="utf-8")
-                        except OSError:
-                            pass
-                    parent = parent.parent
-            relative = [str(path.relative_to(workspace)) for path in python_files]
-            return ([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"] + relative,
-                    "python-pytest", relative, "")
-        if unittest_style:
+        if unittest_style and not pytest_style:
+            # 纯 unittest 风格：固定用 unittest，不随环境有无 pytest 漂移。
+            # pytest 默认捕获 stdout，会让 Agent 打印的测试输出不进管道，
+            # 破坏输出边界检测；unittest 原样透传，结果可预测。
             root_init = workspace / "__init__.py"
             if not root_init.exists():
                 try:
@@ -594,7 +583,22 @@ def _prepare_runner(workspace, requested_command):
                      "-p", "test*.py", "-v"],
                     "python-unittest", relative, "")
         if pytest_style:
-            return None, "python-pytest", [], "检测到 pytest 风格测试，但沙箱 Python 未安装 pytest；未执行"
+            if not _pytest_available():
+                return None, "python-pytest", [], "检测到 pytest 风格测试，但沙箱 Python 未安装 pytest；未执行"
+            for path in python_files:
+                parent = path.parent
+                while parent != workspace and workspace in parent.parents:
+                    init = parent / "__init__.py"
+                    if not init.exists():
+                        try:
+                            init.write_text("", encoding="utf-8")
+                        except OSError:
+                            pass
+                    parent = parent.parent
+            relative = [str(path.relative_to(workspace)) for path in python_files]
+            # -s（--capture=no）让打印原样进管道，保证输出边界检测与 unittest 一致。
+            return ([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-s"] + relative,
+                    "python-pytest", relative, "")
     node_files = _node_test_files(workspace)
     if node_files:
         node = _which("node")

@@ -107,6 +107,49 @@ def idempotency_store(key, status, body):
         if len(IDEMPOTENCY_CACHE) > 512:
             for stale in list(IDEMPOTENCY_CACHE)[:256]:
                 IDEMPOTENCY_CACHE.pop(stale, None)
+
+
+def browser_session_token() -> str:
+    """Load or create the browser-session token shared with serve.py.
+
+    This replaces ``bool(origin)`` as the trust anchor for browser callers: a
+    raw ``curl`` that merely forges an ``Origin`` header no longer reads or
+    writes as a browser.
+
+    Honest limit (see THREAT_MODEL.md): the token is written to a 0600 file and
+    injected into index.html, so a same-UID process can still read it and
+    impersonate the browser. This is a first defence-in-depth layer; OS-level
+    user isolation is the hard boundary.
+    """
+    global _BROWSER_SESSION_TOKEN
+    if _BROWSER_SESSION_TOKEN:
+        return _BROWSER_SESSION_TOKEN
+    token = ""
+    try:
+        if BROWSER_SESSION_FILE.exists():
+            token = BROWSER_SESSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if len(token) < 32:
+        token = secrets.token_hex(32)
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+            BROWSER_SESSION_FILE.write_text(token + "\n", encoding="utf-8")
+            os.chmod(BROWSER_SESSION_FILE, 0o600)
+        except OSError:
+            pass
+    _BROWSER_SESSION_TOKEN = token
+    return token
+
+
+def browser_session_matches(supplied: str) -> bool:
+    """Constant-time check of a caller-supplied browser-session token."""
+    supplied = (supplied or "").strip()
+    if not supplied:
+        return False
+    return hmac.compare_digest(supplied, browser_session_token())
+
+
 DEMO_THREAD = None
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -114,6 +157,12 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 # port (a random dev server, a local tool) must not be trusted as a browser.
 ALLOWED_ORIGIN_PORTS = {5173, 5174}
 ALLOW_FILE_ORIGIN = os.environ.get("BRIDGE_ALLOW_FILE_ORIGIN") == "1"
+# Browser-session token: the trust anchor for "browser" callers, replacing the
+# client-controllable Origin header. serve.py injects this random secret into
+# index.html; the browser echoes it back on every request (header, or `session`
+# query param for EventSource, which cannot set headers).
+BROWSER_SESSION_FILE = STATE_DIR / "browser-session.token"
+_BROWSER_SESSION_TOKEN = ""
 BRIDGE_TOKEN = str(os.environ.get("BRIDGE_TOKEN") or "").strip()
 BRIDGE_TLS_CERT = str(os.environ.get("BRIDGE_TLS_CERT") or "").strip()
 BRIDGE_TLS_KEY = str(os.environ.get("BRIDGE_TLS_KEY") or "").strip()
@@ -4147,11 +4196,19 @@ class Handler(BaseHTTPRequestHandler):
                 return False
             remote_authed = True
         self.allowed_origin = origin
-        # A browser request carries a trusted Origin; a CLI/agent/curl request
-        # does not. Only the former is trusted to see all mission data. The
-        # latter must authenticate as a specific agent (and reads are then
-        # filtered to that agent's missions).
-        self.browser = bool(origin) or remote_authed
+        # A browser is no longer recognised by the mere presence of an Origin
+        # header (a client-controllable field). It must present the session
+        # token that serve.py injected into index.html — via the
+        # ``X-Agent-Office-Session`` header, or the ``session`` query param for
+        # EventSource (which cannot set headers). CLI/agent callers authenticate
+        # separately through ``_authenticate_agent``; anonymous → 401/403.
+        session = (self.headers.get("X-Agent-Office-Session") or "").strip()
+        if not session:
+            try:
+                session = (parse_qs(urlparse(self.path).query).get("session") or [""])[0].strip()
+            except ValueError:
+                session = ""
+        self.browser = browser_session_matches(session) or remote_authed
         self.agent = None
         return True
 
@@ -4211,7 +4268,7 @@ class Handler(BaseHTTPRequestHandler):
             "Access-Control-Allow-Headers",
             "Content-Type, Authorization, X-Agent-Office-Token, X-Update-Token, X-Filename, "
             "X-Mime, X-Mission-Id, X-Conversation-Id, X-Uploaded-By, X-Agent-Id, "
-            "X-Agent-Signature, X-Agent-Timestamp, Idempotency-Key",
+            "X-Agent-Signature, X-Agent-Timestamp, X-Agent-Office-Session, Idempotency-Key",
         )
         self.send_header("Cache-Control", "no-store")
 
@@ -4872,6 +4929,10 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         qs = parse_qs(parsed.query)
         if path == "/stream":
+            if not self.browser:
+                self.send_json({"error": "browser session required",
+                                "code": "unauthorized"}, 401)
+                return
             self.stream_messages(qs)
             return
         if path == "/update/check":
@@ -4903,6 +4964,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(issue_manual_token())
             return
         if path == "/missions/stream":
+            if not self.browser:
+                self.send_json({"error": "browser session required",
+                                "code": "unauthorized"}, 401)
+                return
             self.stream_mission_messages(qs)
             return
         if path == "/execution/capabilities":
@@ -6123,6 +6188,7 @@ def main():
         print("Refusing to start: another bridge instance already holds the state "
               "directory lock (%s)." % (STATE_DIR / "state.lock"), file=sys.stderr)
         sys.exit(1)
+    browser_session_token()  # issue/load the browser-session token before serving
     orphaned = recover_orphaned_runs()
     if orphaned:
         print("Recovered %d orphaned run(s) from a previous bridge/runner exit." % orphaned)
