@@ -237,7 +237,8 @@ class BridgeTest(unittest.TestCase):
             cls.base + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json", **(headers or {})},
+            headers={"Content-Type": "application/json",
+                     "Origin": "http://127.0.0.1:5173", **(headers or {})},
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as res:
@@ -251,7 +252,8 @@ class BridgeTest(unittest.TestCase):
     def raw_request(cls, path, body, headers=None):
         req = urllib.request.Request(
             cls.base + path, data=body, method="POST",
-            headers={"Content-Type": "application/octet-stream", **(headers or {})},
+            headers={"Content-Type": "application/octet-stream",
+                     "Origin": "http://127.0.0.1:5173", **(headers or {})},
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as res:
@@ -260,6 +262,34 @@ class BridgeTest(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode("utf-8")
             return exc.code, json.loads(raw) if raw.startswith(("{", "[")) else raw
+
+    @classmethod
+    def anon_request(cls, path, method="GET", body=None, headers=None, timeout=15):
+        """A request with no Origin, as a CLI/curl/agent would send."""
+        data = None if body is None else json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(
+            cls.base + path, data=data, method=method,
+            headers={"Content-Type": "application/json", **(headers or {})},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as res:
+                raw = res.read().decode("utf-8")
+                return res.status, json.loads(raw) if raw.startswith(("{", "[")) else raw
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8")
+            return exc.code, json.loads(raw) if raw.startswith(("{", "[")) else raw
+
+    def make_signed_headers(self, agent_id, secret, body=None):
+        raw = b"" if body is None else json.dumps(body).encode("utf-8")
+        stamp = str(int(time.time()))
+        signature = hmac.new(bytes.fromhex(secret),
+                             (stamp + ".").encode("utf-8") + raw,
+                             hashlib.sha256).hexdigest()
+        return raw, {
+            "X-Agent-Id": agent_id,
+            "X-Agent-Signature": signature,
+            "X-Agent-Timestamp": stamp,
+        }
 
     def make_pair(self):
         status, data = self.request("/pair/code", "POST", {})
@@ -338,7 +368,8 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(attached["message"]["attachments"][0]["name"], "bridge.md")
         conn = HTTPConnection("127.0.0.1", self.port, timeout=5)
         try:
-            conn.request("GET", "/files/%s/raw" % artifact["id"])
+            conn.request("GET", "/files/%s/raw" % artifact["id"],
+                         headers={"Origin": "http://127.0.0.1:5173"})
             res = conn.getresponse()
             self.assertEqual(res.status, 200)
             self.assertIn(b"bridge document", res.read())
@@ -839,8 +870,10 @@ class BridgeTest(unittest.TestCase):
         task = next(t for t in mission["tasks"] if t["status"] == "assigned")
         self.assertEqual(self.request(
             "/missions/%s/tasks/%s/run" % (mission["id"], task["id"]), "POST", {})[0], 200)
-        with urllib.request.urlopen(
-                self.base + "/missions/" + mission["id"] + "/deliverables.zip") as response:
+        req = urllib.request.Request(
+            self.base + "/missions/" + mission["id"] + "/deliverables.zip",
+            headers={"Origin": "http://127.0.0.1:5173"})
+        with urllib.request.urlopen(req) as response:
             body = response.read()
             self.assertEqual(response.status, 200)
             self.assertIn("application/zip", response.headers.get("Content-Type", ""))
@@ -1170,6 +1203,100 @@ class BridgeTest(unittest.TestCase):
             res.read()
         finally:
             conn.close()
+
+    def test_anonymous_mission_read_is_rejected(self):
+        # P0-1: no Origin and no agent identity → 401, not a full data dump.
+        status, data = self.anon_request("/missions")
+        self.assertEqual(status, 401)
+        self.assertEqual(data.get("code"), "unauthorized")
+
+    def test_cors_rejects_non_allowlisted_loopback_port(self):
+        # P0-3: any localhost port that is not the app port must not be trusted.
+        status, _ = self.request("/health", headers={"Origin": "http://127.0.0.1:9999"})
+        self.assertEqual(status, 403)
+        status, _ = self.request("/health", headers={"Origin": "http://localhost:9999"})
+        self.assertEqual(status, 403)
+        status, _ = self.request("/health", headers={"Origin": "http://127.0.0.1:5174"})
+        self.assertEqual(status, 200)
+
+    def test_idempotent_mission_create(self):
+        # P1-7: same Idempotency-Key replay yields exactly one mission record.
+        key = "idem-%d" % int(time.time() * 1000)
+        payload = {
+            "title": "Idempotent mission",
+            "description": "Same Idempotency-Key must create exactly one mission record.",
+            "acceptance": "Replaying the key returns the same mission and no duplicate.",
+            "autoDiscuss": False,
+        }
+        s1, d1 = self.request("/missions", "POST", payload, headers={"Idempotency-Key": key})
+        s2, d2 = self.request("/missions", "POST", payload, headers={"Idempotency-Key": key})
+        self.assertEqual(s1, 201)
+        self.assertEqual(s2, 201)
+        self.assertEqual(d1["mission"]["id"], d2["mission"]["id"])
+        status, listing = self.request("/missions")
+        self.assertEqual(status, 200)
+        self.assertEqual(len([m for m in listing["missions"]
+                              if m["id"] == d1["mission"]["id"]]), 1)
+        self.request("/missions/%s" % d1["mission"]["id"], "DELETE")
+
+    def test_read_audit_event_is_recorded(self):
+        # P1-6: reading missions must leave a "read" event in the event stream.
+        status, before = self.request("/events?since=0")
+        self.assertEqual(status, 200)
+        before_count = len([e for e in before.get("events", []) if e.get("kind") == "read"])
+        self.request("/missions")
+        status, after = self.request("/events?since=0")
+        self.assertEqual(status, 200)
+        after_count = len([e for e in after.get("events", []) if e.get("kind") == "read"])
+        self.assertGreater(after_count, before_count)
+        self.assertTrue(any(e.get("kind") == "read" and e.get("action") == "read missions"
+                            for e in after.get("events", [])))
+
+    def test_non_member_cannot_read_another_agents_file(self):
+        # P0-1/P0-2: an authenticated agent can only read files from missions it
+        # belongs to; raw file access by a non-member agent is 403.
+        def make_agent(agent_id):
+            status, created = self.request("/agents", "POST", {
+                "id": agent_id, "name": agent_id, "runtime": "test",
+                "skills": ["test"], "role": "engineer",
+            })
+            self.assertEqual(status, 200, created)
+            return created.get("signingSecret") or ""
+
+        secret_a = make_agent("ext-sec-a")
+        secret_b = make_agent("ext-sec-b")
+        status, mission = self.request("/missions", "POST", {
+            "title": "Private mission A",
+            "description": "Only ext-sec-a may read files from this mission.",
+            "acceptance": "Non-members are denied.",
+            "memberIds": ["ext-sec-a"],
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, mission)
+        mission_id = mission["mission"]["id"]
+        status, upload = self.raw_request(
+            "/files", b"secret-a-document",
+            {"X-Filename": "a.txt", "X-Mime": "text/plain",
+             "X-Mission-Id": mission_id})
+        self.assertEqual(status, 200, upload)
+        artifact_id = upload["artifact"]["id"]
+
+        # Member agent (signed, no Origin) may read it.
+        _, member_headers = self.make_signed_headers("ext-sec-a", secret_a)
+        status, body = self.anon_request(
+            "/files/%s/raw" % artifact_id, headers=member_headers)
+        self.assertEqual(status, 200)
+
+        # Non-member agent (signed, no Origin) must be denied.
+        _, stranger_headers = self.make_signed_headers("ext-sec-b", secret_b)
+        status, err = self.anon_request(
+            "/files/%s/raw" % artifact_id, headers=stranger_headers)
+        self.assertEqual(status, 403)
+        self.assertEqual(err.get("code"), "forbidden")
+
+        self.request("/missions/%s" % mission_id, "DELETE")
+        self.request("/agents/ext-sec-a", "DELETE")
+        self.request("/agents/ext-sec-b", "DELETE")
 
     def test_provider_catalog_hides_keys(self):
         status, data = self.request("/providers")

@@ -74,9 +74,37 @@ STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-of
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
 LOCK = threading.RLock()
 DEMO_STOP = threading.Event()
+# Idempotency-Key → created resource id, for POST /missions and /messages
+# (security review #9). Bounded to avoid unbounded growth from a hostile key spray.
+IDEMPOTENCY_CACHE = {}
+IDEMPOTENCY_LOCK = threading.Lock()
+
+
+def idempotency_get(key):
+    """Return a previously stored {status, body} response for ``key``, or None."""
+    key = (key or "").strip()
+    if not key:
+        return None
+    with IDEMPOTENCY_LOCK:
+        return IDEMPOTENCY_CACHE.get(key)
+
+
+def idempotency_store(key, status, body):
+    key = (key or "").strip()
+    if not key:
+        return
+    with IDEMPOTENCY_LOCK:
+        IDEMPOTENCY_CACHE[key] = {"status": status, "body": body}
+        # Bounded: a hostile key spray must not grow this forever.
+        if len(IDEMPOTENCY_CACHE) > 512:
+            for stale in list(IDEMPOTENCY_CACHE)[:256]:
+                IDEMPOTENCY_CACHE.pop(stale, None)
 DEMO_THREAD = None
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Browser clients are served from the static dev/app ports; any other loopback
+# port (a random dev server, a local tool) must not be trusted as a browser.
+ALLOWED_ORIGIN_PORTS = {5173, 5174}
 ALLOW_FILE_ORIGIN = os.environ.get("BRIDGE_ALLOW_FILE_ORIGIN") == "1"
 BRIDGE_TOKEN = str(os.environ.get("BRIDGE_TOKEN") or "").strip()
 BRIDGE_TLS_CERT = str(os.environ.get("BRIDGE_TLS_CERT") or "").strip()
@@ -318,6 +346,7 @@ def origin_allowed(origin: str) -> bool:
         and not parsed.username
         and not parsed.password
         and parsed.path in ("", "/")
+        and parsed.port in ALLOWED_ORIGIN_PORTS
     )
 
 
@@ -3828,6 +3857,33 @@ def add_event(payload: dict) -> dict:
         return event
 
 
+def record_read(resource: str, caller: str, resource_id: str = "", detail: str = ""):
+    """Append a who-read-what audit event (security review #7). Unlike
+    ``add_event`` this does not require a registered agent: the browser is a
+    valid reader too. Kept in the same event stream so it shows up in /health
+    and /events."""
+    with LOCK:
+        event = {
+            "id": int(STATE["nextEvent"]),
+            "ts": now_iso(),
+            "agentId": str(caller or ""),
+            "agentName": "",
+            "runtime": "",
+            "provider": "",
+            "kind": "read",
+            "action": "read " + str(resource),
+            "taskId": str(resource_id or ""),
+            "note": str(detail or "")[:500],
+            "external": False,
+        }
+        STATE["nextEvent"] += 1
+        STATE["events"].append(event)
+        if len(STATE["events"]) > 3000:
+            STATE["events"] = STATE["events"][-3000:]
+        save_state()
+        return event
+
+
 DEMO_SEQUENCE = [
     {
         "kind": "skill", "action": "读取仓库并生成变更计划",
@@ -3941,6 +3997,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "origin not allowed; serve the app from localhost"}, 403)
             return False
         client = str((self.client_address or ("",))[0] or "")
+        remote_authed = False
         if BRIDGE_TOKEN and client not in LOOPBACK_HOSTS:
             supplied = (self.headers.get("Authorization") or "").strip()
             if supplied.lower().startswith("bearer "):
@@ -3951,8 +4008,62 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "missing or invalid bridge token",
                                 "code": "unauthorized"}, 401)
                 return False
+            remote_authed = True
         self.allowed_origin = origin
+        # A browser request carries a trusted Origin; a CLI/agent/curl request
+        # does not. Only the former is trusted to see all mission data. The
+        # latter must authenticate as a specific agent (and reads are then
+        # filtered to that agent's missions).
+        self.browser = bool(origin) or remote_authed
+        self.agent = None
         return True
+
+    def _authenticate_agent(self):
+        """Return the agent dict when X-Agent-Id + a valid HMAC signature are
+        present, else None. GET bodies are empty; POST bodies arrive via
+        ``raw_body`` set by ``read_json``."""
+        agent_id = (self.headers.get("X-Agent-Id") or "").strip()
+        if not agent_id:
+            return None
+        agent = find_agent(agent_id)
+        if not agent:
+            return None
+        signature = (self.headers.get("X-Agent-Signature") or "").strip()
+        timestamp = (self.headers.get("X-Agent-Timestamp") or "").strip()
+        ok, _reason = verify_agent_request(
+            agent, getattr(self, "raw_body", b""), signature, timestamp)
+        if not ok:
+            return None
+        return agent
+
+    def _visible_mission_ids(self):
+        """Mission ids this caller may read. Browser → all; agent → its own."""
+        if self.browser or not self.agent:
+            return None
+        if not MISSION_STORE:
+            return set()
+        agent_id = self.agent.get("id")
+        return {
+            m.get("id") for m in MISSION_STORE.data.get("missions", [])
+            if any(x.get("id") == agent_id for x in (m.get("members") or []))
+        }
+
+    def _member_of(self, mission_id):
+        if self.browser:
+            return True
+        if not self.agent:
+            return False
+        visible = self._visible_mission_ids()
+        return visible is None or mission_id in visible
+
+    def _require_browser_write(self):
+        """Mission/company writes are browser-only. Agents act through /mcp,
+        never raw REST. Returns True if allowed, otherwise sends the error."""
+        if self.browser:
+            return True
+        self.send_json({"error": "write access is browser-only; agents use /mcp",
+                        "code": "forbidden"}, 403)
+        return False
 
     def cors(self):
         if self.allowed_origin:
@@ -3963,7 +4074,7 @@ class Handler(BaseHTTPRequestHandler):
             "Access-Control-Allow-Headers",
             "Content-Type, Authorization, X-Agent-Office-Token, X-Update-Token, X-Filename, "
             "X-Mime, X-Mission-Id, X-Conversation-Id, X-Uploaded-By, X-Agent-Id, "
-            "X-Agent-Signature, X-Agent-Timestamp",
+            "X-Agent-Signature, X-Agent-Timestamp, Idempotency-Key",
         )
         self.send_header("Cache-Control", "no-store")
 
@@ -4090,6 +4201,8 @@ class Handler(BaseHTTPRequestHandler):
                         "fileName": filename}, 202)
 
     def handle_file_upload(self):
+        if not self._require_browser_write():
+            return
         if not MISSION_STORE:
             self.send_json({"error": "mission store is not available"}, 503)
             return
@@ -4257,6 +4370,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(payload)
 
     def handle_mission_action(self, path, body):
+        if not self._require_browser_write():
+            return
         if not MISSION_STORE:
             self.send_json({"error": "mission store is not available",
                             "code": "no_missions"}, 503)
@@ -4269,6 +4384,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, **result})
                 return
             if path == "/missions":
+                idem_key = (self.headers.get("Idempotency-Key") or "").strip()
+                cached = idempotency_get(idem_key)
+                if cached:
+                    self.send_json(cached["body"], cached["status"])
+                    return
                 directory = mission_agent_directory()
                 with MISSION_STORE.lock:
                     mission = MISSION_STORE.create_mission(body, directory)
@@ -4279,8 +4399,9 @@ class Handler(BaseHTTPRequestHandler):
                     elif mission.get("autoDiscuss") and auto_state.get("status") != "scheduled":
                         start_mission_discussion(mission["id"], provider_id)
                     mission = MISSION_STORE.get_mission(mission["id"])
-                self.send_json({"ok": True, "mission": mission,
-                                "agents": directory}, 201)
+                payload = {"ok": True, "mission": mission, "agents": directory}
+                idempotency_store(idem_key, 201, payload)
+                self.send_json(payload, 201)
                 return
             if path.startswith("/missions/") and path.endswith("/archive"):
                 mission_id = path.split("/")[2]
@@ -4648,45 +4769,91 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "mission store is not available",
                                 "code": "no_missions"}, 503)
                 return
+            # Non-browser callers must prove an agent identity; reads are then
+            # scoped to that agent's missions (security review P0-1/P0-2).
+            if not self.browser:
+                self.agent = self._authenticate_agent()
+                if not self.agent:
+                    self.send_json({"error": "agent identity required; use /mcp "
+                                            "or the browser",
+                                    "code": "unauthorized"}, 401)
+                    return
+            caller = "browser" if self.browser else self.agent.get("id")
+            visible = self._visible_mission_ids()
             if path == "/missions/agents":
-                self.send_json({"agents": mission_agent_directory()})
+                agents = mission_agent_directory()
+                if visible is not None:
+                    agents = [a for a in agents if a.get("id") == caller]
+                record_read("agent directory", caller)
+                self.send_json({"agents": agents})
                 return
             if path == "/missions":
-                self.send_json({"missions": MISSION_STORE.list_missions()})
+                mission_rows = MISSION_STORE.list_missions()
+                if visible is not None:
+                    mission_rows = [m for m in mission_rows if m.get("id") in visible]
+                record_read("missions", caller)
+                self.send_json({"missions": mission_rows})
                 return
             if path == "/missions/overview":
                 payload = MISSION_STORE.snapshot()
                 payload["agents"] = mission_agent_directory()
+                if visible is not None:
+                    payload["agents"] = [a for a in payload["agents"]
+                                         if a.get("id") == caller]
                 ai_candidates = mission_provider_candidates("")
                 payload["ai"] = {
                     "available": bool(ai_candidates),
                     "provider": ai_candidates[0] if ai_candidates else "",
                 }
+                record_read("missions overview", caller)
                 self.send_json(payload)
                 return
             if path == "/conversations":
                 mission_id = (qs.get("missionId") or [""])[0]
                 kind = (qs.get("kind") or [""])[0]
-                self.send_json({"conversations":
-                                MISSION_STORE.list_conversations(mission_id, kind)})
+                if mission_id and not self._member_of(mission_id):
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
+                    return
+                conversations = MISSION_STORE.list_conversations(mission_id, kind)
+                if visible is not None:
+                    conversations = [c for c in conversations
+                                     if c.get("missionId") in visible]
+                record_read("conversations", caller, mission_id)
+                self.send_json({"conversations": conversations})
                 return
             if path == "/memories":
                 query = (qs.get("q") or [""])[0]
                 scope = (qs.get("scope") or ["all"])[0]
                 agent_id = (qs.get("agentId") or [""])[0]
-                self.send_json({"memories": MISSION_STORE.list_memories(query, scope, agent_id)})
+                memories = MISSION_STORE.list_memories(query, scope, agent_id)
+                if visible is not None:
+                    memories = [m for m in memories
+                                if m.get("missionId", "") in visible
+                                or (agent_id and m.get("agentId") == agent_id)]
+                record_read("memories", caller, agent_id)
+                self.send_json({"memories": memories})
                 return
             if path == "/model-calls":
                 mission_id = (qs.get("missionId") or [""])[0]
                 task_id = (qs.get("taskId") or [""])[0]
                 purpose = (qs.get("purpose") or ["all"])[0]
                 query = (qs.get("q") or [""])[0]
+                if mission_id and not self._member_of(mission_id):
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
+                    return
                 try:
                     limit = int((qs.get("limit") or ["120"])[0])
                 except ValueError:
                     limit = 120
-                self.send_json(MISSION_STORE.list_model_calls(
-                    mission_id, task_id, purpose, query, limit))
+                calls = MISSION_STORE.list_model_calls(
+                    mission_id, task_id, purpose, query, limit)
+                if visible is not None:
+                    calls = [c for c in calls
+                             if c.get("missionId", "") in visible]
+                record_read("model calls", caller, mission_id or task_id)
+                self.send_json(calls)
                 return
             if path == "/search":
                 query = (qs.get("q") or [""])[0]
@@ -4705,30 +4872,57 @@ class Handler(BaseHTTPRequestHandler):
                         str(a.get("role") or ""), " ".join(a.get("skills") or [])
                     ]).lower()
                 ][:limit]
+                record_read("search", caller, query)
                 self.send_json(payload)
                 return
             if path == "/approvals":
                 status = (qs.get("status") or [""])[0]
-                self.send_json({"approvals": MISSION_STORE.list_approvals(status)})
+                approvals = MISSION_STORE.list_approvals(status)
+                if visible is not None:
+                    approvals = [a for a in approvals
+                                 if a.get("missionId", "") in visible]
+                record_read("approvals", caller)
+                self.send_json({"approvals": approvals})
                 return
             if path == "/mission-tasks":
                 agent_id = (qs.get("agentId") or [""])[0]
+                if agent_id and agent_id != caller and not self.browser:
+                    self.send_json({"error": "cannot list another agent's tasks",
+                                    "code": "forbidden"}, 403)
+                    return
+                record_read("mission tasks", caller, agent_id)
                 self.send_json({"tasks": MISSION_STORE.list_tasks_for_agent(agent_id)})
                 return
             if path == "/files":
                 mission_id = (qs.get("missionId") or [""])[0]
                 conversation_id = (qs.get("conversationId") or [""])[0]
-                self.send_json({"artifacts": MISSION_STORE.list_artifacts(
-                    mission_id, conversation_id)})
+                if mission_id and not self._member_of(mission_id):
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
+                    return
+                artifacts = MISSION_STORE.list_artifacts(mission_id, conversation_id)
+                if visible is not None:
+                    artifacts = [a for a in artifacts
+                                 if a.get("missionId", "") in visible]
+                record_read("files", caller, mission_id or conversation_id)
+                self.send_json({"artifacts": artifacts})
                 return
             if path.startswith("/missions/") and path.endswith("/evidence/bundle"):
                 parts = path.split("/")
                 if len(parts) == 5 and parts[3] == "evidence":
+                    if visible is not None and parts[2] not in visible:
+                        self.send_json({"error": "not a member of this mission",
+                                        "code": "forbidden"}, 403)
+                        return
                     self.send_evidence(parts[2], bundle=True)
                     return
             if path.startswith("/missions/") and path.endswith("/evidence"):
                 parts = path.split("/")
                 if len(parts) == 4:
+                    if visible is not None and parts[2] not in visible:
+                        self.send_json({"error": "not a member of this mission",
+                                        "code": "forbidden"}, 403)
+                        return
                     self.send_evidence(parts[2])
                     return
             if path.startswith("/missions/") and path.endswith("/deliverables.zip"):
@@ -4737,6 +4931,10 @@ class Handler(BaseHTTPRequestHandler):
                     mission = MISSION_STORE.get_mission(parts[2])
                     if not mission:
                         self.send_json({"error": "mission not found"}, 404)
+                        return
+                    if visible is not None and parts[2] not in visible:
+                        self.send_json({"error": "not a member of this mission",
+                                        "code": "forbidden"}, 403)
                         return
                     artifacts = MISSION_STORE.list_artifacts(parts[2])
                     buf = io.BytesIO()
@@ -4772,11 +4970,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not mission:
                     self.send_json({"error": "mission not found"}, 404)
                     return
+                if visible is not None and mission.get("id") not in visible:
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
+                    return
                 self.send_json({"mission": mission})
                 return
             if path.startswith("/conversations/") and path.endswith("/messages"):
                 parts = path.split("/")
                 if len(parts) == 4:
+                    conversation = MISSION_STORE.find_conversation(parts[2])
+                    if not conversation:
+                        self.send_json({"error": "conversation not found"}, 404)
+                        return
+                    if visible is not None and conversation.get("missionId") not in visible:
+                        self.send_json({"error": "not a member of this mission",
+                                        "code": "forbidden"}, 403)
+                        return
                     try:
                         since = int((qs.get("since") or ["0"])[0])
                     except ValueError:
@@ -4794,6 +5004,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not conversation:
                     self.send_json({"error": "conversation not found"}, 404)
                     return
+                if visible is not None and conversation.get("missionId") not in visible:
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
+                    return
                 self.send_json({"conversation": conversation})
                 return
             if path.startswith("/files/") and path.endswith("/raw"):
@@ -4802,6 +5016,10 @@ class Handler(BaseHTTPRequestHandler):
                     artifact = MISSION_STORE.find_artifact(parts[2])
                     if not artifact or not Path(artifact.get("path") or "").exists():
                         self.send_json({"error": "artifact not found"}, 404)
+                        return
+                    if visible is not None and artifact.get("missionId") not in visible:
+                        self.send_json({"error": "not a member of this mission",
+                                        "code": "forbidden"}, 403)
                         return
                     raw = Path(artifact["path"]).read_bytes()
                     mime = artifact.get("mime") or "application/octet-stream"
@@ -4812,6 +5030,10 @@ class Handler(BaseHTTPRequestHandler):
                 artifact = MISSION_STORE.find_artifact(path.split("/")[2])
                 if not artifact:
                     self.send_json({"error": "artifact not found"}, 404)
+                    return
+                if visible is not None and artifact.get("missionId") not in visible:
+                    self.send_json({"error": "not a member of this mission",
+                                    "code": "forbidden"}, 403)
                     return
                 self.send_json({"artifact": MISSION_STORE.public_artifact(artifact)})
                 return
@@ -4951,6 +5173,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         if path == "/update/manual":
+            if not self._require_browser_write():
+                return
             self.handle_manual_update()
             return
         if path == "/files":
@@ -4988,6 +5212,16 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(result)
             return
+        # Everything past /mcp is a browser-facing write surface (missions,
+        # memories, conversations, approvals, providers, updates, company,
+        # messages, assignments, pairing). Agents act through /mcp, never raw
+        # REST, so these require a trusted browser Origin. The two agent-facing
+        # write endpoints (/events, /agents/<id>/heartbeat) are deliberately
+        # exempt: they only accept a known agent id and expose no read data.
+        agent_write = path == "/events" or (
+            path.startswith("/agents/") and path.endswith("/heartbeat"))
+        if not agent_write and not self._require_browser_write():
+            return
         if path == "/memories":
             if not MISSION_STORE:
                 self.send_json({"error": "mission store is not available"}, 503)
@@ -5023,12 +5257,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "dispatched": count, "company": public_company()})
                 return
             if path == "/messages":
+                idem_key = (self.headers.get("Idempotency-Key") or "").strip()
+                cached = idempotency_get(idem_key)
+                if cached:
+                    self.send_json(cached["body"], cached["status"])
+                    return
                 try:
                     message = company_post_message(body)
                 except ValueError as exc:
                     self.send_json({"error": str(exc)}, 400)
                     return
-                self.send_json({"ok": True, "message": message})
+                payload = {"ok": True, "message": message}
+                idempotency_store(idem_key, 200, payload)
+                self.send_json(payload)
                 return
             if path == "/assignments":
                 try:
@@ -5327,6 +5568,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         if not self.request_gate():
             return
+        if not self._require_browser_write():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         try:
@@ -5404,6 +5647,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if not self.request_gate():
+            return
+        if not self._require_browser_write():
             return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
