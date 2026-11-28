@@ -1287,7 +1287,9 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(status, 200, data)
             self.assertTrue(data["saved"])
             saved = json.loads(self.providers_path.read_text("utf-8"))
-            self.assertEqual(saved["kimi"]["apiKey"], "test-env-kimi")
+            # Environment keys must never be persisted to providers.json.
+            self.assertNotIn("apiKey", saved["kimi"])
+            self.assertTrue(saved["kimi"].get("useEnvironment"))
             self.assertEqual(saved["kimi"]["model"], "mock-kimi-env")
             self.assertNotIn("test-env-kimi", json.dumps(data))
         finally:

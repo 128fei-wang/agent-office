@@ -516,7 +516,10 @@ def configure_provider(provider_id: str, body):
         model_names = [meta.get("modelEnv", "")] + list(meta.get("modelEnvAliases") or [])
         env_model, _ = _first_env(model_names)
         if env_key:
-            merged["apiKey"] = env_key
+            # The environment key must stay in the environment: do not persist a
+            # copy to providers.json. provider_settings() resolves it at call time.
+            merged.pop("apiKey", None)
+            merged["useEnvironment"] = True
             merged["authType"] = "bearer" if env_key_name == "ANTHROPIC_AUTH_TOKEN" else "x-api-key"
         if env_base:
             merged["baseUrl"] = env_base
@@ -539,6 +542,10 @@ def configure_provider(provider_id: str, body):
                 raise ProviderCallError("base URL must be an http(s) URL")
             if parsed.username or parsed.password:
                 raise ProviderCallError("base URL must not contain credentials")
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme == "http" and host not in ("127.0.0.1", "localhost", "::1"):
+                raise ProviderCallError(
+                    "base URL must use https unless it points to localhost")
             old_base = str(existing.get("baseUrl") or meta.get("baseUrl") or "").strip().rstrip("/")
             new_base = base_url.rstrip("/")
             if (str(existing.get("apiKey") or "").strip() and old_base
@@ -2579,6 +2586,9 @@ def mcp_tool_call(agent_id, agent, name, arguments, identity_verified=False):
         mission, task = MISSION_STORE.find_task(task_id)
         if not task:
             return mcp_text_result({"ok": False, "error": "task not found"}, True)
+        if task.get("assigneeId") != agent_id:
+            return mcp_text_result(
+                {"ok": False, "error": "task is not assigned to this agent"}, True)
         return mcp_text_result({
             "task": MISSION_STORE.public_task(task, mission),
             "mission": MISSION_STORE.public_mission(mission, summary=True),
@@ -3866,11 +3876,6 @@ class Handler(BaseHTTPRequestHandler):
                 supplied = supplied[7:].strip()
             if not supplied:
                 supplied = (self.headers.get("X-Agent-Office-Token") or "").strip()
-            if not supplied:
-                try:
-                    supplied = (parse_qs(urlparse(self.path).query).get("token") or [""])[0]
-                except ValueError:
-                    supplied = ""
             if not hmac.compare_digest(supplied, BRIDGE_TOKEN):
                 self.send_json({"error": "missing or invalid bridge token",
                                 "code": "unauthorized"}, 401)

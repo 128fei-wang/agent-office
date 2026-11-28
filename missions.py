@@ -408,11 +408,19 @@ class MissionStore:
         self.evidence_error = str(evidence_error or "")[:300]
         self.lock = threading.RLock()
         self.load_error = ""
+        self._secure_upload_dir()
         self.data = self._load()
         if not self.data.get("_modelCallsBackfilled"):
             self._backfill_model_calls()
             self.data["_modelCallsBackfilled"] = True
             self._save()
+
+    def _secure_upload_dir(self):
+        try:
+            self.upload_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(self.upload_dir, 0o700)
+        except OSError:
+            pass
 
     def _empty(self):
         return {
@@ -486,9 +494,17 @@ class MissionStore:
         return self._empty()
 
     def _save(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self.path.parent, 0o700)
+        except OSError:
+            pass
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), "utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
         tmp.replace(self.path)
 
     def _next_message(self):
