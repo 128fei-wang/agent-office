@@ -112,8 +112,11 @@ See `tests/test_execution.py`, including network/home/write/env escape tests.
   after each call; unpriced calls store `cost: null`, not zero.
 - The model-call ledger and Mission Eval show costs and per-agent actual cost.
   Mixed currencies are reported as `MIXED` rather than summed.
-- Prices are user supplied, may be stale, and do not model cache/batch discounts
-  or taxes. The app never fetches vendor price lists automatically.
+- Prices are user supplied or a checked-in preset; DeepSeek Flash/Pro presets are
+  checked 2026-11-28 from the official page and include cache-hit/cache-miss,
+  output and peak/off-peak UTC windows. Chinese public holidays, cache-creation
+  premiums, taxes and Search/Fetch API fees are not modeled. The app never
+  fetches vendor price lists automatically.
 
 ## Evidence receipts (1.26.0, anchor and signing in 1.27.0)
 

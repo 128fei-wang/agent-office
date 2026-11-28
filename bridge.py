@@ -568,7 +568,7 @@ def configure_provider(provider_id: str, body):
 
     overrides[provider_id] = merged
     _write_provider_overrides(overrides)
-    if MISSION_STORE:
+    if MISSION_STORE and settings.get("pricingSource") == "file":
         try:
             MISSION_STORE.reprice_provider_calls(provider_id, settings.get("pricing") or {})
         except Exception:
