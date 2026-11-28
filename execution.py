@@ -766,7 +766,7 @@ def run_task_tests(task, artifacts, command="", allowed_root=None,
     except (TypeError, ValueError):
         timeout = TIMEOUT_SECONDS
     timeout = max(1, min(MAX_TIMEOUT_SECONDS, timeout))
-    workspace = Path(tempfile.mkdtemp(prefix="agent-office-testrun-")).resolve()
+    workspace = Path(tempfile.mkdtemp(prefix="agent_office_testrun_")).resolve()
     try:
         materialized = _materialize(artifacts, workspace, allowed_root)
         (workspace / ".tmp").mkdir(exist_ok=True)

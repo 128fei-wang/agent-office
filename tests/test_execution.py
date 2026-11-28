@@ -31,7 +31,7 @@ class ExecutionCapabilityTest(unittest.TestCase):
         self.assertIn("python-unittest", caps["runners"])
 
     def test_venv_symlink_runtime_root_is_allowed(self):
-        root = Path(tempfile.mkdtemp(prefix="ao-exec-venv-"))
+        root = Path(tempfile.mkdtemp(prefix="ao_exec_venv_"))
         bin_dir = root / "bin"
         bin_dir.mkdir()
         link = bin_dir / "python"
@@ -203,7 +203,7 @@ class SandboxExecutionTest(unittest.TestCase):
         self.assertEqual(report["files"], 0)
 
     def test_source_outside_allowed_root_is_rejected(self):
-        root = Path(tempfile.mkdtemp(prefix="ao-exec-root-"))
+        root = Path(tempfile.mkdtemp(prefix="ao_exec_root_"))
         report = execution.run_task_tests({}, [
             {"name": "test/passwd.py", "path": "/etc/passwd"},
         ], allowed_root=root)
