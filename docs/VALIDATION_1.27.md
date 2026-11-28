@@ -60,7 +60,7 @@ interpreter root, not the venv root. `execution._runtime_roots()` now includes
 both the symlink path and the resolved path, and a regression test covers a
 symlinked venv. This fix is included in 1.27.0.
 
-- GitHub Actions on Python 3.11 exposed a second real issue: `unittest discover -s <absolute workspace>` requires the start directory to be importable. The runner now writes a workspace-level `__init__.py`; this is covered by the same regression run.
+- GitHub Actions on Python 3.11 exposed a second real issue: `unittest discover -s` with an absolute workspace path was not importable (and the workspace name contained hyphens). The runner now uses a relative discovery root and an importable workspace name; this is covered by CI.
 
 ## Limitations
 
@@ -69,9 +69,11 @@ symlinked venv. This fix is included in 1.27.0.
 - pytest was installed in a throw-away `/tmp/ao-pytest-venv` for validation; the
   installed bridge still uses the system Python. To use pytest in normal product
   operation, install pytest into the bridge Python or use a custom test command.
-- macOS seatbelt was the only backend exercised locally. Linux CI was started
-  on GitHub (and exposed the unittest start-directory bug); Windows CI only
-  checks the explicit no-sandbox path, not a native Windows sandbox.
+- macOS seatbelt was the only backend exercised locally. GitHub Actions then ran
+  the executor on Linux with bubblewrap: **19 tests passed** (one macOS-only
+  seatbelt profile test skipped), including the real Node `node --test` runner.
+  Windows CI only checks the explicit no-sandbox path, not a native Windows
+  sandbox.
 - External Agent identity was not exercised against a live Codex/DeepSeek
   process in this run; the receipt source was a local mission member.
 
@@ -87,3 +89,17 @@ symlinked venv. This fix is included in 1.27.0.
    `POST /missions/<id>/tasks/<taskId>/run-tests`.
 
 The original bridge state and missions were not touched.
+
+## CI follow-up
+
+After pushing `verify/linux-ci-1.27`, GitHub Actions passed:
+
+- full Python suite: **120 tests OK** (1 macOS-only skip);
+- Linux sandbox: **19 tests OK**, including bubblewrap isolation and Node test
+  execution; `/tmp` is read-only inside bubblewrap;
+- browser smoke: **success**;
+- Windows compatibility: **success**, reporting `backend=none` explicitly (no
+  native Windows sandbox).
+
+The Linux run found and drove fixes for three real issues: absolute unittest
+discovery, a hyphenated workspace name and a writable `/tmp` inside bubblewrap.

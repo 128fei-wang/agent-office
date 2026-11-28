@@ -12,10 +12,10 @@
 | 功能/工具 | 8.9 | 9.8 | 任务、讨论、审批、模型调用、记忆、群聊、MCP、外部 Agent、升级、跨平台测试执行、证据回执、价格表与 MCP HMAC 签名已打通；公钥身份签名仍缺 |
 | UI/布局/动画 | 9.0 | 9.8 | 真实模式与演示共用角色语言、路径、会议/审批/交付状态；日间/夜间与移动布局已验收 |
 | 数据可信 | 8.8 | 9.8 | Token 和成本来自真实 provider 响应与用户价格表，交付文件有哈希/语法证据，汇报有本机 HMAC 回执与哈希链；价格表由用户维护，外部公钥身份和独立复核未完成 |
-| 工程/安全 | 7.9 | 9.8 | 120 个 Python 测试（含沙箱逃逸/证据篡改/跨平台测试）、134 项任务 UI 检查、28 个浏览器页 E2E；bridge 仍是大型单文件，未做多租户，TLS 为可选 |
-| 生产执行 | 7.5 | 9.8 | macOS seatbelt 已实测；Linux bubblewrap 有预检与 CI 设计但本机未实机验证；支持 Python unittest/pytest、Node --test 和允许列表自定义命令；Windows 无沙箱、公钥身份仍未做 |
+| 工程/安全 | 8.0 | 9.8 | 120 个 Python 测试、Linux CI 19 项沙箱测试、Windows 兼容 job、134 项任务 UI 检查、28 个浏览器页 E2E；bridge 仍是大型单文件，未做多租户，TLS 为可选 |
+| 生产执行 | 7.7 | 9.8 | macOS seatbelt 已实测；Linux bubblewrap 已在 GitHub CI 实跑 19 项（含 Node --test）；支持 Python unittest/pytest、Node 和允许列表自定义命令；Windows 原生沙箱仍无、公钥身份仍未做 |
 | **综合（Agent 控制台）** | **8.7** | **9.8** | 产品形态、可视化和任务闭环已到可演示/可试用水平 |
-| **综合（生产执行平台）** | **7.5** | **9.8** | 执行与证据明显补齐；仍不是 OpenHands 级通用执行平台，也没有公钥身份签名/Windows 沙箱 |
+| **综合（生产执行平台）** | **7.7** | **9.8** | 执行与证据继续补齐；仍不是 OpenHands 级通用执行平台，也没有公钥身份签名/Windows 原生沙箱 |
 
 ## 9.8 关闭计划：卡口、责任和验收
 
@@ -70,7 +70,8 @@
 - **执行预检**：Linux bubblewrap 增加真实 preflight；无法创建用户命名空间时返回 `unavailable`，不伪装成测试失败或降级执行。
 - **重启恢复**：bridge 启动时把仍为 running/queued 的 autoRun/discussion 标为 interrupted，避免界面永久卡在进行中；不会盲目重跑已花 token 的模型任务。
 - **真实闭环验证**：在临时状态副本中用真实 Anthropic 适配器跑了一个任务，512/5165 tokens、10 个交付文件、静态验证通过、证据回执有效、成本按验证价格表算出 0.010842 USD；沙箱 pytest 真实执行 6 项（3 通过/3 失败），失败确认为模型生成测试缺陷，任务未被假完成。详见 [VALIDATION_1.27](VALIDATION_1.27.md)。
-- **验收**：Python **120** 项（1 项 Node 跳过，本机无 Node）、`dev-missions` **134** 项、`dev-usage` 成本检查、`dev-ai-setup` 价格字段、`dev-external` 签名入口、28 个浏览器页通过；共享 bridge 的页面改为串行，避免并行计数竞态。
+- **CI 实测**：GitHub Actions 全绿——完整 Python 120 项、Linux bubblewrap 19 项（含 Node `node --test`，`/tmp` 只读）、Windows 兼容 job、浏览器 smoke；Linux 实跑发现并修复了 unittest 绝对路径、带连字符工作区名和 bwrap `/tmp` 可写三个真实问题。
+- **验收**：Python **120** 项（本机 1 项 Node 跳过；Linux CI 已实跑 Node）、`dev-missions` **134** 项、`dev-usage` 成本检查、`dev-ai-setup` 价格字段、`dev-external` 签名入口、28 个浏览器页通过；共享 bridge 的页面改为串行，避免并行计数竞态。
 - **仍不声称**：HMAC 不是公钥/真实身份；锚点不能防止证据文件与锚点一起回滚，未做 Windows 沙箱、模型价格自动更新、多租户和 bridge 拆分。9.8 仍是目标。
 
 ## 1.26.0 验收证据

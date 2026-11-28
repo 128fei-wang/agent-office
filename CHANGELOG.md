@@ -7,13 +7,13 @@
 - **Signed MCP requests**: agents receive a one-time 32-byte signing secret on creation/claim. `X-Agent-Timestamp` + `X-Agent-Signature` sign the exact JSON-RPC body with HMAC-SHA256. Valid signatures mark evidence receipts `identityBasis: agent-hmac` and `identityVerified: true`; missing signatures remain self-declared, while invalid/expired/replayed signatures are rejected. Secrets can be rotated with `POST /agents/<id>/signing-key`; the UI exposes a signing-key action and never puts the secret in public agent data, browser storage or exports.
 - **Linux sandbox preflight**: bubblewrap is tested with a real namespace probe; if user namespaces are unavailable the result is `unavailable`, not a fake test failure or unsandboxed fallback.
 - **State hardening**: `bridge-state.json` is now written atomically with mode `0600` because it contains per-agent signing secrets.
-- **Validation fixes**: real pytest execution exposed a venv-symlink runtime-root bug, and GitHub Actions Python 3.11 exposed an absolute `unittest discover` start-directory bug; both are fixed with regression coverage.
+- **Validation fixes**: real pytest execution exposed a venv-symlink runtime-root bug; GitHub Actions Python 3.11 exposed unittest absolute-path/hyphenated-workspace issues; Linux bubblewrap exposed a writable `/tmp`. All are fixed with regression coverage.
 - **Restart recovery**: bridge startup marks auto-run/discussion states left `running`/`queued` as interrupted instead of leaving the UI stuck. Model work is not blindly restarted (to avoid duplicate spend); the mission can be resumed explicitly.
 - **Real validation**: a temporary state clone ran one real provider task (512/5165 tokens, 10 artifacts), produced a valid evidence receipt with a validation price table cost of 0.010842 USD, and a real pytest sandbox run found 3 passed / 3 failed model-generated tests. See `docs/VALIDATION_1.27.md`.
 
 ### Verified
 - Python: **120** tests pass (1 Node test skipped because Node.js is not installed on this machine).
-- `dev-missions.html`: **134** checks; `dev-demo-mode.html`: 88 checks; `dev-usage.html`, `dev-ai-setup.html` and `dev-external.html` cover cost and signing surfaces; browser runner: 28/28 pages.
+- **CI green**: full Python 120 tests; Linux bubblewrap 19 tests (including Node `node --test`, `/tmp` read-only); Windows compatibility; browser smoke. Locally `dev-missions.html`: **134** checks, `dev-demo-mode.html`: 88 checks, browser runner: 28/28 pages.
 - Cost is user-supplied and does not include cache/batch discounts or taxes. Replay protection is in-memory and resets on bridge restart.
 - Still not 9.8: HMAC is not public-key/real-world identity, whole-file evidence rollback is not prevented, Windows has no sandbox backend, Linux is not exercised on this machine, and model prices are not fetched automatically.
 

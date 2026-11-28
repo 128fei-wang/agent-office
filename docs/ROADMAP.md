@@ -58,7 +58,8 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Optional per-agent HMAC signing keys for MCP requests, rotation UI and receipt identity attestation (1.27.0).
 - [x] Optional provider price tables and real token cost accounting in the model-call ledger, usage and mission evaluation (1.27.0).
 - [ ] External-agent public-key/third-party attestation, rollback-proof evidence and independent evaluation; local HMAC receipts are not identity signatures (optional HMAC signing exists in 1.27.0).
-- [ ] Windows sandbox backend and automatic project-test execution.
+- [x] Linux bubblewrap real CI execution, including Node `node --test`, read-only `/tmp` and Python 3.11 discovery fixes (1.27.0).
+- [ ] Windows native sandbox backend and automatic project-test execution.
 - [ ] Fetch and update provider prices automatically; user-supplied prices/cost are done (1.27.0).
 - [ ] Durable queue/scheduler, checkpoints and idempotent resume.
 - [x] Workspace and agent memory with retrieval and prompt injection (1.21.0); citations and expiry remain open.
