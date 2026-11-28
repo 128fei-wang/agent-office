@@ -14,9 +14,11 @@ mission was created there.
   provider-reported model alias is intentionally not published).
 - Task: implement a small model/cost/evidence/sandbox acceptance package,
   including a pytest suite.
-- Only a **validation price table** of `1.00 USD / 1M input` and
-  `2.00 USD / 1M output` was set. It is not a vendor quote; it verifies the
-  formula end to end.
+- The run stored a **validation-only price table** of `1.00 USD / 1M input`
+  and `2.00 USD / 1M output` to verify the formula. That is not a vendor quote.
+  For reference, DeepSeek Flash official rates (checked 2026-11-28:
+  <https://api-docs.deepseek.com/quick_start/pricing>) give a different figure,
+  shown below.
 - No network access was allowed inside the test sandbox.
 
 ## Result
@@ -31,7 +33,8 @@ mission was created there.
 | Evidence receipt | **1 receipt**, attestation `bridge-local-hmac` / `local-member` / identity verified |
 | Evidence chain | **valid**, no issues |
 | Model-call ledger | 1 call, 0 failures, 5,677 total tokens |
-| Cost | **0.010842 USD** from the validation prices (1 × 512/1M + 2 × 5,165/1M) |
+| Cost (run table) | **0.010842 USD** from the synthetic 1/2 validation prices |
+| Cost (DeepSeek Flash reference) | **0.0031758 USD off-peak** (Saturday) / **0.0063516 USD peak**, cache-miss, no cache-hit tokens reported |
 | Sandbox runner | `python-pytest`, macOS seatbelt, network denied |
 | Sandbox test counts | **6 tests: 3 passed, 3 failed**, exit 1 |
 
@@ -65,7 +68,10 @@ symlinked venv. This fix is included in 1.27.0.
 ## Limitations
 
 - One synthetic mission and one real model call; not a statistical benchmark.
-- The cost is computed with a **test price table**, not a vendor price.
+- The stored run cost uses the **test price table**; the DeepSeek reference
+  figure is a recomputation using official off-peak/peak cache-miss rates and
+  assumes no cache-hit tokens. The product now ships a DeepSeek price preset
+  with source/date and cached/peak fields.
 - pytest was installed in a throw-away `/tmp/ao-pytest-venv` for validation; the
   installed bridge still uses the system Python. To use pytest in normal product
   operation, install pytest into the bridge Python or use a custom test command.

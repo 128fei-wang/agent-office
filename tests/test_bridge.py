@@ -1244,6 +1244,31 @@ class BridgeTest(unittest.TestCase):
         finally:
             self.providers_path.write_text(original, "utf-8")
 
+    def test_deepseek_preset_pricing_is_exposed(self):
+        original = self.providers_original
+        try:
+            status, data = self.request("/providers/deepseek/configure", "POST", {
+                "apiKey": "test-openai",
+                "baseUrl": "http://127.0.0.1:%d/v1" % self.mock_port,
+                "model": "deepseek-flash",
+            })
+            self.assertEqual(status, 200, data)
+            status, catalog = self.request("/providers")
+            row = next(p for p in catalog["providers"] if p["id"] == "deepseek")
+            self.assertEqual(row["pricingSource"], "preset")
+            self.assertEqual(row["pricing"]["inputPerMillion"], 0.15)
+            self.assertEqual(row["pricing"]["cachedInputPerMillion"], 0.003)
+            self.assertEqual(row["pricing"]["outputPerMillion"], 0.6)
+            self.assertEqual(row["pricing"]["currency"], "USD")
+            self.assertIn("deepseek.com", row["pricingPreset"]["source"])
+            status, tested = self.request("/providers/deepseek/test", "POST", {})
+            self.assertEqual(status, 200, tested)
+            self.assertGreater(tested["cost"], 0)
+            self.assertEqual(tested["currency"], "USD")
+            self.assertEqual(tested["priceSource"], "preset")
+        finally:
+            self.providers_path.write_text(original, "utf-8")
+
     def test_provider_environment_detection_and_save(self):
         original = self.providers_original
         try:

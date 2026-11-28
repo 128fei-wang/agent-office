@@ -182,6 +182,8 @@ rotated with `POST /agents/<id>/signing-key`.
   caps, traversal, symlinks, custom commands and Linux command construction.
 - `tests/test_missions.py` — cost summaries, per-task costs, reprice and restart
   recovery.
+- `tests/test_pricing.py` — DeepSeek presets, cache hit/miss, peak windows and
+  invalid price tables.
 - `dev-missions.html` — verifies the UI panel, evidence receipt surface, custom
   test command, endpoint path and mocked chain state.
 - `dev-demo-mode.html` — verifies the demo/real surfaces remain aligned.

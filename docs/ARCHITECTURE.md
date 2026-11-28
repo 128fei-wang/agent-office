@@ -97,7 +97,7 @@ flowchart LR
 | `verification.py` | deterministic delivery evidence: file existence/hashes, placeholder rejection, JSON/Python/JS/Shell/HTML/CSS syntax checks; never executes app code |
 | `execution.py` | opt-in sandboxed test execution (macOS seatbelt / Linux bubblewrap), Python unittest/pytest, Node --test, allowlisted custom commands; no unsandboxed fallback |
 | `evidence.py` | HMAC-signed, hash-chained report receipts, artifact hashes, verification and JSON bundles; local tamper evidence only |
-| provider pricing | optional per-million token prices in `providers.json`; the bridge computes cost from real token usage; unpriced calls stay null |
+| `pricing.py` | provider price tables (including DeepSeek cache-hit/miss, peak/off-peak presets) and token-cost math; unpriced calls stay null |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
 | `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files, execution, evidence, updates and MCP JSON-RPC |
 | `trace.css` / `hiring.css` / `external.css` / `update.css` / `missions.css` / `features.css` | feature-specific styling |

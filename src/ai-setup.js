@@ -260,6 +260,8 @@
         baseUrl: provider.baseUrl || "",
         model: provider.model || "",
         useEnvironment: !!provider.detected,
+        pricingSource: provider.pricingSource || "none",
+        pricingPreset: provider.pricingPreset || {},
         pricing: {
           inputPerMillion: provider.pricing && provider.pricing.inputPerMillion != null ?
             provider.pricing.inputPerMillion : "",

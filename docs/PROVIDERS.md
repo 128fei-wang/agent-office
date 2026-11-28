@@ -239,6 +239,29 @@ external event that was recorded. It does not mutate simulated task status.
 | Empty response | The provider returned no text (safety block/tool-only response) |
 | Browser says page blocked | Serve the app from localhost; `file://` is blocked by default |
 
+## DeepSeek official reference prices
+
+Checked 2026-11-28 from <https://api-docs.deepseek.com/quick_start/pricing>.
+Prices are USD per 1M tokens; peak is 2× off-peak. Peak hours are 01:00–04:00
+and 06:00–10:00 UTC, Monday–Friday, excluding Chinese public holidays. The app
+models the weekday/time window but **not Chinese public holidays**.
+
+| Model | Cache hit off-peak / peak | Cache miss off-peak / peak | Output off-peak / peak |
+| --- | --- | --- | --- |
+| `deepseek-flash` | 0.003 / 0.006 | 0.15 / 0.30 | 0.60 / 1.20 |
+| `deepseek-v4-pro` | 0.022 / 0.044 | 0.66 / 1.32 | 1.98 / 3.96 |
+
+- `deepseek-chat` is treated as the legacy Flash alias and uses the Flash table.
+- Cache-hit tokens are read from `prompt_cache_hit_tokens` /
+  `prompt_tokens_details.cached_tokens`; cache-miss tokens use the normal input
+  price.
+- The bridge stores `cachedTokensIn`, `peak`, `priceSource` and `cost` on each
+  model call. A user price table overrides the preset.
+- Search API / Fetch API charges ($0.75 per 1,000 successful requests) and
+  file-parse/OCR/speech charges are not model-token costs and are not included.
+- Anthropic-style usage counts cache creation as normal input; the app does not
+  model Anthropic's cache-creation premium.
+
 ## Optional price table
 
 AI setup → provider → Advanced exposes **Price table (optional)**. You can also

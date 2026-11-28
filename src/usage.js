@@ -256,6 +256,12 @@
         '<div><span>Context</span><b>~' + fmt(call.contextTokens) + ' tokens · ' +
         fmt(Number(call.promptChars || 0) + Number(call.systemChars || 0)) + ' chars</b></div>' +
         '<div><span>Tokens in / out</span><b>' + fmt(call.tokensIn) + ' / ' + fmt(call.tokensOut) + '</b></div>' +
+        '<div><span>' + esc(this.t("usageCached", "缓存命中输入")) + '</span><b>' +
+        fmt(call.cachedTokensIn || 0) + '</b></div>' +
+        '<div><span>' + esc(this.t("usagePeak", "峰时")) + '</span><b>' +
+        (call.peak ? esc(this.t("usagePeakYes", "是")) : esc(this.t("usagePeakNo", "否"))) + '</b></div>' +
+        '<div><span>' + esc(this.t("usagePriceSource", "价格来源")) + '</span><b>' +
+        esc(call.priceSource || "—") + '</b></div>' +
         '<div><span>Latency</span><b>' + (call.durationMs || 0) + ' ms</b></div>' +
         '<div><span>' + esc(this.t("usageCost", "成本")) + '</span><b>' +
         esc(fmtCost(call.cost, call.currency)) + '</b></div>' +

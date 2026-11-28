@@ -56,6 +56,7 @@ try:
     import execution as test_execution
 except Exception:  # sandboxed test execution is optional
     test_execution = None
+import pricing as pricing_engine
 try:
     import evidence as evidence_module
 except Exception:  # evidence receipts are optional for old installations
@@ -327,39 +328,8 @@ def load_provider_overrides():
         return {}, str(exc)[:200]
 
 
-def normalize_pricing(raw):
-    """Validate a per-million-token price table from providers.json."""
-    if not isinstance(raw, dict):
-        return {}
-    try:
-        price_in = float(raw.get("inputPerMillion") or 0)
-        price_out = float(raw.get("outputPerMillion") or 0)
-    except (TypeError, ValueError):
-        return {}
-    if price_in < 0 or price_out < 0 or price_in > 1000000 or price_out > 1000000:
-        return {}
-    if price_in == 0 and price_out == 0:
-        return {}
-    currency = re.sub(r"[^A-Z]", "", str(raw.get("currency") or "USD").upper())[:8]
-    return {
-        "inputPerMillion": round(price_in, 6),
-        "outputPerMillion": round(price_out, 6),
-        "currency": currency or "USD",
-    }
-
-
-def cost_for_tokens(settings, tokens_in, tokens_out):
-    pricing = (settings or {}).get("pricing") or {}
-    if not isinstance(pricing, dict) or not pricing:
-        return None
-    try:
-        price_in = float(pricing.get("inputPerMillion") or 0)
-        price_out = float(pricing.get("outputPerMillion") or 0)
-    except (TypeError, ValueError):
-        return None
-    cost = (max(0, int(tokens_in or 0)) / 1000000.0) * price_in + \
-           (max(0, int(tokens_out or 0)) / 1000000.0) * price_out
-    return round(cost, 8)
+normalize_pricing = pricing_engine.normalize_pricing
+cost_for_tokens = pricing_engine.cost_for_tokens
 
 
 def _first_env(names):
@@ -409,6 +379,17 @@ def provider_settings(provider_id: str, overrides=None):
     if not auth_type:
         auth_type = "bearer" if key_env == "ANTHROPIC_AUTH_TOKEN" else "x-api-key"
     pricing = normalize_pricing(cfg.get("pricing"))
+    pricing_source = "file" if pricing else "none"
+    pricing_preset = {}
+    if not pricing and not cfg.get("pricingDisabled"):
+        pricing = pricing_engine.preset_for_model(provider_id, model)
+        if pricing:
+            pricing_source = "preset"
+            pricing_preset = {
+                "source": pricing.get("source", ""),
+                "checkedAt": pricing.get("checkedAt", ""),
+                "note": pricing.get("note", ""),
+            }
     return {
         "id": provider_id,
         "name": meta["name"],
@@ -431,7 +412,8 @@ def provider_settings(provider_id: str, overrides=None):
         "modelEnvName": model_env,
         "modelSource": model_source,
         "pricing": pricing,
-        "pricingSource": "file" if pricing else ("none" if "pricing" not in cfg else "invalid"),
+        "pricingSource": pricing_source,
+        "pricingPreset": pricing_preset,
         "skills": list(meta.get("skills", [])),
         "color": meta.get("color", "#b58cff"),
         "note": meta.get("note", ""),
@@ -561,10 +543,12 @@ def configure_provider(provider_id: str, body):
         pricing = normalize_pricing(body.get("pricing"))
         if pricing:
             merged["pricing"] = pricing
+            merged.pop("pricingDisabled", None)
         else:
             merged.pop("pricing", None)
     if body.get("clearPricing"):
         merged.pop("pricing", None)
+        merged["pricingDisabled"] = True
 
     candidate = dict(overrides)
     candidate[provider_id] = merged
@@ -666,6 +650,7 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
     base = settings["baseUrl"].rstrip("/")
     protocol = settings["protocol"]
     key = settings["apiKey"]
+    cached_tokens = 0
 
     if protocol == "openai":
         messages = []
@@ -683,6 +668,9 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         usage = data.get("usage") or {}
         tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
         tokens_out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+        details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+        cached_tokens = int(usage.get("prompt_cache_hit_tokens") or
+                            details.get("cached_tokens") or 0)
     elif protocol == "anthropic":
         payload = {
             "model": model,
@@ -720,7 +708,12 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
             except ProviderCallError:
                 pass
         usage = data.get("usage") or {}
-        tokens_in = int(usage.get("input_tokens") or 0)
+        cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        cache_creation = int(usage.get("cache_creation_input_tokens") or 0)
+        cached_tokens = cache_read
+        # Anthropic-style usage reports uncached input_tokens separately from
+        # cache reads/writes; count all of them in the visible input total.
+        tokens_in = int(usage.get("input_tokens") or 0) + cache_read + cache_creation
         tokens_out = int(usage.get("output_tokens") or 0)
     elif protocol == "gemini":
         payload = {
@@ -737,6 +730,7 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         usage = data.get("usageMetadata") or {}
         tokens_in = int(usage.get("promptTokenCount") or 0)
         tokens_out = int(usage.get("candidatesTokenCount") or 0)
+        cached_tokens = int(usage.get("cachedContentTokenCount") or 0)
     else:
         raise ProviderCallError("unsupported provider protocol: " + protocol)
 
@@ -744,6 +738,7 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
     if not text:
         raise ProviderCallError("provider returned an empty response")
     pricing = settings.get("pricing") or {}
+    now = datetime.datetime.now(datetime.timezone.utc)
     return {
         "text": text,
         "model": model,
@@ -751,8 +746,11 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         "protocol": protocol,
         "tokensIn": tokens_in,
         "tokensOut": tokens_out,
-        "cost": cost_for_tokens(settings, tokens_in, tokens_out),
+        "cachedTokensIn": min(max(0, cached_tokens), max(0, tokens_in)),
+        "cost": cost_for_tokens(settings, tokens_in, tokens_out, cached_tokens, now),
         "currency": str(pricing.get("currency") or ""),
+        "priceSource": str(settings.get("pricingSource") or ""),
+        "peak": pricing_engine.is_peak(pricing, now),
     }
 
 
@@ -1088,8 +1086,11 @@ def _record_model_call(provider_id, purpose, mission=None, task=None, agent_id="
             "contextTokens": max(1, round((int(prompt_chars or 0) + int(system_chars or 0)) / 3.2)),
             "tokensIn": int(usage.get("tokensIn") or 0),
             "tokensOut": int(usage.get("tokensOut") or 0),
+            "cachedTokensIn": int(usage.get("cachedTokensIn") or 0),
             "cost": usage.get("cost") if usage.get("cost") is not None else None,
             "currency": str(usage.get("currency") or ""),
+            "priceSource": str(usage.get("priceSource") or ""),
+            "peak": bool(usage.get("peak")),
             "durationMs": duration,
             "ok": not bool(error),
             "error": str(error or "")[:500],
@@ -5123,6 +5124,9 @@ class Handler(BaseHTTPRequestHandler):
                 "tokensOut": result["tokensOut"],
                 "cost": result.get("cost"),
                 "currency": result.get("currency") or "",
+                "cachedTokensIn": result.get("cachedTokensIn", 0),
+                "priceSource": result.get("priceSource") or "",
+                "peak": bool(result.get("peak")),
                 "durationMs": duration_ms,
             })
             return
@@ -5158,6 +5162,9 @@ class Handler(BaseHTTPRequestHandler):
             "tokensOut": result["tokensOut"],
             "cost": result.get("cost"),
             "currency": result.get("currency") or "",
+            "cachedTokensIn": result.get("cachedTokensIn", 0),
+            "priceSource": result.get("priceSource") or "",
+            "peak": bool(result.get("peak")),
             "durationMs": duration_ms,
             "event": event,
             "agent": public_agent(agent),

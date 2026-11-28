@@ -23,7 +23,7 @@ jobs:
           node-version: "20"
 
       - name: Python syntax
-        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py
+        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py pricing.py
 
       - name: JavaScript syntax
         run: |
@@ -94,7 +94,7 @@ jobs:
           python-version: "3.11"
 
       - name: Python syntax
-        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py
+        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py pricing.py
 
       - name: Windows reports no native sandbox
         shell: bash
