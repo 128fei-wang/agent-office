@@ -313,6 +313,11 @@ def origin_allowed(origin: str) -> bool:
     )
 
 
+def local_client_only(client) -> bool:
+    """Manual code install is a local action; a remote token must not install code."""
+    return not BRIDGE_TOKEN or str(client or "") in LOOPBACK_HOSTS
+
+
 def load_provider_overrides():
     """Read ~/.agent-office/providers.json. Keys stay in this process; errors are non-fatal."""
     if not PROVIDERS_FILE.exists():
@@ -534,7 +539,15 @@ def configure_provider(provider_id: str, body):
                 raise ProviderCallError("base URL must be an http(s) URL")
             if parsed.username or parsed.password:
                 raise ProviderCallError("base URL must not contain credentials")
-            merged["baseUrl"] = base_url.rstrip("/")
+            old_base = str(existing.get("baseUrl") or meta.get("baseUrl") or "").strip().rstrip("/")
+            new_base = base_url.rstrip("/")
+            if (str(existing.get("apiKey") or "").strip() and old_base
+                    and new_base != old_base
+                    and not body.get("confirmBaseUrlChange")):
+                raise ProviderCallError(
+                    "changing the base URL while an API key is stored sends that key "
+                    "to a new host; resend with confirmBaseUrlChange=true")
+            merged["baseUrl"] = new_base
     if "model" in body:
         model = _provider_text(body.get("model"), 200, "model")
         if model:
@@ -822,14 +835,49 @@ def connect_provider(provider_id: str):
         return agent, created
 
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
+STATE_LOAD_ERROR = ""
+
+
+def _quarantine_file(path, label="state"):
+    """Move a corrupt state file aside so it is never silently overwritten."""
+    try:
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+        target = path.with_name(path.name + ".corrupt-" + stamp)
+        suffix = 1
+        while target.exists():
+            suffix += 1
+            target = path.with_name(path.name + ".corrupt-" + stamp + "-" + str(suffix))
+        os.replace(path, target)
         try:
-            os.chmod(STATE_FILE, 0o600)
+            os.chmod(target, 0o600)
         except OSError:
             pass
+        return str(target)
+    except OSError:
+        return ""
+
+
+def load_state(path=None) -> dict:
+    """Load bridge state; a corrupt file is quarantined, never silently replaced."""
+    global STATE_LOAD_ERROR
+    path = Path(path or STATE_FILE)
+    STATE_LOAD_ERROR = ""
+    if path.exists():
         try:
-            data = json.loads(STATE_FILE.read_text("utf-8"))
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        raw = None
+        try:
+            raw = path.read_text("utf-8")
+        except OSError as exc:
+            STATE_LOAD_ERROR = "state file is unreadable: %s" % str(exc)[:200]
+        if raw is not None:
+            data = None
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                STATE_LOAD_ERROR = "state file is corrupt: %s" % str(exc)[:200]
             if isinstance(data, dict):
                 data.setdefault("agents", [])
                 data.setdefault("events", [])
@@ -841,8 +889,13 @@ def load_state() -> dict:
                 data.setdefault("messages", [])
                 data.setdefault("messageSeq", 0)
                 return data
-        except Exception:
-            pass
+            if data is not None and not STATE_LOAD_ERROR:
+                STATE_LOAD_ERROR = "state file must contain a JSON object"
+        if STATE_LOAD_ERROR:
+            quarantined = _quarantine_file(path)
+            if quarantined:
+                STATE_LOAD_ERROR += "; quarantined to " + quarantined
+            print("bridge state error: " + STATE_LOAD_ERROR, file=sys.stderr)
     return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": [],
             "assignments": [], "company": None, "messages": [], "messageSeq": 0}
 
@@ -1803,11 +1856,24 @@ def resume_mission_after_approval(approval):
         if not auto.get("enabled") or auto.get("status") != "waiting_boss":
             return
         task_id = approval.get("taskId") or ""
+        blocked_by_verification = False
         if approval.get("status") == "approved":
             if task_id:
                 _, task = MISSION_STORE.find_task(task_id)
                 if task and task.get("status") == "review":
-                    MISSION_STORE.update_task(task_id, {"status": "done"})
+                    if _verification_failed(task):
+                        blocked_by_verification = True
+                        MISSION_STORE.update_task(task_id, {
+                            "status": "blocked",
+                            "blockedReason": "交付验证未通过；审批已通过但任务不能标记完成",
+                        })
+                        MISSION_STORE.set_autorun(
+                            mission_id, status="error",
+                            error="交付验证未通过，审批已通过但任务未完成",
+                            finishedAt=now_iso(),
+                        )
+                    else:
+                        MISSION_STORE.update_task(task_id, {"status": "done"})
             provider = auto.get("provider") or ""
         else:
             MISSION_STORE.set_autorun(
@@ -1815,7 +1881,7 @@ def resume_mission_after_approval(approval):
                 finishedAt=now_iso(),
             )
             provider = ""
-    if approval.get("status") == "approved":
+    if approval.get("status") == "approved" and not blocked_by_verification:
         start_mission_autorun(mission_id, provider)
 
 
@@ -3873,6 +3939,10 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     def handle_manual_update(self):
+        if not local_client_only(str((self.client_address or ("",))[0] or "")):
+            self.send_json({"error": "manual update is local-only",
+                            "code": "local_only"}, 403)
+            return
         if not updater:
             self.send_json({"error": "updater module is not installed",
                             "code": "no_updater"}, 503)
@@ -4469,6 +4539,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(update_public_status())
             return
         if path == "/update/manual/token":
+            if not local_client_only(str((self.client_address or ("",))[0] or "")):
+                self.send_json({"error": "manual update is local-only",
+                                "code": "local_only"}, 403)
+                return
             if not updater:
                 self.send_json({"error": "updater module is not installed",
                                 "code": "no_updater"}, 503)
@@ -4698,6 +4772,9 @@ class Handler(BaseHTTPRequestHandler):
                         "available": bool(EVIDENCE_LOG),
                         "error": EVIDENCE_ERROR,
                     },
+                    "stateError": STATE_LOAD_ERROR,
+                    "missionsError": (getattr(MISSION_STORE, "load_error", "")
+                                      if MISSION_STORE else ""),
                     "time": now_iso(),
                 })
                 return

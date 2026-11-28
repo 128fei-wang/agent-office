@@ -22,6 +22,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -406,6 +407,7 @@ class MissionStore:
         self.evidence = evidence
         self.evidence_error = str(evidence_error or "")[:300]
         self.lock = threading.RLock()
+        self.load_error = ""
         self.data = self._load()
         if not self.data.get("_modelCallsBackfilled"):
             self._backfill_model_calls()
@@ -425,10 +427,38 @@ class MissionStore:
             "next": {"message": 1},
         }
 
+    def _quarantine_file(self):
+        """Move a corrupt missions file aside so it is never silently overwritten."""
+        try:
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+            target = self.path.with_name(self.path.name + ".corrupt-" + stamp)
+            suffix = 1
+            while target.exists():
+                suffix += 1
+                target = self.path.with_name(
+                    self.path.name + ".corrupt-" + stamp + "-" + str(suffix))
+            os.replace(self.path, target)
+            try:
+                os.chmod(target, 0o600)
+            except OSError:
+                pass
+            return str(target)
+        except OSError:
+            return ""
+
     def _load(self):
         if self.path.exists():
+            raw = None
             try:
-                data = json.loads(self.path.read_text("utf-8"))
+                raw = self.path.read_text("utf-8")
+            except OSError as exc:
+                self.load_error = "missions file is unreadable: %s" % str(exc)[:200]
+            if raw is not None:
+                data = None
+                try:
+                    data = json.loads(raw)
+                except Exception as exc:
+                    self.load_error = "missions file is corrupt: %s" % str(exc)[:200]
                 if isinstance(data, dict):
                     data.setdefault("missions", [])
                     data.setdefault("conversations", [])
@@ -446,8 +476,13 @@ class MissionStore:
                                 [int(m.get("seq") or 0) for m in data.get("messages", [])
                                  if m.get("conversationId") == conv.get("id")] or [0])
                     return data
-            except Exception:
-                pass
+                if data is not None and not self.load_error:
+                    self.load_error = "missions file must contain a JSON object"
+            if self.load_error:
+                quarantined = self._quarantine_file()
+                if quarantined:
+                    self.load_error += "; quarantined to " + quarantined
+                print("missions state error: " + self.load_error, file=sys.stderr)
         return self._empty()
 
     def _save(self):
