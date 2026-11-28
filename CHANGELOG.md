@@ -13,7 +13,7 @@
 
 ### Verified
 - Python: **129** tests pass (1 Node test skipped because Node.js is not installed on this machine).
-- **CI green**: full Python 120 tests; Linux bubblewrap 19 tests (including Node `node --test`, `/tmp` read-only); Windows compatibility; browser smoke. Locally `dev-missions.html`: **134** checks, `dev-demo-mode.html`: 88 checks, browser runner: 28/28 pages.
+- **CI green**: full Python 129 tests; Linux bubblewrap 19 tests (including Node `node --test`, `/tmp` read-only); Windows compatibility; browser smoke. Locally `dev-missions.html`: **134** checks, `dev-demo-mode.html`: 88 checks, browser runner: 28/28 pages.
 - Cost is user-supplied and does not include cache/batch discounts or taxes. Replay protection is in-memory and resets on bridge restart.
 - Still not 9.8: HMAC is not public-key/real-world identity, whole-file evidence rollback is not prevented, Windows has no sandbox backend, Linux is not exercised on this machine, and model prices are not fetched automatically.
 

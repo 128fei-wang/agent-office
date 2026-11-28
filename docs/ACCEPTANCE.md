@@ -70,7 +70,7 @@
 - **执行预检**：Linux bubblewrap 增加真实 preflight；无法创建用户命名空间时返回 `unavailable`，不伪装成测试失败或降级执行。
 - **重启恢复**：bridge 启动时把仍为 running/queued 的 autoRun/discussion 标为 interrupted，避免界面永久卡在进行中；不会盲目重跑已花 token 的模型任务。
 - **真实闭环验证**：在临时状态副本中用真实 Anthropic 适配器跑了一个任务，512/5165 tokens、10 个交付文件、静态验证通过、证据回执有效、成本按验证价格表算出 0.010842 USD；按 DeepSeek Flash 官方价重算为 0.0031758 USD（周六 off-peak）/ 0.0063516 USD（peak，均按 cache miss）；沙箱 pytest 真实执行 6 项（3 通过/3 失败），失败确认为模型生成测试缺陷，任务未被假完成。详见 [VALIDATION_1.27](VALIDATION_1.27.md)。
-- **CI 实测**：GitHub Actions 全绿——完整 Python 120 项、Linux bubblewrap 19 项（含 Node `node --test`，`/tmp` 只读）、Windows 兼容 job、浏览器 smoke；Linux 实跑发现并修复了 unittest 绝对路径、带连字符工作区名和 bwrap `/tmp` 可写三个真实问题。
+- **CI 实测**：GitHub Actions 全绿——完整 Python 129 项、Linux bubblewrap 19 项（含 Node `node --test`，`/tmp` 只读）、Windows 兼容 job、浏览器 smoke；Linux 实跑发现并修复了 unittest 绝对路径、带连字符工作区名和 bwrap `/tmp` 可写三个真实问题。
 - **验收**：Python **129** 项（本机 1 项 Node 跳过；Linux CI 已实跑 Node）、`dev-missions` **134** 项、`dev-usage` 成本检查、`dev-ai-setup` 价格字段、`dev-external` 签名入口、28 个浏览器页通过；共享 bridge 的页面改为串行，避免并行计数竞态。
 - **仍不声称**：HMAC 不是公钥/真实身份；锚点不能防止证据文件与锚点一起回滚，未做 Windows 沙箱、模型价格自动更新、多租户和 bridge 拆分。9.8 仍是目标。
 
