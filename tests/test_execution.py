@@ -136,7 +136,7 @@ class SandboxExecutionTest(unittest.TestCase):
                               "import unittest\n"
                               "class T(unittest.TestCase):\n"
                               "    def test_write(self):\n"
-                              "        with self.assertRaises(PermissionError):\n"
+                              "        with self.assertRaises(OSError):\n"
                               "            open(%r, 'w').write('escape')\n" % escape),
             ])
             self.assertEqual(report["status"], "passed", report["output"][-1500:])
