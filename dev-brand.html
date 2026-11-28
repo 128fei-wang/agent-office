@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brand check · Agent Office</title>
+<style>
+  :root { --bg:#050d14; --panel:#0b1821; --line:#1b3a4a; --text:#e8f0f8; --muted:#8fb3c4; --teal:#55d6c2; --amber:#f2b544; --pink:#ff7fa8; --purple:#b58cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:radial-gradient(900px 500px at 15% 0%, rgba(85,214,194,.12), transparent 60%), var(--bg); color:var(--text); font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  h1 { margin:0 0 4px; font:700 18px/1.2 "SFMono-Regular",Menlo,monospace; letter-spacing:2px; }
+  p.lead { margin:0 0 22px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }
+  .card { padding:14px; background:linear-gradient(180deg,rgba(13,24,35,.9),rgba(5,11,17,.94)); border:1px solid var(--line); border-radius:12px; }
+  .card h2 { margin:0 0 10px; font:600 10px/1.2 "SFMono-Regular",Menlo,monospace; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; }
+  .card img { display:block; max-width:100%; height:auto; }
+  .mark { width:96px; }
+  .tiny { width:32px; }
+  .logo { width:100%; }
+  .social { width:100%; }
+  .meta { margin-top:6px; color:var(--muted); font:10px/1.4 "SFMono-Regular",Menlo,monospace; }
+  pre { margin:24px 0 0; padding:16px; min-height:160px; background:#02070b; border:1px solid var(--line); border-radius:12px; color:var(--teal); font:12px/1.6 "SFMono-Regular",Menlo,monospace; white-space:pre-wrap; }
+  .swatches { display:flex; gap:8px; margin-top:10px; }
+  .swatches i { width:26px; height:26px; border-radius:6px; display:block; }
+</style>
+</head>
+<body>
+<h1>BRAND CHECK</h1>
+<p class="lead">本地 SVG / PNG / manifest / app icon 安装面自检。此页不需要 bridge。</p>
+<div class="grid">
+  <div class="card"><h2>Mark · 512</h2><img class="mark" id="mark" src="assets/brand/agent-office-mark.svg" alt="Agent Office mark"><div class="meta" id="markMeta">loading</div></div>
+  <div class="card"><h2>Favicon · 16 / 32</h2><img class="tiny" id="fav16" src="assets/brand/favicon-16.png" alt="favicon 16"><img class="tiny" id="fav32" src="assets/brand/favicon-32.png" alt="favicon 32"><div class="meta">PNG fallback + SVG</div></div>
+  <div class="card"><h2>App icon · 1024</h2><img class="mark" id="appicon" src="assets/brand/agent-office-app-icon.svg" alt="app icon"><div class="meta">macOS iconset source</div></div>
+  <div class="card"><h2>Touch · 180</h2><img class="mark" id="touch" src="assets/brand/apple-touch-icon.png" alt="apple touch icon"><div class="meta">full bleed</div></div>
+  <div class="card"><h2>PWA · 512</h2><img class="mark" id="pwa" src="assets/brand/icon-512.png" alt="PWA icon"><div class="meta">manifest any</div></div>
+  <div class="card"><h2>Maskable · 512</h2><img class="mark" id="maskable" src="assets/brand/icon-maskable-512.png" alt="maskable icon"><div class="meta">safe circle</div></div>
+  <div class="card" style="grid-column:span 2"><h2>Lockup · 1200×360</h2><img class="logo" id="logo" src="assets/brand/agent-office-logo.svg" alt="Agent Office logo"></div>
+  <div class="card" style="grid-column:span 2"><h2>Social · 1200×630</h2><img class="social" id="social" src="assets/brand/og-image.png" alt="Agent Office social card"></div>
+  <div class="card"><h2>Palette</h2><div class="swatches"><i style="background:#55d6c2"></i><i style="background:#f2b544"></i><i style="background:#ff7fa8"></i><i style="background:#b58cff"></i><i style="background:#07131d"></i></div><div class="meta">teal · amber · pink · purple · navy</div></div>
+</div>
+<pre id="out">RUNNING</pre>
+<script>
+(async () => {
+  const lines = [];
+  let failed = 0;
+  const check = (name, ok, detail) => {
+    if (!ok) failed += 1;
+    lines.push((ok ? "PASS " : "FAIL ") + name + (detail ? "  " + detail : ""));
+  };
+  const load = (id) => new Promise((resolve) => {
+    const img = document.getElementById(id);
+    if (img.complete && img.naturalWidth) return resolve(img);
+    img.addEventListener("load", () => resolve(img), { once: true });
+    img.addEventListener("error", () => resolve(img), { once: true });
+  });
+  try {
+    const ids = ["mark", "fav16", "fav32", "appicon", "touch", "pwa", "maskable", "logo", "social"];
+    const imgs = await Promise.all(ids.map(load));
+    const byId = Object.fromEntries(ids.map((id, i) => [id, imgs[i]]));
+    check("mark loads 512", byId.mark.naturalWidth === 512 && byId.mark.naturalHeight === 512,
+      byId.mark.naturalWidth + "×" + byId.mark.naturalHeight);
+    check("favicon 16 loads", byId.fav16.naturalWidth === 16, byId.fav16.naturalWidth + "×" + byId.fav16.naturalHeight);
+    check("favicon 32 loads", byId.fav32.naturalWidth === 32, byId.fav32.naturalWidth + "×" + byId.fav32.naturalHeight);
+    check("app icon 1024 loads", byId.appicon.naturalWidth === 1024, byId.appicon.naturalWidth + "×" + byId.appicon.naturalHeight);
+    check("apple touch 180 loads", byId.touch.naturalWidth === 180, byId.touch.naturalWidth + "×" + byId.touch.naturalHeight);
+    check("PWA 512 loads", byId.pwa.naturalWidth === 512, byId.pwa.naturalWidth + "×" + byId.pwa.naturalHeight);
+    check("maskable 512 loads", byId.maskable.naturalWidth === 512, byId.maskable.naturalWidth + "×" + byId.maskable.naturalHeight);
+    check("lockup 1200×360 loads", byId.logo.naturalWidth === 1200 && byId.logo.naturalHeight === 360,
+      byId.logo.naturalWidth + "×" + byId.logo.naturalHeight);
+    check("social 1200×630 loads", byId.social.naturalWidth === 1200 && byId.social.naturalHeight === 630,
+      byId.social.naturalWidth + "×" + byId.social.naturalHeight);
+
+    const manifest = await fetch("site.webmanifest", { cache: "no-store" }).then((r) => r.json());
+    check("manifest name", manifest.name === "Agent Office");
+    check("manifest theme", manifest.theme_color === "#07131d");
+    const icons = manifest.icons || [];
+    check("manifest icons", icons.length === 3 && icons.some((i) => i.purpose === "maskable"), String(icons.length));
+    check("manifest icon files", (await Promise.all(icons.map((i) => fetch(i.src, { cache: "no-store" }).then((r) => r.ok)))).every(Boolean));
+
+    const html = await fetch("index.html", { cache: "no-store" }).then((r) => r.text());
+    check("index manifest link", html.includes('rel="manifest" href="site.webmanifest"'));
+    check("index apple touch", html.includes('rel="apple-touch-icon"'));
+    check("index favicon svg", html.includes("agent-office-favicon.svg"));
+    check("index theme color", html.includes('name="theme-color" content="#07131d"'));
+    check("index social image", html.includes('property="og:image" content="assets/brand/og-image.png"'));
+    check("index brand mark", html.includes('class="brand-mark"') && html.includes("agent-office-mark.svg"));
+
+    const favicon = await fetch("favicon.svg", { cache: "no-store" }).then((r) => r.text());
+    check("root favicon 16 grid", favicon.includes('viewBox="0 0 16 16"'));
+    const mark = await fetch("assets/brand/agent-office-mark.svg", { cache: "no-store" }).then((r) => r.text());
+    check("mark palette", ["#55d6c2", "#f2b544", "#ff7fa8", "#b58cff"].every((c) => mark.includes(c)));
+    check("mark local only", !/(?:href|src)="https?:\/\/(?!www\.w3\.org)/.test(mark));
+    const sw = await fetch("sw.js", { cache: "no-store" }).then((r) => r.text());
+    check("install service worker", sw.includes('addEventListener("fetch"') && !sw.includes("cache.put"));
+    const main = await fetch("src/main.js", { cache: "no-store" }).then((r) => r.text());
+    check("service worker registered", main.includes("serviceWorker.register"));
+  } catch (error) {
+    check("exception", false, String(error && error.message || error));
+  }
+  document.getElementById("markMeta").textContent =
+    document.getElementById("mark").naturalWidth + "×" + document.getElementById("mark").naturalHeight;
+  document.getElementById("out").textContent = lines.join("\n") +
+    "\n\n" + (failed ? "FAIL " + failed : "ALL BRAND CHECKS PASS");
+  document.title = failed ? "FAIL" : "PASS";
+})();
+</script>
+</body>
+</html>

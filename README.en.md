@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="assets/brand/agent-office-logo.png" alt="Agent Office — see the team, ship the work" width="560">
+</p>
+
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Chat workspace](docs/CHAT_UI.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Delivery verification](docs/VERIFICATION.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [Brand](docs/BRAND.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Chat workspace](docs/CHAT_UI.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Delivery verification](docs/VERIFICATION.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
@@ -12,7 +16,7 @@
 
 A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, optional price tables (including DeepSeek cache/peak pricing) with real cost accounting, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, delivery verification with file hashes and syntax checks, sandboxed Python/Node test execution and tamper-evident evidence receipts, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, a two-pane group/DM chat workspace with QQ/WeChat styles, day/night themes and a mobile layout.
 
-No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
+No Node and no build step at runtime. The brand mark is a bundled local SVG/PNG; every character sprite and every piece of furniture is drawn in code.
 
 ![Agent Office](docs/screenshots/office.jpg)
 

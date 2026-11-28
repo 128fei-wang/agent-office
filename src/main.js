@@ -571,3 +571,14 @@
     });
   });
 })();
+
+/* Install identity: a network-only service worker makes the manifest
+ * installable without caching stale local UI. */
+if ("serviceWorker" in navigator &&
+    (location.protocol === "https:" ||
+     location.hostname === "127.0.0.1" ||
+     location.hostname === "localhost")) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}

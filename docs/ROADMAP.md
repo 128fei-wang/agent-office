@@ -59,6 +59,7 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Optional provider price tables and real token cost accounting in the model-call ledger, usage and mission evaluation (1.27.0).
 - [ ] External-agent public-key/third-party attestation, rollback-proof evidence and independent evaluation; local HMAC receipts are not identity signatures (optional HMAC signing exists in 1.27.0).
 - [x] Linux bubblewrap real CI execution, including Node `node --test`, read-only `/tmp` and Python 3.11 discovery fixes (1.27.0).
+- [x] Product mark, pixel wordmark, favicon/PWA/Apple touch/OG, macOS ICNS/Windows ICO, header/boot branding, brand guide and build pipeline (1.28.0).
 - [ ] Windows native sandbox backend and automatic project-test execution.
 - [ ] Fetch and update provider prices automatically; user-supplied prices/cost are done (1.27.0).
 - [ ] Durable queue/scheduler, checkpoints and idempotent resume.

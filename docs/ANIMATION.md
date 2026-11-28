@@ -1,6 +1,6 @@
 # Agent animation and task linkage
 
-> Updated: 2026-11-28 · Version 1.27.0
+> Updated: 2026-11-28 · Version 1.28.0
 
 The office is a state-driven animation system, not a video loop. Every character
 state comes from the simulation engine; task progress and agent state must stay

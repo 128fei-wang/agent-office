@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PAGES = sorted(path.name for path in ROOT.glob("dev-*.html"))
 SMOKE_PAGES = [
     "dev-check.html", "dev-consistency.html", "dev-paths.html",
-    "dev-actions.html", "dev-path-debug.html",
+    "dev-actions.html", "dev-path-debug.html", "dev-brand.html",
 ]
 # These pages read or mutate the shared local bridge (agents, missions, chats,
 # company state, memory). Running them in parallel makes counts flaky because

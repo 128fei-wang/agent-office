@@ -1,10 +1,37 @@
 # Delivery verification and evidence receipts
 
-> Version 1.27.0 · Updated 2026-11-28
+> Version 1.28.0 · Updated 2026-11-28
 
 Agent Office now separates a **model claim** from **delivery evidence**. A task
 can still be produced by a model, but the UI shows whether its files passed a
 local, deterministic check.
+
+## Brand assets and install surfaces (1.28.0)
+
+The product mark is a local, committed asset: a teal pixel A/office roof with
+three agent pixels, an amber crossbar and a completion check. The wordmark is
+drawn as SVG paths, not a system font.
+
+| Surface | Asset |
+| --- | --- |
+| Browser tab | `favicon.svg` (simplified 16×16), 16/32/48 PNG, `favicon.ico` |
+| iOS home screen | `assets/brand/apple-touch-icon.png` (180×180, full bleed) |
+| PWA | `site.webmanifest` → 192/512 `any`, 512 `maskable`; network-only `sw.js` |
+| Social | `assets/brand/og-image.png` (1200×630) via `og:image` / `twitter:image` |
+| macOS app | `assets/brand/AppIcon.icns` + 10-size iconset |
+| Windows | `assets/brand/favicon.ico` |
+| Header / boot | `assets/brand/agent-office-mark.svg` at 36px / 64px |
+
+All SVGs are self-contained: no remote images, fonts or `@import`. The runtime
+needs no build step; `scripts/build-icons.sh` is a maintainer tool that needs
+macOS `sips`/`iconutil` and Chromium. `tests/test_branding.py` verifies the file
+set, PNG dimensions, manifest icon resolution, index metadata, root-favicon
+parity, SVG locality, ICNS/ICO containers and iconset sizes. `dev-brand.html`
+loads the real assets in Chromium and checks their intrinsic dimensions.
+
+Current result: **139 Python tests pass** (1 Node test skipped), and the full
+browser suite passes **29/29** pages (including `dev-brand.html`; smoke subset
+6/6).
 
 ## Statuses
 

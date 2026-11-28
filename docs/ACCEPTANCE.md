@@ -1,6 +1,6 @@
 # Agent Office 验收评分卡
 
-> 版本：1.27.0 · 更新：2026-11-28
+> 版本：1.28.0 · 更新：2026-11-28
 >
 > **9.8 是目标，不是当前自评。** 1.24.0 起把“可视化 Agent 控制台”和“生产级 Agent 执行平台”分开打分。当前自评如下；没有交付证据的地方不写成 9.8。
 
@@ -8,13 +8,14 @@
 
 | 维度 | 当前 | 目标 | 说明 |
 |---|---:|---:|---|
-| 产品表达 | 9.0 | 9.8 | 一眼能说出“看见 AI 团队，把事做完”，真实/演示办公室与任务闭环有辨识度 |
+| 产品表达 | 9.1 | 9.8 | 一眼能说出“看见 AI 团队，把事做完”，真实/演示办公室与任务闭环有辨识度；1.28 补齐产品标识与品牌句 |
 | 功能/工具 | 8.9 | 9.8 | 任务、讨论、审批、模型调用、记忆、群聊、MCP、外部 Agent、升级、跨平台测试执行、证据回执、价格表与 MCP HMAC 签名已打通；公钥身份签名仍缺 |
-| UI/布局/动画 | 9.0 | 9.8 | 真实模式与演示共用角色语言、路径、会议/审批/交付状态；日间/夜间与移动布局已验收 |
+| UI/布局/动画 | 9.1 | 9.8 | 真实模式与演示共用角色语言、路径、会议/审批/交付状态；1.28 顶栏与启动屏使用同一产品标识，日间/夜间与移动布局已验收 |
 | 数据可信 | 8.8 | 9.8 | Token 和成本来自真实 provider 响应与用户价格表，交付文件有哈希/语法证据，汇报有本机 HMAC 回执与哈希链；价格表由用户维护，外部公钥身份和独立复核未完成 |
-| 工程/安全 | 8.0 | 9.8 | 129 个 Python 测试、Linux CI 19 项沙箱测试、Windows 兼容 job、134 项任务 UI 检查、28 个浏览器页 E2E；bridge 仍是大型单文件，未做多租户，TLS 为可选 |
+| 工程/安全 | 8.1 | 9.8 | 139 个 Python 测试、Linux CI 19 项沙箱测试、Windows 兼容 job、134 项任务 UI 检查、29 个浏览器页（6 项 smoke 含品牌页）；bridge 仍是大型单文件，未做多租户，TLS 为可选 |
+| 品牌/安装面 | 9.2 | 9.8 | 像素标识、字标、favicon、Apple touch、PWA（any/maskable + 网络直通 SW）、OG/Twitter、macOS ICNS、Windows ICO 全部本地打包；GitHub 社交预览仍需手动上传 |
 | 生产执行 | 7.7 | 9.8 | macOS seatbelt 已实测；Linux bubblewrap 已在 GitHub CI 实跑 19 项（含 Node --test）；支持 Python unittest/pytest、Node 和允许列表自定义命令；Windows 原生沙箱仍无、公钥身份仍未做 |
-| **综合（Agent 控制台）** | **8.7** | **9.8** | 产品形态、可视化和任务闭环已到可演示/可试用水平 |
+| **综合（Agent 控制台）** | **8.8** | **9.8** | 产品形态、可视化、品牌识别和任务闭环已到可演示/可试用水平 |
 | **综合（生产执行平台）** | **7.7** | **9.8** | 执行与证据继续补齐；仍不是 OpenHands 级通用执行平台，也没有公钥身份签名/Windows 原生沙箱 |
 
 ## 9.8 关闭计划：卡口、责任和验收
@@ -58,6 +59,17 @@
 | OpenHands / Codex 类 | 真实代码执行、仓库操作 | 多 Agent 办公室、任务群、审批和人类控制面更强；单机编码执行深度不如专用 coding agent |
 | Dify / Flowise / n8n | 可视化工作流、节点编排、集成生态 | “任务 + 团队 + 审批 + 办公室”体验更强；节点编排和集成数量不如工作流平台 |
 | CrewAI / AutoGen Studio | 多 Agent 编排框架 | 可视化办公室、真实任务工作台、Boss Inbox 和交付物归档更完整 |
+
+## 1.28.0 验收证据
+
+### 品牌标识与安装面（1.28.0）
+
+- **标识**：青色阶梯「A / 办公室屋顶」+ 三名粉/青/紫 Agent + 琥珀桌梁 + 右上完成勾；横版字标为像素字「AGENT / OFFICE.」，品牌句 **SEE THE TEAM. SHIP THE WORK.**，中文仍是「看见 AI 团队，把事做完。」
+- **安装识别**：根 `favicon.svg`（16×16 简化版）+ 16/32/48 PNG + `favicon.ico`；180×180 全出血 Apple touch；`site.webmanifest` 提供 192/512 `any` 与 512 `maskable`，并用网络直通 service worker 满足安装条件且不缓存旧界面；1200×630 `og-image.png` + `twitter:image`；1024 macOS `AppIcon.icns`（10 尺寸 iconset）与 Windows ICO。全部文件在仓库内，运行时不请求外部图片/字体。
+- **应用内**：顶栏 36px 标识替换旧 3×3 方块，启动屏显示 64px 标识；标识 CSS 只作用于 `.brand > .brand-mark`，不污染外部 Agent 的 `.ext-glyph.brand-mark`。日间/夜间、1440px/520px 截图已验证。
+- **可维护**：`docs/BRAND.md` 记录概念、色板、留白/最小尺寸、安装面和替换步骤；`scripts/build-icons.sh` + `scripts/render-svg.py` 从 SVG 重建全部 PNG/ICNS/ICO；产物提交进仓库，用户无需构建。
+- **验收**：Python **139** 项通过（1 项 Node 跳过）；`tests/test_branding.py` 校验 19 个品牌/安装文件、PNG 尺寸、manifest 图标可解析、index 的 favicon/Apple/PWA/OG/Twitter 元数据、根 favicon 与源一致、SVG 无远程引用、ICNS/ICO 容器、iconset 尺寸与品牌色；浏览器 smoke **6/6**（含 `dev-brand.html`），完整 **29/29** 页面通过。
+- **仍不声称**：GitHub 仓库 Social preview 需在 Settings 手动上传 `og-image.png`（REST API 无该设置）；标识不改变生产执行/身份/多租户等缺口，9.8 仍是目标。
 
 ## 1.27.0 验收证据
 
@@ -252,7 +264,7 @@ scripts/sync-local.sh
 ```bash
 python3 -m unittest discover -s tests
 bash scripts/check.sh
-# 浏览器自检：28 个 dev-*.html 页面
+# 浏览器自检：29 个 dev-*.html 页面
 ```
 
-当前结果：129 个 Python 测试通过（1 项 Node 测试因本机无 Node 跳过）；28 个浏览器自检页面全部通过；`dev-missions` 134 项、`dev-demo-mode` 88 项；开发版 bridge 1.27.0（安装版同步后同版本）。
+当前结果：139 个 Python 测试通过（1 项 Node 测试因本机无 Node 跳过）；浏览器 **29/29** 页面通过（smoke 6/6，含 `dev-brand.html`）；`dev-missions` 134 项、`dev-demo-mode` 88 项；开发版 bridge 1.28.0（安装版同步后同版本）。

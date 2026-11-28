@@ -97,6 +97,9 @@
       // Simulate the exact state from the reported incident: discussion finished, execution not started.
       mv.mission.discussion={status:'done'};
       mv.mission.autoRun={status:'off',completed:0,total:(mv.mission.tasks||[]).length};
+      // This check simulates the UI after a successful setup; do not depend on
+      // the shared local bridge having a real provider configured.
+      mv.ai={available:true,provider:'self-check'};
       mv.render();await wait(100);
       check('discussed mission shows start',/开始执行/.test($('.mission-command').textContent||''));
       check('discussed mission marks boss action',/需要你操作/.test($('.mission-command').textContent||''));

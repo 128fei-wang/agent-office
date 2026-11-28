@@ -1,6 +1,6 @@
 # 2026 Agent 平台趋势与本项目路线
 
-> 更新：2026-11-28 · 对应版本 1.27.0
+> 更新：2026-11-28 · 对应版本 1.28.0
 
 本文回答两个问题：2026 年多 Agent / AgentOps 平台真正缺什么？Agent Office 这一轮补了哪些、下一轮做什么？
 
@@ -30,6 +30,14 @@
 | 可观测性 | Trace / OTLP / 审计 | 保持并补齐预算与重试字段 | 决策图、交接链路、SLO |
 | 调度 | 单任务顺序执行 | 保持 | 队列、定时、并发、优先级 |
 | 互操作 | MCP 服务端、外部 Agent HTTP 接入 | 保持 | A2A、Registry、跨实例协作 |
+
+## 2.21 2026-11-28 · 1.28.0 产品标识与安装面
+
+- 新标识把「A / 办公室屋顶、三名 Agent、琥珀桌梁、完成勾」合成一个像素图形；横版字标是路径绘制的像素字，不依赖系统字体。
+- 安装面一次补齐：SVG/16/32/48/ICO favicon、180 Apple touch、192/512/maskable PWA、1200×630 OG/Twitter、10 尺寸 macOS ICNS、Windows ICO。
+- 顶栏 36px、启动屏 64px 使用同一标识；CSS 只作用于 header，外部 Agent 的 `brand-mark` 字形不受影响；日间/夜间和窄屏已验证。
+- `tests/test_branding.py` + `dev-brand.html` 把「文件存在」升级为「浏览器真实加载 + 尺寸/metadata 校验」；全部资产本地，无外部图片/CDN。
+- 仍未做 GitHub Social preview 自动上传、公钥身份、Windows 沙箱、多租户和 bridge 拆分；9.8 仍是目标。
 
 ## 2.20 2026-11-28 · 1.27.0 成本表与 MCP 签名
 

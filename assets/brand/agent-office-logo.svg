@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-labelledby="aoLogoTitle aoLogoDesc">
+  <title id="aoLogoTitle">Agent Office — see the team, ship the work</title>
+  <desc id="aoLogoDesc">Agent Office — SEE THE TEAM. SHIP THE WORK.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2030"/><stop offset="0.55" stop-color="#081520"/><stop offset="1" stop-color="#050d14"/>
+    </linearGradient>
+    <radialGradient id="teal" cx="0.2" cy="0.2" r="0.65">
+      <stop offset="0" stop-color="#55d6c2" stop-opacity="0.16"/><stop offset="1" stop-color="#55d6c2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="amber" cx="0.85" cy="0.2" r="0.5">
+      <stop offset="0" stop-color="#f2b544" stop-opacity="0.12"/><stop offset="1" stop-color="#f2b544" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="360" rx="36" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="36" fill="url(#teal)"/>
+  <rect width="1200" height="360" rx="36" fill="url(#amber)"/>
+  <rect x="0.5" y="0.5" width="1199" height="359" rx="35.5" fill="none" stroke="#1b3a4a"/>
+  <svg x="64" y="40" width="280" height="280" viewBox="0 0 512 512">
+  <title id="aoMarkTitle">Agent Office</title>
+  <desc id="aoMarkDesc">A pixel office shaped like the letter A: a teal stepped roof and legs, three agent pixels at a desk, an amber crossbar and a completion check.</desc>
+  <defs>
+    <linearGradient id="aoBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2030"/>
+      <stop offset="0.55" stop-color="#081520"/>
+      <stop offset="1" stop-color="#050d14"/>
+    </linearGradient>
+    <radialGradient id="aoTealGlow" cx="0.28" cy="0.28" r="0.62">
+      <stop offset="0" stop-color="#55d6c2" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#55d6c2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aoAmberGlow" cx="0.82" cy="0.28" r="0.42">
+      <stop offset="0" stop-color="#f2b544" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#f2b544" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="aoTile"><rect x="16" y="16" width="480" height="480" rx="112"/></clipPath>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#aoBg)"/>
+  <g clip-path="url(#aoTile)">
+    <rect x="16" y="16" width="480" height="480" fill="url(#aoTealGlow)"/>
+    <rect x="16" y="16" width="480" height="480" fill="url(#aoAmberGlow)"/>
+  </g>
+  <rect x="17" y="17" width="478" height="478" rx="111" fill="none" stroke="#1b3a4a" stroke-width="2"/>
+  <g transform="translate(0 40)">
+    <!-- stepped pixel A / office roof -->
+    <path d="M96 384 V352 H112 V208 H144 V176 H176 V144 H208 V112 H240 V80 H272 V112 H304 V144 H336 V176 H368 V208 H400 V352 H416 V384"
+          fill="none" stroke="#55d6c2" stroke-width="64" stroke-linejoin="miter" stroke-linecap="butt"/>
+    <!-- amber crossbar -->
+    <rect x="136" y="272" width="240" height="32" fill="#f2b544"/>
+    <rect x="136" y="272" width="240" height="6" fill="#ffd27a" opacity="0.7"/>
+    <!-- agent pixels at a desk -->
+    <rect x="180" y="320" width="40" height="40" rx="6" fill="#ff7fa8"/>
+    <rect x="236" y="320" width="40" height="40" rx="6" fill="#55d6c2"/>
+    <rect x="292" y="320" width="40" height="40" rx="6" fill="#b58cff"/>
+    <g fill="#07131d">
+      <rect x="188" y="332" width="6" height="6"/><rect x="204" y="332" width="6" height="6"/>
+      <rect x="244" y="332" width="6" height="6"/><rect x="260" y="332" width="6" height="6"/>
+      <rect x="300" y="332" width="6" height="6"/><rect x="316" y="332" width="6" height="6"/>
+    </g>
+    <rect x="160" y="376" width="192" height="8" fill="#2a4c5e"/>
+    <rect x="160" y="376" width="192" height="2" fill="#7ff0dc" opacity="0.35"/>
+    <!-- completion check -->
+    <circle cx="416" cy="112" r="40" fill="#f2b544" stroke="#07131d" stroke-width="8"/>
+    <path d="M398 112 L410 124 L436 96" fill="none" stroke="#07131d" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter"/>
+  </g>
+</svg>
+<g fill="#e8f0f8" shape-rendering="crispEdges">
+<path d="M432 82h36v12h-36zM420 94h12v12h-12zM468 94h12v12h-12zM420 106h12v12h-12zM468 106h12v12h-12zM420 118h60v12h-60zM420 130h12v12h-12zM468 130h12v12h-12zM420 142h12v12h-12zM468 142h12v12h-12zM420 154h12v12h-12zM468 154h12v12h-12z"/>
+<path d="M504 82h36v12h-36zM492 94h12v12h-12zM540 94h12v12h-12zM492 106h12v12h-12zM492 118h12v12h-12zM516 118h36v12h-36zM492 130h12v12h-12zM540 130h12v12h-12zM492 142h12v12h-12zM540 142h12v12h-12zM504 154h36v12h-36z"/>
+<path d="M564 82h60v12h-60zM564 94h12v12h-12zM564 106h12v12h-12zM564 118h48v12h-48zM564 130h12v12h-12zM564 142h12v12h-12zM564 154h60v12h-60z"/>
+<path d="M636 82h12v12h-12zM684 82h12v12h-12zM636 94h24v12h-24zM684 94h12v12h-12zM636 106h12v12h-12zM660 106h12v12h-12zM684 106h12v12h-12zM636 118h12v12h-12zM672 118h24v12h-24zM636 130h12v12h-12zM684 130h12v12h-12zM636 142h12v12h-12zM684 142h12v12h-12zM636 154h12v12h-12zM684 154h12v12h-12z"/>
+<path d="M708 82h60v12h-60zM732 94h12v12h-12zM732 106h12v12h-12zM732 118h12v12h-12zM732 130h12v12h-12zM732 142h12v12h-12zM732 154h12v12h-12z"/>
+</g>
+<g fill="#55d6c2" shape-rendering="crispEdges">
+<path d="M432 184h36v12h-36zM420 196h12v12h-12zM468 196h12v12h-12zM420 208h12v12h-12zM468 208h12v12h-12zM420 220h12v12h-12zM468 220h12v12h-12zM420 232h12v12h-12zM468 232h12v12h-12zM420 244h12v12h-12zM468 244h12v12h-12zM432 256h36v12h-36z"/>
+<path d="M492 184h60v12h-60zM492 196h12v12h-12zM492 208h12v12h-12zM492 220h48v12h-48zM492 232h12v12h-12zM492 244h12v12h-12zM492 256h12v12h-12z"/>
+<path d="M564 184h60v12h-60zM564 196h12v12h-12zM564 208h12v12h-12zM564 220h48v12h-48zM564 232h12v12h-12zM564 244h12v12h-12zM564 256h12v12h-12z"/>
+<path d="M636 184h60v12h-60zM660 196h12v12h-12zM660 208h12v12h-12zM660 220h12v12h-12zM660 232h12v12h-12zM660 244h12v12h-12zM636 256h60v12h-60z"/>
+<path d="M720 184h36v12h-36zM708 196h12v12h-12zM756 196h12v12h-12zM708 208h12v12h-12zM708 220h12v12h-12zM708 232h12v12h-12zM708 244h12v12h-12zM756 244h12v12h-12zM720 256h36v12h-36z"/>
+<path d="M780 184h60v12h-60zM780 196h12v12h-12zM780 208h12v12h-12zM780 220h48v12h-48zM780 232h12v12h-12zM780 244h12v12h-12zM780 256h60v12h-60z"/>
+</g>
+  <rect x="854" y="256" width="12" height="12" fill="#f2b544"/>
+  <rect x="420" y="288" width="420" height="2" fill="#2a4c5e"/>
+<g fill="#8fb3c4" shape-rendering="crispEdges">
+<path d="M424 306h16v4h-16zM420 310h4v4h-4zM420 314h4v4h-4zM424 318h12v4h-12zM436 322h4v4h-4zM436 326h4v4h-4zM420 330h16v4h-16z"/>
+<path d="M444 306h20v4h-20zM444 310h4v4h-4zM444 314h4v4h-4zM444 318h16v4h-16zM444 322h4v4h-4zM444 326h4v4h-4zM444 330h20v4h-20z"/>
+<path d="M468 306h20v4h-20zM468 310h4v4h-4zM468 314h4v4h-4zM468 318h16v4h-16zM468 322h4v4h-4zM468 326h4v4h-4zM468 330h20v4h-20z"/>
+<path d="M504 306h20v4h-20zM512 310h4v4h-4zM512 314h4v4h-4zM512 318h4v4h-4zM512 322h4v4h-4zM512 326h4v4h-4zM512 330h4v4h-4z"/>
+<path d="M528 306h4v4h-4zM544 306h4v4h-4zM528 310h4v4h-4zM544 310h4v4h-4zM528 314h4v4h-4zM544 314h4v4h-4zM528 318h20v4h-20zM528 322h4v4h-4zM544 322h4v4h-4zM528 326h4v4h-4zM544 326h4v4h-4zM528 330h4v4h-4zM544 330h4v4h-4z"/>
+<path d="M552 306h20v4h-20zM552 310h4v4h-4zM552 314h4v4h-4zM552 318h16v4h-16zM552 322h4v4h-4zM552 326h4v4h-4zM552 330h20v4h-20z"/>
+<path d="M588 306h20v4h-20zM596 310h4v4h-4zM596 314h4v4h-4zM596 318h4v4h-4zM596 322h4v4h-4zM596 326h4v4h-4zM596 330h4v4h-4z"/>
+<path d="M612 306h20v4h-20zM612 310h4v4h-4zM612 314h4v4h-4zM612 318h16v4h-16zM612 322h4v4h-4zM612 326h4v4h-4zM612 330h20v4h-20z"/>
+<path d="M640 306h12v4h-12zM636 310h4v4h-4zM652 310h4v4h-4zM636 314h4v4h-4zM652 314h4v4h-4zM636 318h20v4h-20zM636 322h4v4h-4zM652 322h4v4h-4zM636 326h4v4h-4zM652 326h4v4h-4zM636 330h4v4h-4zM652 330h4v4h-4z"/>
+<path d="M660 306h4v4h-4zM676 306h4v4h-4zM660 310h8v4h-8zM672 310h8v4h-8zM660 314h4v4h-4zM668 314h4v4h-4zM676 314h4v4h-4zM660 318h4v4h-4zM676 318h4v4h-4zM660 322h4v4h-4zM676 322h4v4h-4zM660 326h4v4h-4zM676 326h4v4h-4zM660 330h4v4h-4zM676 330h4v4h-4z"/>
+<path d="M692 326h8v4h-8zM692 330h8v4h-8z"/>
+<path d="M724 306h16v4h-16zM720 310h4v4h-4zM720 314h4v4h-4zM724 318h12v4h-12zM736 322h4v4h-4zM736 326h4v4h-4zM720 330h16v4h-16z"/>
+<path d="M744 306h4v4h-4zM760 306h4v4h-4zM744 310h4v4h-4zM760 310h4v4h-4zM744 314h4v4h-4zM760 314h4v4h-4zM744 318h20v4h-20zM744 322h4v4h-4zM760 322h4v4h-4zM744 326h4v4h-4zM760 326h4v4h-4zM744 330h4v4h-4zM760 330h4v4h-4z"/>
+<path d="M768 306h20v4h-20zM776 310h4v4h-4zM776 314h4v4h-4zM776 318h4v4h-4zM776 322h4v4h-4zM776 326h4v4h-4zM768 330h20v4h-20z"/>
+<path d="M792 306h16v4h-16zM792 310h4v4h-4zM808 310h4v4h-4zM792 314h4v4h-4zM808 314h4v4h-4zM792 318h16v4h-16zM792 322h4v4h-4zM792 326h4v4h-4zM792 330h4v4h-4z"/>
+<path d="M828 306h20v4h-20zM836 310h4v4h-4zM836 314h4v4h-4zM836 318h4v4h-4zM836 322h4v4h-4zM836 326h4v4h-4zM836 330h4v4h-4z"/>
+<path d="M852 306h4v4h-4zM868 306h4v4h-4zM852 310h4v4h-4zM868 310h4v4h-4zM852 314h4v4h-4zM868 314h4v4h-4zM852 318h20v4h-20zM852 322h4v4h-4zM868 322h4v4h-4zM852 326h4v4h-4zM868 326h4v4h-4zM852 330h4v4h-4zM868 330h4v4h-4z"/>
+<path d="M876 306h20v4h-20zM876 310h4v4h-4zM876 314h4v4h-4zM876 318h16v4h-16zM876 322h4v4h-4zM876 326h4v4h-4zM876 330h20v4h-20z"/>
+<path d="M912 306h4v4h-4zM928 306h4v4h-4zM912 310h4v4h-4zM928 310h4v4h-4zM912 314h4v4h-4zM928 314h4v4h-4zM912 318h4v4h-4zM920 318h4v4h-4zM928 318h4v4h-4zM912 322h4v4h-4zM920 322h4v4h-4zM928 322h4v4h-4zM912 326h8v4h-8zM924 326h8v4h-8zM912 330h4v4h-4zM928 330h4v4h-4z"/>
+<path d="M940 306h12v4h-12zM936 310h4v4h-4zM952 310h4v4h-4zM936 314h4v4h-4zM952 314h4v4h-4zM936 318h4v4h-4zM952 318h4v4h-4zM936 322h4v4h-4zM952 322h4v4h-4zM936 326h4v4h-4zM952 326h4v4h-4zM940 330h12v4h-12z"/>
+<path d="M960 306h16v4h-16zM960 310h4v4h-4zM976 310h4v4h-4zM960 314h4v4h-4zM976 314h4v4h-4zM960 318h16v4h-16zM960 322h4v4h-4zM968 322h4v4h-4zM960 326h4v4h-4zM972 326h4v4h-4zM960 330h4v4h-4zM976 330h4v4h-4z"/>
+<path d="M984 306h4v4h-4zM1000 306h4v4h-4zM984 310h4v4h-4zM996 310h4v4h-4zM984 314h4v4h-4zM992 314h4v4h-4zM984 318h8v4h-8zM984 322h4v4h-4zM992 322h4v4h-4zM984 326h4v4h-4zM996 326h4v4h-4zM984 330h4v4h-4zM1000 330h4v4h-4z"/>
+<path d="M1016 326h8v4h-8zM1016 330h8v4h-8z"/>
+</g>
+</svg>

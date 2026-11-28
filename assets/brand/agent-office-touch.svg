@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Agent Office">
+  <title>Agent Office</title>
+<defs>
+    <linearGradient id="aoBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2030"/>
+      <stop offset="0.55" stop-color="#081520"/>
+      <stop offset="1" stop-color="#050d14"/>
+    </linearGradient>
+    <radialGradient id="aoTealGlow" cx="0.28" cy="0.28" r="0.62">
+      <stop offset="0" stop-color="#55d6c2" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#55d6c2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aoAmberGlow" cx="0.82" cy="0.28" r="0.42">
+      <stop offset="0" stop-color="#f2b544" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#f2b544" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="aoTile"><rect x="16" y="16" width="480" height="480" rx="112"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#aoBg)"/>
+  <rect width="512" height="512" fill="url(#aoTealGlow)"/>
+  <rect width="512" height="512" fill="url(#aoAmberGlow)"/>
+  <g transform="translate(0 40)">
+    <!-- stepped pixel A / office roof -->
+    <path d="M96 384 V352 H112 V208 H144 V176 H176 V144 H208 V112 H240 V80 H272 V112 H304 V144 H336 V176 H368 V208 H400 V352 H416 V384"
+          fill="none" stroke="#55d6c2" stroke-width="64" stroke-linejoin="miter" stroke-linecap="butt"/>
+    <!-- amber crossbar -->
+    <rect x="136" y="272" width="240" height="32" fill="#f2b544"/>
+    <rect x="136" y="272" width="240" height="6" fill="#ffd27a" opacity="0.7"/>
+    <!-- agent pixels at a desk -->
+    <rect x="180" y="320" width="40" height="40" rx="6" fill="#ff7fa8"/>
+    <rect x="236" y="320" width="40" height="40" rx="6" fill="#55d6c2"/>
+    <rect x="292" y="320" width="40" height="40" rx="6" fill="#b58cff"/>
+    <g fill="#07131d">
+      <rect x="188" y="332" width="6" height="6"/><rect x="204" y="332" width="6" height="6"/>
+      <rect x="244" y="332" width="6" height="6"/><rect x="260" y="332" width="6" height="6"/>
+      <rect x="300" y="332" width="6" height="6"/><rect x="316" y="332" width="6" height="6"/>
+    </g>
+    <rect x="160" y="376" width="192" height="8" fill="#2a4c5e"/>
+    <rect x="160" y="376" width="192" height="2" fill="#7ff0dc" opacity="0.35"/>
+    <!-- completion check -->
+    <circle cx="416" cy="112" r="40" fill="#f2b544" stroke="#07131d" stroke-width="8"/>
+    <path d="M398 112 L410 124 L436 96" fill="none" stroke="#07131d" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter"/>
+  </g>
+</svg>
