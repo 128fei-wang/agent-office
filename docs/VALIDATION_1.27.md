@@ -46,6 +46,7 @@ escapes:
 The executor correctly reported **failed**, preserved the output and did not
 change the task to done. This is the behavior the product promises.
 
+
 ## Bug found and fixed during validation
 
 The first pytest run failed before importing pytest:
@@ -59,6 +60,8 @@ interpreter root, not the venv root. `execution._runtime_roots()` now includes
 both the symlink path and the resolved path, and a regression test covers a
 symlinked venv. This fix is included in 1.27.0.
 
+- GitHub Actions on Python 3.11 exposed a second real issue: `unittest discover -s <absolute workspace>` requires the start directory to be importable. The runner now writes a workspace-level `__init__.py`; this is covered by the same regression run.
+
 ## Limitations
 
 - One synthetic mission and one real model call; not a statistical benchmark.
@@ -66,8 +69,9 @@ symlinked venv. This fix is included in 1.27.0.
 - pytest was installed in a throw-away `/tmp/ao-pytest-venv` for validation; the
   installed bridge still uses the system Python. To use pytest in normal product
   operation, install pytest into the bridge Python or use a custom test command.
-- macOS seatbelt only in this run. Linux/Windows were not available on this
-  machine.
+- macOS seatbelt was the only backend exercised locally. Linux CI was started
+  on GitHub (and exposed the unittest start-directory bug); Windows CI only
+  checks the explicit no-sandbox path, not a native Windows sandbox.
 - External Agent identity was not exercised against a live Codex/DeepSeek
   process in this run; the receipt source was a local mission member.
 

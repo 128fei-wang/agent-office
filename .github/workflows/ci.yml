@@ -100,8 +100,9 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import json, execution
+          import execution
           caps = execution.capabilities()
-          print(json.dumps(caps, ensure_ascii=False, indent=2))
+          print("backend=%s available=%s sandboxed=%s" % (
+              caps["backend"], caps["available"], caps["sandboxed"]))
           assert caps["backend"] in ("none", "linux-bwrap")
           PY

@@ -567,6 +567,12 @@ def _prepare_runner(workspace, requested_command):
             return ([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"] + relative,
                     "python-pytest", relative, "")
         if unittest_style:
+            root_init = workspace / "__init__.py"
+            if not root_init.exists():
+                try:
+                    root_init.write_text("", encoding="utf-8")
+                except OSError:
+                    pass
             for path in python_files:
                 parent = path.parent
                 while parent != workspace and workspace in parent.parents:

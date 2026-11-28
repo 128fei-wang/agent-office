@@ -466,7 +466,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(conversation["readSeq"], 0)
         status, boss = self.request(
             "/conversations/%s/messages" % conversation["id"], "POST",
-            {"senderId": "boss", "senderType": "boss", "type": "text", "text": "hello"},
+            {"senderId": "boss", "senderType": "boss", "type": "proposal", "text": "hello"},
         )
         self.assertEqual(status, 201, boss)
         after_boss = self.request("/conversations/%s" % conversation["id"])[1]["conversation"]
