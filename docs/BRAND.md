@@ -87,16 +87,17 @@
 
 ### 更新本机已安装的 macOS 图标
 
-仓库不自动修改 `/Applications`，因为这会改动用户已安装的 app bundle 和签名。开发和打包时可以手动执行：
+仓库不自动修改 `/Applications`，因为这会改动用户已安装的 app bundle 和签名。使用显式脚本：
 
 ```bash
-APP="/Applications/AgentOffice.app"
-cp assets/brand/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-touch "$APP"
-killall Dock 2>/dev/null || true
+./scripts/install-macos-icon.sh
+# 或指定其他 app bundle
+./scripts/install-macos-icon.sh /path/to/AgentOffice.app
 ```
 
-如果 app 是签名分发的，请重新签名/重新打包，而不是只替换资源文件。GitHub 仓库的 **Social preview** 需要在仓库 Settings 中手动上传 `assets/brand/og-image.png`；REST API 不提供该设置。
+Chromium 系 app 的 `Assets.car` 里可能仍带一个 `AppIcon` 资源，且 `Info.plist` 同时设置了 `CFBundleIconName=AppIcon`；只替换 `AppIcon.icns` 时 macOS 可能继续显示旧的 asset catalog 图标。脚本会把新图标写成唯一的 `AgentOfficeIcon.icns`，令 `CFBundleIconFile=AgentOfficeIcon`，删除 `CFBundleIconName`，然后做 ad-hoc 重签和 LaunchServices/Dock 刷新。
+
+如果 app 是签名分发的，请把脚本中的 ad-hoc `codesign` 换成正式签名/公证流程，而不是只替换资源文件。GitHub 仓库的 **Social preview** 需要在仓库 Settings 中手动上传 `assets/brand/og-image.png`；REST API 不提供该设置。
 
 ## 重新生成位图
 

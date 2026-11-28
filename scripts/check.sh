@@ -37,7 +37,7 @@ required=(
   assets/brand/agent-office-app-icon.svg assets/brand/agent-office-touch.svg assets/brand/agent-office-maskable.svg
   assets/brand/favicon-16.png assets/brand/favicon-32.png assets/brand/favicon-48.png assets/brand/favicon.ico assets/brand/apple-touch-icon.png
   assets/brand/icon-192.png assets/brand/icon-512.png assets/brand/icon-maskable-512.png assets/brand/icon-256.png assets/brand/og-image.png
-  assets/brand/agent-office-logo.png assets/brand/AppIcon.icns assets/brand/icon.iconset/icon_16x16.png scripts/build-icons.sh scripts/render-svg.py tests/test_branding.py docs/BRAND.md docs/ARCHITECTURE.md docs/LAYOUT.md docs/MCP.md docs/AI_SETUP.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/MISSIONS.md docs/UPGRADING.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md docs/TRENDS.md docs/CHAT_UI.md docs/MEMORY.md docs/USAGE.md docs/VERIFICATION.md docs/VALIDATION_1.27.md docs/ANIMATION.md docs/GUIDE.md docs/ACCEPTANCE.md
+  assets/brand/agent-office-logo.png assets/brand/AppIcon.icns assets/brand/icon.iconset/icon_16x16.png scripts/build-icons.sh scripts/render-svg.py scripts/install-macos-icon.sh tests/test_branding.py docs/BRAND.md docs/ARCHITECTURE.md docs/LAYOUT.md docs/MCP.md docs/AI_SETUP.md docs/PAIRING.md docs/PROVIDERS.md docs/TASK_DELEGATION.md docs/COMPANY_OS.md docs/MISSIONS.md docs/UPGRADING.md docs/EVENT_PROTOCOL.md docs/ROADMAP.md docs/TRENDS.md docs/CHAT_UI.md docs/MEMORY.md docs/USAGE.md docs/VERIFICATION.md docs/VALIDATION_1.27.md docs/ANIMATION.md docs/GUIDE.md docs/ACCEPTANCE.md
 )
 for f in "${required[@]}"; do
   if [ ! -e "$f" ]; then

@@ -67,6 +67,7 @@
 - **标识**：青色阶梯「A / 办公室屋顶」+ 三名粉/青/紫 Agent + 琥珀桌梁 + 右上完成勾；横版字标为像素字「AGENT / OFFICE.」，品牌句 **SEE THE TEAM. SHIP THE WORK.**，中文仍是「看见 AI 团队，把事做完。」
 - **安装识别**：根 `favicon.svg`（16×16 简化版）+ 16/32/48 PNG + `favicon.ico`；180×180 全出血 Apple touch；`site.webmanifest` 提供 192/512 `any` 与 512 `maskable`，并用网络直通 service worker 满足安装条件且不缓存旧界面；1200×630 `og-image.png` + `twitter:image`；1024 macOS `AppIcon.icns`（10 尺寸 iconset）与 Windows ICO。全部文件在仓库内，运行时不请求外部图片/字体。
 - **应用内**：顶栏 36px 标识替换旧 3×3 方块，启动屏显示 64px 标识；标识 CSS 只作用于 `.brand > .brand-mark`，不污染外部 Agent 的 `.ext-glyph.brand-mark`。日间/夜间、1440px/520px 截图已验证。
+- **macOS 安装图标实测**：替换 `AppIcon.icns` 后 `NSWorkspace` 仍返回 Chromium 默认图标；原因是 bundle 内 `Assets.car` 带 `AppIcon` 资源且 `Info.plist` 有 `CFBundleIconName=AppIcon`。`scripts/install-macos-icon.sh` 改用唯一 `AgentOfficeIcon.icns`、设置 `CFBundleIconFile=AgentOfficeIcon`、删除 `CFBundleIconName`、重签并刷新 LaunchServices/Dock；再次用 `NSWorkspace` 提取已显示新标识。
 - **可维护**：`docs/BRAND.md` 记录概念、色板、留白/最小尺寸、安装面和替换步骤；`scripts/build-icons.sh` + `scripts/render-svg.py` 从 SVG 重建全部 PNG/ICNS/ICO；产物提交进仓库，用户无需构建。
 - **验收**：Python **139** 项通过（1 项 Node 跳过）；`tests/test_branding.py` 校验 19 个品牌/安装文件、PNG 尺寸、manifest 图标可解析、index 的 favicon/Apple/PWA/OG/Twitter 元数据、根 favicon 与源一致、SVG 无远程引用、ICNS/ICO 容器、iconset 尺寸与品牌色；浏览器 smoke **6/6**（含 `dev-brand.html`），完整 **29/29** 页面通过。
 - **仍不声称**：GitHub 仓库 Social preview 需在 Settings 手动上传 `og-image.png`（REST API 无该设置）；标识不改变生产执行/身份/多租户等缺口，9.8 仍是目标。

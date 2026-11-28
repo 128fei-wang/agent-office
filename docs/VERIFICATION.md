@@ -18,7 +18,7 @@ drawn as SVG paths, not a system font.
 | iOS home screen | `assets/brand/apple-touch-icon.png` (180×180, full bleed) |
 | PWA | `site.webmanifest` → 192/512 `any`, 512 `maskable`; network-only `sw.js` |
 | Social | `assets/brand/og-image.png` (1200×630) via `og:image` / `twitter:image` |
-| macOS app | `assets/brand/AppIcon.icns` + 10-size iconset |
+| macOS app | `assets/brand/AppIcon.icns` + 10-size iconset; `scripts/install-macos-icon.sh` handles Chromium `Assets.car` / `CFBundleIconName` overrides |
 | Windows | `assets/brand/favicon.ico` |
 | Header / boot | `assets/brand/agent-office-mark.svg` at 36px / 64px |
 

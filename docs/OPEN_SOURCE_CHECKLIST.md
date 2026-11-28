@@ -32,6 +32,7 @@
 8. Enable GitHub Pages with **Source: GitHub Actions** if you want a live UI demo
    (the static office works; external-agent pairing needs a local bridge).
 9. Do not publish bridge state, update backups or provider keys: they live in `~/.agent-office/`, outside the repo.
+10. macOS app bundles with a Chromium `Assets.car` must use `scripts/install-macos-icon.sh` (or apply its unique `CFBundleIconFile` + remove `CFBundleIconName` change) or macOS may keep the stock Chromium icon.
 
 ## Publish from this folder
 
