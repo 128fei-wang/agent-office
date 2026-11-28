@@ -86,7 +86,7 @@
       this.root.innerHTML =
         '<div class="tl-shell">' +
           '<header class="tl-head">' +
-            '<div class="tl-title"><span>TRACE LAB · OBSERVABILITY</span>' +
+            '<div class="tl-title"><span>TRACE LAB · DEMO TELEMETRY</span>' +
               '<h2 id="tlTitle">AGENT OFFICE RUN</h2><p id="tlSub">trace loading…</p></div>' +
             '<div class="tl-tabs" role="tablist">' +
               '<button type="button" data-tl-tab="trace" class="active">TRACE</button>' +

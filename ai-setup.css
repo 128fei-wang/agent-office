@@ -330,6 +330,23 @@
 }
 .ai-advanced summary { color: var(--muted); font-size: 10.5px; cursor: pointer; }
 .ai-advanced .ai-field { margin: 9px 0 0; }
+.ai-price-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+}
+.ai-price-grid .ai-field { margin: 0; }
+.ai-price-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted-2);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+@media (max-width: 560px) {
+  .ai-price-grid { grid-template-columns: 1fr; }
+}
 
 .ai-review {
   display: grid;

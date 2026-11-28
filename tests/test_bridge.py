@@ -4,6 +4,8 @@
 Run with:
     python3 -m unittest discover -s tests -v
 """
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -271,6 +273,16 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(data["service"], "agent-office-bridge")
         self.assertTrue(data["version"])
         self.assertTrue(data["bootId"])
+        self.assertIn("execution", data)
+        self.assertIn("evidence", data)
+
+    def test_execution_capabilities_endpoint(self):
+        status, data = self.request("/execution/capabilities")
+        self.assertEqual(status, 200)
+        self.assertIn("execution", data)
+        self.assertIn("evidence", data)
+        self.assertTrue(data["evidence"]["available"])
+        self.assertIn("backend", data["execution"])
 
     def test_mission_workspace_flow(self):
         status, recommendation = self.request("/missions/recommend", "POST", {
@@ -454,7 +466,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(conversation["readSeq"], 0)
         status, boss = self.request(
             "/conversations/%s/messages" % conversation["id"], "POST",
-            {"senderId": "boss", "senderType": "boss", "type": "text", "text": "hello"},
+            {"senderId": "boss", "senderType": "boss", "type": "proposal", "text": "hello"},
         )
         self.assertEqual(status, 201, boss)
         after_boss = self.request("/conversations/%s" % conversation["id"])[1]["conversation"]
@@ -562,6 +574,158 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(bad["result"]["isError"])
         self.request("/agents/ext-mcp-test", "DELETE")
+
+    def test_mcp_deliverable_and_evidence_receipt(self):
+        agent_id = "ext-mcp-evidence"
+        self.request("/agents", "POST", {
+            "id": agent_id, "name": "Evidence Worker", "runtime": "mcp",
+            "skills": ["mcp", "test"], "role": "engineer",
+        })
+        status, data = self.request("/missions", "POST", {
+            "title": "MCP evidence mission",
+            "description": "Deliver a tested text artifact through MCP.",
+            "acceptance": "The artifact and report have a verified receipt.",
+            "memberIds": [agent_id],
+            "autoRun": False,
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        task = next(t for t in mission["tasks"] if t["assigneeId"] == agent_id)
+        status, uploaded = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 10, "method": "tools/call",
+            "params": {"name": "agent_office_upload_deliverable", "arguments": {
+                "taskId": task["id"], "name": "test/test_ok.py",
+                "content": "import unittest\nclass T(unittest.TestCase):\n"
+                           "    def test_ok(self): self.assertTrue(True)\n",
+            }},
+        }, headers={"X-Agent-Id": agent_id})
+        self.assertEqual(status, 200, uploaded)
+        payload = json.loads(uploaded["result"]["content"][0]["text"])
+        self.assertTrue(payload["ok"], payload)
+        artifact_id = payload["artifact"]["id"]
+        status, reported = self.request("/mcp", "POST", {
+            "jsonrpc": "2.0", "id": 11, "method": "tools/call",
+            "params": {"name": "agent_office_report_task", "arguments": {
+                "taskId": task["id"], "status": "review",
+                "artifactIds": [artifact_id],
+                "report": {
+                    "summary": "MCP deliverable submitted",
+                    "done": ["uploaded test file"],
+                    "next": ["run tests"],
+                    "risks": ["none"],
+                    "solution": "Use the local sandbox",
+                    "evidence": ["test/test_ok.py"],
+                },
+            }},
+        }, headers={"X-Agent-Id": agent_id})
+        self.assertEqual(status, 200, reported)
+        reported_payload = json.loads(reported["result"]["content"][0]["text"])
+        self.assertTrue(reported_payload["ok"], reported_payload)
+        self.assertTrue(reported_payload["task"].get("evidence"))
+        status, full = self.request("/missions/" + mission["id"])
+        self.assertEqual(status, 200)
+        full_task = next(t for t in full["mission"]["tasks"] if t["id"] == task["id"])
+        self.assertEqual(full_task["evidence"][0]["source"], "external-agent")
+        self.assertFalse(full_task["evidence"][0]["attestation"]["identityVerified"])
+        status, verified = self.request(
+            "/missions/%s/evidence/verify" % mission["id"], "POST", {})
+        self.assertEqual(status, 200, verified)
+        self.assertEqual(verified["verification"]["status"], "valid",
+                         verified["verification"])
+        self.assertEqual(verified["verification"]["receipts"][0]["checks"]["artifacts"], "passed")
+        self.assertEqual(len(verified["verification"]["receipts"][0]["artifacts"]), 1)
+        self.request("/missions/%s" % mission["id"], "DELETE")
+        self.request("/agents/%s" % agent_id, "DELETE")
+
+    def test_mcp_signed_report_marks_agent_identity_verified(self):
+        agent_id = "ext-mcp-signed"
+        status, created = self.request("/agents", "POST", {
+            "id": agent_id, "name": "Signed Worker", "runtime": "mcp",
+            "skills": ["mcp", "test"], "role": "engineer",
+        })
+        self.assertEqual(status, 200, created)
+        secret = created.get("signingSecret") or ""
+        self.assertTrue(secret, created)
+        self.assertEqual(created["agent"]["signingKeyId"],
+                         hashlib.sha256(bytes.fromhex(secret)).hexdigest()[:16])
+        status, catalog = self.request("/agents")
+        self.assertNotIn(secret, json.dumps(catalog))
+        status, data = self.request("/missions", "POST", {
+            "title": "Signed MCP mission",
+            "description": "Verify signed MCP reports and evidence receipts.",
+            "acceptance": "Signed report is marked identity verified.",
+            "memberIds": [agent_id],
+            "autoRun": False,
+            "autoDiscuss": False,
+        })
+        self.assertEqual(status, 201, data)
+        mission = data["mission"]
+        task = next(t for t in mission["tasks"] if t["assigneeId"] == agent_id)
+        body = {
+            "jsonrpc": "2.0", "id": 21, "method": "tools/call",
+            "params": {"name": "agent_office_report_task", "arguments": {
+                "taskId": task["id"], "status": "review",
+                "report": {
+                    "summary": "Signed report", "done": ["verified"],
+                    "next": ["continue"], "risks": ["none"],
+                    "solution": "Use the signed channel",
+                    "evidence": ["signature"],
+                },
+            }},
+        }
+        raw = json.dumps(body).encode("utf-8")
+        stamp = str(int(time.time()))
+        signature = hmac.new(bytes.fromhex(secret),
+                             (stamp + ".").encode("utf-8") + raw,
+                             hashlib.sha256).hexdigest()
+        status, reported = self.request("/mcp", "POST", body, headers={
+            "X-Agent-Id": agent_id,
+            "X-Agent-Signature": signature,
+            "X-Agent-Timestamp": stamp,
+        })
+        self.assertEqual(status, 200, reported)
+        self.assertNotIn("error", reported, reported)
+        payload = json.loads(reported["result"]["content"][0]["text"])
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["task"]["evidence"][0]["attestation"]["identityBasis"],
+                         "agent-hmac")
+        self.assertTrue(payload["task"]["evidence"][0]["attestation"]["identityVerified"])
+        status, verified = self.request(
+            "/missions/%s/evidence/verify" % mission["id"], "POST", {})
+        self.assertEqual(status, 200, verified)
+        self.assertEqual(verified["verification"]["status"], "valid")
+        # A signature over different bytes must be rejected.
+        bad = dict(body)
+        bad["id"] = 22
+        bad_raw = json.dumps(bad).encode("utf-8")
+        bad_sig = hmac.new(bytes.fromhex(secret),
+                           (stamp + ".").encode("utf-8") + bad_raw,
+                           hashlib.sha256).hexdigest()
+        status, rejected = self.request("/mcp", "POST", bad, headers={
+            "X-Agent-Id": agent_id,
+            "X-Agent-Signature": bad_sig[:-2] + "00",
+            "X-Agent-Timestamp": stamp,
+        })
+        self.assertEqual(status, 200, rejected)
+        self.assertIn("error", rejected, rejected)
+        # The exact signed request is replay-protected.
+        status, replay = self.request("/mcp", "POST", body, headers={
+            "X-Agent-Id": agent_id,
+            "X-Agent-Signature": signature,
+            "X-Agent-Timestamp": stamp,
+        })
+        self.assertEqual(status, 200, replay)
+        self.assertIn("error", replay, replay)
+        status, rotated = self.request(
+            "/agents/%s/signing-key" % agent_id, "POST", {})
+        self.assertEqual(status, 200, rotated)
+        self.assertNotEqual(rotated.get("signingSecret"), secret)
+        self.assertTrue(rotated.get("agent", {}).get("signingKeyId"))
+        state_path = Path(self.tmp.name) / "bridge-state.json"
+        self.assertEqual(state_path.stat().st_mode & 0o777, 0o600)
+        self.request("/missions/%s" % mission["id"], "DELETE")
+        self.request("/agents/%s" % agent_id, "DELETE")
 
     def test_external_agent_role_and_avatar(self):
         status, meta = self.request("/agents")
@@ -1047,6 +1211,61 @@ class BridgeTest(unittest.TestCase):
             doubao = next(p for p in catalog["providers"] if p["id"] == "doubao")
             self.assertTrue(doubao["configured"])
             self.assertEqual(doubao["keySource"], "file")
+        finally:
+            self.providers_path.write_text(original, "utf-8")
+
+    def test_provider_price_table_estimates_cost(self):
+        original = self.providers_original
+        try:
+            status, data = self.request("/providers/doubao/configure", "POST", {
+                "apiKey": "test-doubao-key",
+                "baseUrl": "http://127.0.0.1:%d/v1" % self.mock_port,
+                "model": "mock-doubao",
+                "pricing": {
+                    "inputPerMillion": 1.0,
+                    "outputPerMillion": 2.0,
+                    "currency": "USD",
+                },
+            })
+            self.assertEqual(status, 200, data)
+            status, catalog = self.request("/providers")
+            doubao = next(p for p in catalog["providers"] if p["id"] == "doubao")
+            self.assertEqual(doubao["pricing"]["inputPerMillion"], 1.0)
+            self.assertEqual(doubao["pricing"]["outputPerMillion"], 2.0)
+            self.assertEqual(doubao["pricing"]["currency"], "USD")
+            status, tested = self.request("/providers/doubao/test", "POST", {})
+            self.assertEqual(status, 200, tested)
+            self.assertAlmostEqual(tested["cost"], 0.000011, places=8)
+            self.assertEqual(tested["currency"], "USD")
+            status, bad = self.request("/providers/doubao/configure", "POST", {
+                "pricing": {"inputPerMillion": -1, "outputPerMillion": 2},
+            })
+            self.assertEqual(status, 200, bad)
+        finally:
+            self.providers_path.write_text(original, "utf-8")
+
+    def test_deepseek_preset_pricing_is_exposed(self):
+        original = self.providers_original
+        try:
+            status, data = self.request("/providers/deepseek/configure", "POST", {
+                "apiKey": "test-openai",
+                "baseUrl": "http://127.0.0.1:%d/v1" % self.mock_port,
+                "model": "deepseek-flash",
+            })
+            self.assertEqual(status, 200, data)
+            status, catalog = self.request("/providers")
+            row = next(p for p in catalog["providers"] if p["id"] == "deepseek")
+            self.assertEqual(row["pricingSource"], "preset")
+            self.assertEqual(row["pricing"]["inputPerMillion"], 0.15)
+            self.assertEqual(row["pricing"]["cachedInputPerMillion"], 0.003)
+            self.assertEqual(row["pricing"]["outputPerMillion"], 0.6)
+            self.assertEqual(row["pricing"]["currency"], "USD")
+            self.assertIn("deepseek.com", row["pricingPreset"]["source"])
+            status, tested = self.request("/providers/deepseek/test", "POST", {})
+            self.assertEqual(status, 200, tested)
+            self.assertGreater(tested["cost"], 0)
+            self.assertEqual(tested["currency"], "USD")
+            self.assertEqual(tested["priceSource"], "preset")
         finally:
             self.providers_path.write_text(original, "utf-8")
 

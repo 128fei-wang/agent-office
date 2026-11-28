@@ -295,6 +295,7 @@
 }
 .role-pill.ext { color: #cbb5ff; border-color: rgba(181, 140, 255, 0.3); background: rgba(181, 140, 255, 0.08); }
 .state-dot.online { background: #7bd88f; box-shadow: 0 0 6px rgba(123, 216, 143, 0.7); }
+.state-dot.ready { background: #55d6c2; box-shadow: 0 0 6px rgba(85, 214, 194, 0.65); }
 .state-dot.offline { background: #586e81; }
 .ext-bar i { background: linear-gradient(90deg, #7e65b7, #b58cff); }
 .external-card .team-mood { color: #b58cff; }

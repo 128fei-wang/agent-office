@@ -1,6 +1,6 @@
 # 2026 Agent 平台趋势与本项目路线
 
-> 更新：2026-11-27 · 对应版本 1.22.0
+> 更新：2026-11-28 · 对应版本 1.28.0
 
 本文回答两个问题：2026 年多 Agent / AgentOps 平台真正缺什么？Agent Office 这一轮补了哪些、下一轮做什么？
 
@@ -30,6 +30,57 @@
 | 可观测性 | Trace / OTLP / 审计 | 保持并补齐预算与重试字段 | 决策图、交接链路、SLO |
 | 调度 | 单任务顺序执行 | 保持 | 队列、定时、并发、优先级 |
 | 互操作 | MCP 服务端、外部 Agent HTTP 接入 | 保持 | A2A、Registry、跨实例协作 |
+
+## 2.21 2026-11-28 · 1.28.0 产品标识与安装面
+
+- 新标识把「A / 办公室屋顶、三名 Agent、琥珀桌梁、完成勾」合成一个像素图形；横版字标是路径绘制的像素字，不依赖系统字体。
+- 安装面一次补齐：SVG/16/32/48/ICO favicon、180 Apple touch、192/512/maskable PWA、1200×630 OG/Twitter、10 尺寸 macOS ICNS、Windows ICO。
+- 顶栏 36px、启动屏 64px 使用同一标识；CSS 只作用于 header，外部 Agent 的 `brand-mark` 字形不受影响；日间/夜间和窄屏已验证。
+- `tests/test_branding.py` + `dev-brand.html` 把「文件存在」升级为「浏览器真实加载 + 尺寸/metadata 校验」；全部资产本地，无外部图片/CDN。
+- 仍未做 GitHub Social preview 自动上传、公钥身份、Windows 沙箱、多租户和 bridge 拆分；9.8 仍是目标。
+
+## 2.20 2026-11-28 · 1.27.0 成本表与 MCP 签名
+
+- AI 接入新增 Provider 价格表（每 1M tokens 输入/输出 + 币种）；真实 token 计算成本，模型调用台账和 Mission Eval 显示成本，未配置显示 —。
+- 外部 Agent 可获得一次性 HMAC 签名密钥，对完整 MCP JSON-RPC body 签名；有效签名让证据回执标记 agent-hmac / identityVerified，缺失回退自报，错误/过期/重放拒绝。
+- 签名密钥不进入公开 Agent、浏览器存储或导出；bridge-state、providers、evidence/anchor 均 0600；UI 支持轮换。
+- 证据锚点能发现单独回滚 evidence.json；bridge 重启会把卡在 running/queued 的自动执行标为 interrupted，避免永久卡死。
+- Linux bubblewrap 增加真实命名空间预检；不可用时明确 unavailable。
+- 仍未做公钥身份、整文件回滚防护、Windows 沙箱、价格自动更新、多租户和 bridge 拆分；9.8 仍是目标。
+
+## 2.19 2026-11-28 · 1.26.0 通用执行器与证据回执
+
+- 测试执行从“仅 macOS Python unittest”升级为强制沙箱后端：macOS seatbelt、Linux bubblewrap；无后端返回 unavailable，绝不无沙箱执行。
+- 支持 Python unittest/pytest、Node --test 和允许列表自定义命令；禁网、禁读 home、仅工作区可写、输出/超时/进程组限制，真实测试覆盖逃逸场景。
+- 每次汇报生成 HMAC-SHA256 签名、哈希链回执，绑定汇报哈希与文件哈希；UI 可验证/导出，能发现改汇报、改文件、改/删回执、截断链。
+- 外部 MCP Agent 可上传文本交付物并带 artifactIds 汇报；回执明确标注 `mcp-header`、身份未验证。
+- 仍未做外部身份公钥签名、整文件回滚防护、Windows 沙箱、成本表和自动执行；9.8 仍是目标。
+
+## 2.18 2026-11-28 · 1.25.0 电影感、协作网络与真实 diff
+
+- 演示首次加载播放 Sprint 01 开场简报；真实任务开始、等待审批、完成各有 MISSION LIVE / BOSS DECISION / MISSION COMPLETE 过场。
+- 真实 Agent 到白板/会议室/老板办公室的协作网络带流动数据点；当前 Agent 有跟随聚光；任务完成有 +N TASK 浮层。
+- 办公室常驻灰尘、光束、吊灯、显示器辉光、蒸汽、扫描线、扫地机器人；角色工作/评审/咖啡/会议/阻塞/庆祝有手持道具。
+- 任务重跑记录真实文件新增/修改/删除、增删行数和 unified diff 预览，任务卡可查。
+- 新增 opt-in macOS sandbox-exec Python 测试执行：无网络、禁读用户目录、临时工作区，记录真实 exit code 与输出。
+- 仍未做隔离执行沙箱、自动运行生成项目测试、外部 Agent 签名证据；这些不计入 9.8。
+
+## 2.17 2026-11-28 · 1.24.0 第一眼表达与交付证据
+
+- 产品定位句统一为「看见 AI 团队，把事做完。」，副线「谁在干 · 干到哪 · 交付了什么」，出现在启动屏、顶栏、真实模式面板与页面标题。
+- 新增本地交付验证：文件存在性/大小/SHA-256、占位内容、JSON/Python/JavaScript/Shell/HTML/CSS 语法与结构检查；任务面板显示证据与失败原因。
+- 自动执行遇到验证失败会阻塞任务，不再把缺失/空/占位/语法错误交付物标记完成；已有任务可手动“运行验证”。
+- 补齐缺失的“重新交付”前端方法；外部 Agent 汇报明确标注“自报，尚未独立复核”。
+- 新增并行浏览器 E2E runner 与 CI smoke；非 loopback bridge 绑定强制要求 `BRIDGE_ALLOW_REMOTE=1` + `BRIDGE_TOKEN`。
+- 仍不声称生产级：没有沙箱、不自动运行生成项目测试、没有外部 Agent 签名证据。
+
+## 2.16 2026-11-27 · 1.23.0 真实业务动画对齐
+
+- 真实外部 Agent 与演示角色共用 sprite、aura、ring、badge、nametag、品牌 logo、纸质气泡和进度条；不再用缩小灰暗样式。
+- 真实任务驱动工作、评审、会议、老板审批、交付庆祝；空闲时在复盘、咖啡、休息区回消息、白板检查和巡视之间轮转。
+- 复用演示的障碍物/走廊节点图做路径寻路，按距离分段移动；会议同一时刻只显示一个发言气泡，交付彩带周期性爆发。
+- `/missions/overview.activity` 汇合任务、审批、交付物、讨论与模型调用；LIVE FEED 支持筛选和深链，REAL BOARD 显示任务分组与最近交付。
+- 真实白板显示当前任务与进度，顶栏显示本地 LIVE 时钟；外部 Agent 以“可调度”呈现，已有任务时收起冗余舞台卡。
 
 ## 2.15 2026-11-27 · 1.22.0 Token 预估与模型调用
 

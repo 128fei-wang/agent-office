@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime
+import hashlib
+import hmac
 import json
 import mimetypes
 import os
@@ -46,6 +48,19 @@ try:
     import missions
 except Exception:  # keep the bridge usable if the mission module is missing
     missions = None
+try:
+    import verification as verification_engine
+except Exception:  # verification is optional for old installations
+    verification_engine = None
+try:
+    import execution as test_execution
+except Exception:  # sandboxed test execution is optional
+    test_execution = None
+import pricing as pricing_engine
+try:
+    import evidence as evidence_module
+except Exception:  # evidence receipts are optional for old installations
+    evidence_module = None
 
 STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-office")).expanduser()
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
@@ -53,15 +68,37 @@ LOCK = threading.RLock()
 DEMO_STOP = threading.Event()
 DEMO_THREAD = None
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 ALLOW_FILE_ORIGIN = os.environ.get("BRIDGE_ALLOW_FILE_ORIGIN") == "1"
+BRIDGE_TOKEN = str(os.environ.get("BRIDGE_TOKEN") or "").strip()
+BRIDGE_TLS_CERT = str(os.environ.get("BRIDGE_TLS_CERT") or "").strip()
+BRIDGE_TLS_KEY = str(os.environ.get("BRIDGE_TLS_KEY") or "").strip()
+ALLOW_REMOTE = os.environ.get("BRIDGE_ALLOW_REMOTE") == "1"
 PROVIDERS_FILE = Path(
     os.environ.get("BRIDGE_PROVIDERS") or (STATE_DIR / "providers.json")
 ).expanduser()
 PROVIDER_TIMEOUT = float(os.environ.get("BRIDGE_PROVIDER_TIMEOUT") or 30)
+EVIDENCE_LOG = None
+EVIDENCE_ERROR = ""
+if evidence_module:
+    try:
+        EVIDENCE_LOG = evidence_module.EvidenceLog(
+            STATE_DIR / "evidence.json", STATE_DIR / "evidence.key")
+    except Exception as exc:
+        EVIDENCE_ERROR = str(exc)[:300]
+elif evidence_module is None:
+    EVIDENCE_ERROR = "evidence module is not installed"
 MISSION_STORE = (
-    missions.MissionStore(STATE_DIR / "missions.json", STATE_DIR / "uploads")
+    missions.MissionStore(STATE_DIR / "missions.json", STATE_DIR / "uploads",
+                          evidence=EVIDENCE_LOG, evidence_error=EVIDENCE_ERROR)
     if missions else None
 )
+if MISSION_STORE:
+    try:
+        MISSION_STORE.recover_interrupted_runs()
+    except Exception:
+        pass
+
 MISSION_DISCUSS_LOCK = threading.Lock()
 MISSION_AUTORUN_LOCK = threading.Lock()
 MISSION_AUTORUN_ACTIVE = set()
@@ -72,6 +109,8 @@ BOOT_ID = secrets.token_hex(8)
 UPDATE_TOKENS = {}
 UPDATE_TOKEN_LOCK = threading.Lock()
 UPDATE_JOB_LOCK = threading.Lock()
+SIGNATURE_SEEN = {}
+SIGNATURE_LOCK = threading.Lock()
 UPDATE_JOB = {
     "status": "idle",
     "kind": "",
@@ -237,14 +276,21 @@ def now_iso() -> str:
 
 
 def host_allowed(host_header: str) -> bool:
-    """Only accept local Host headers, to blunt DNS-rebinding attacks."""
+    """Only accept local Host headers unless remote mode is explicitly enabled.
+
+    Remote mode still requires a token for non-loopback clients, so accepting
+    the LAN/domain Host is safe enough for CLI/MCP access; the browser Origin
+    gate remains loopback-only.
+    """
     if not host_header:
         return True
     try:
         host = (urlparse("//" + host_header).hostname or "").lower()
     except ValueError:
         return False
-    return host in ALLOWED_HOSTS
+    if host in ALLOWED_HOSTS:
+        return True
+    return bool(ALLOW_REMOTE and BRIDGE_TOKEN)
 
 
 def origin_allowed(origin: str) -> bool:
@@ -267,6 +313,11 @@ def origin_allowed(origin: str) -> bool:
     )
 
 
+def local_client_only(client) -> bool:
+    """Manual code install is a local action; a remote token must not install code."""
+    return not BRIDGE_TOKEN or str(client or "") in LOOPBACK_HOSTS
+
+
 def load_provider_overrides():
     """Read ~/.agent-office/providers.json. Keys stay in this process; errors are non-fatal."""
     if not PROVIDERS_FILE.exists():
@@ -280,6 +331,10 @@ def load_provider_overrides():
         return data, ""
     except Exception as exc:
         return {}, str(exc)[:200]
+
+
+normalize_pricing = pricing_engine.normalize_pricing
+cost_for_tokens = pricing_engine.cost_for_tokens
 
 
 def _first_env(names):
@@ -328,6 +383,18 @@ def provider_settings(provider_id: str, overrides=None):
     auth_type = str(cfg.get("authType") or "").strip()
     if not auth_type:
         auth_type = "bearer" if key_env == "ANTHROPIC_AUTH_TOKEN" else "x-api-key"
+    pricing = normalize_pricing(cfg.get("pricing"))
+    pricing_source = "file" if pricing else "none"
+    pricing_preset = {}
+    if not pricing and not cfg.get("pricingDisabled"):
+        pricing = pricing_engine.preset_for_model(provider_id, model)
+        if pricing:
+            pricing_source = "preset"
+            pricing_preset = {
+                "source": pricing.get("source", ""),
+                "checkedAt": pricing.get("checkedAt", ""),
+                "note": pricing.get("note", ""),
+            }
     return {
         "id": provider_id,
         "name": meta["name"],
@@ -349,6 +416,9 @@ def provider_settings(provider_id: str, overrides=None):
         "modelEnv": meta.get("modelEnv", ""),
         "modelEnvName": model_env,
         "modelSource": model_source,
+        "pricing": pricing,
+        "pricingSource": pricing_source,
+        "pricingPreset": pricing_preset,
         "skills": list(meta.get("skills", [])),
         "color": meta.get("color", "#b58cff"),
         "note": meta.get("note", ""),
@@ -469,11 +539,29 @@ def configure_provider(provider_id: str, body):
                 raise ProviderCallError("base URL must be an http(s) URL")
             if parsed.username or parsed.password:
                 raise ProviderCallError("base URL must not contain credentials")
-            merged["baseUrl"] = base_url.rstrip("/")
+            old_base = str(existing.get("baseUrl") or meta.get("baseUrl") or "").strip().rstrip("/")
+            new_base = base_url.rstrip("/")
+            if (str(existing.get("apiKey") or "").strip() and old_base
+                    and new_base != old_base
+                    and not body.get("confirmBaseUrlChange")):
+                raise ProviderCallError(
+                    "changing the base URL while an API key is stored sends that key "
+                    "to a new host; resend with confirmBaseUrlChange=true")
+            merged["baseUrl"] = new_base
     if "model" in body:
         model = _provider_text(body.get("model"), 200, "model")
         if model:
             merged["model"] = model
+    if "pricing" in body:
+        pricing = normalize_pricing(body.get("pricing"))
+        if pricing:
+            merged["pricing"] = pricing
+            merged.pop("pricingDisabled", None)
+        else:
+            merged.pop("pricing", None)
+    if body.get("clearPricing"):
+        merged.pop("pricing", None)
+        merged["pricingDisabled"] = True
 
     candidate = dict(overrides)
     candidate[provider_id] = merged
@@ -493,6 +581,11 @@ def configure_provider(provider_id: str, body):
 
     overrides[provider_id] = merged
     _write_provider_overrides(overrides)
+    if MISSION_STORE and settings.get("pricingSource") == "file":
+        try:
+            MISSION_STORE.reprice_provider_calls(provider_id, settings.get("pricing") or {})
+        except Exception:
+            pass
     public = provider_public(provider_id, overrides=overrides)
     return {
         "ok": True,
@@ -570,6 +663,7 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
     base = settings["baseUrl"].rstrip("/")
     protocol = settings["protocol"]
     key = settings["apiKey"]
+    cached_tokens = 0
 
     if protocol == "openai":
         messages = []
@@ -587,6 +681,9 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         usage = data.get("usage") or {}
         tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
         tokens_out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+        details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+        cached_tokens = int(usage.get("prompt_cache_hit_tokens") or
+                            details.get("cached_tokens") or 0)
     elif protocol == "anthropic":
         payload = {
             "model": model,
@@ -624,7 +721,12 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
             except ProviderCallError:
                 pass
         usage = data.get("usage") or {}
-        tokens_in = int(usage.get("input_tokens") or 0)
+        cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        cache_creation = int(usage.get("cache_creation_input_tokens") or 0)
+        cached_tokens = cache_read
+        # Anthropic-style usage reports uncached input_tokens separately from
+        # cache reads/writes; count all of them in the visible input total.
+        tokens_in = int(usage.get("input_tokens") or 0) + cache_read + cache_creation
         tokens_out = int(usage.get("output_tokens") or 0)
     elif protocol == "gemini":
         payload = {
@@ -641,12 +743,15 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         usage = data.get("usageMetadata") or {}
         tokens_in = int(usage.get("promptTokenCount") or 0)
         tokens_out = int(usage.get("candidatesTokenCount") or 0)
+        cached_tokens = int(usage.get("cachedContentTokenCount") or 0)
     else:
         raise ProviderCallError("unsupported provider protocol: " + protocol)
 
     text = str(text or "").strip()
     if not text:
         raise ProviderCallError("provider returned an empty response")
+    pricing = settings.get("pricing") or {}
+    now = datetime.datetime.now(datetime.timezone.utc)
     return {
         "text": text,
         "model": model,
@@ -654,6 +759,11 @@ def provider_chat(provider_id: str, prompt: str, system: str = "", max_tokens: i
         "protocol": protocol,
         "tokensIn": tokens_in,
         "tokensOut": tokens_out,
+        "cachedTokensIn": min(max(0, cached_tokens), max(0, tokens_in)),
+        "cost": cost_for_tokens(settings, tokens_in, tokens_out, cached_tokens, now),
+        "currency": str(pricing.get("currency") or ""),
+        "priceSource": str(settings.get("pricingSource") or ""),
+        "peak": pricing_engine.is_peak(pricing, now),
     }
 
 
@@ -725,10 +835,49 @@ def connect_provider(provider_id: str):
         return agent, created
 
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
+STATE_LOAD_ERROR = ""
+
+
+def _quarantine_file(path, label="state"):
+    """Move a corrupt state file aside so it is never silently overwritten."""
+    try:
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+        target = path.with_name(path.name + ".corrupt-" + stamp)
+        suffix = 1
+        while target.exists():
+            suffix += 1
+            target = path.with_name(path.name + ".corrupt-" + stamp + "-" + str(suffix))
+        os.replace(path, target)
         try:
-            data = json.loads(STATE_FILE.read_text("utf-8"))
+            os.chmod(target, 0o600)
+        except OSError:
+            pass
+        return str(target)
+    except OSError:
+        return ""
+
+
+def load_state(path=None) -> dict:
+    """Load bridge state; a corrupt file is quarantined, never silently replaced."""
+    global STATE_LOAD_ERROR
+    path = Path(path or STATE_FILE)
+    STATE_LOAD_ERROR = ""
+    if path.exists():
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        raw = None
+        try:
+            raw = path.read_text("utf-8")
+        except OSError as exc:
+            STATE_LOAD_ERROR = "state file is unreadable: %s" % str(exc)[:200]
+        if raw is not None:
+            data = None
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                STATE_LOAD_ERROR = "state file is corrupt: %s" % str(exc)[:200]
             if isinstance(data, dict):
                 data.setdefault("agents", [])
                 data.setdefault("events", [])
@@ -740,8 +889,13 @@ def load_state() -> dict:
                 data.setdefault("messages", [])
                 data.setdefault("messageSeq", 0)
                 return data
-        except Exception:
-            pass
+            if data is not None and not STATE_LOAD_ERROR:
+                STATE_LOAD_ERROR = "state file must contain a JSON object"
+        if STATE_LOAD_ERROR:
+            quarantined = _quarantine_file(path)
+            if quarantined:
+                STATE_LOAD_ERROR += "; quarantined to " + quarantined
+            print("bridge state error: " + STATE_LOAD_ERROR, file=sys.stderr)
     return {"agents": [], "events": [], "nextEvent": 1, "demo": False, "pairs": [],
             "assignments": [], "company": None, "messages": [], "messageSeq": 0}
 
@@ -750,10 +904,28 @@ STATE = load_state()
 
 
 def save_state() -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(STATE, ensure_ascii=False, indent=2), "utf-8")
-    tmp.replace(STATE_FILE)
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(STATE_FILE.parent, 0o700)
+    except OSError:
+        pass
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(STATE_FILE.parent), prefix=".bridge-state-", suffix=".json"
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(STATE, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, STATE_FILE)
+        os.chmod(STATE_FILE, 0o600)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def app_version() -> str:
@@ -967,6 +1139,11 @@ def _record_model_call(provider_id, purpose, mission=None, task=None, agent_id="
             "contextTokens": max(1, round((int(prompt_chars or 0) + int(system_chars or 0)) / 3.2)),
             "tokensIn": int(usage.get("tokensIn") or 0),
             "tokensOut": int(usage.get("tokensOut") or 0),
+            "cachedTokensIn": int(usage.get("cachedTokensIn") or 0),
+            "cost": usage.get("cost") if usage.get("cost") is not None else None,
+            "currency": str(usage.get("currency") or ""),
+            "priceSource": str(usage.get("priceSource") or ""),
+            "peak": bool(usage.get("peak")),
             "durationMs": duration,
             "ok": not bool(error),
             "error": str(error or "")[:500],
@@ -1299,8 +1476,19 @@ def start_mission_discussion(mission_id, preferred=""):
         mission_id, status="queued", provider=preferred, startedAt=now_iso(),
         finishedAt="", error="",
     )
+    def _safe_discussion(mission_id_value, preferred_value):
+        try:
+            _run_mission_discussion(mission_id_value, preferred_value)
+        except missions.MissionError as exc:
+            # The mission may have been deleted while a model call was in
+            # flight. Do not let a background thread take down the bridge.
+            if getattr(exc, "code", "") != "not_found":
+                _autorun_message(mission_id_value, "AI 讨论异常：" + str(exc)[:200])
+        except Exception as exc:
+            _autorun_message(mission_id_value, "AI 讨论异常：" + str(exc)[:200])
+
     thread = threading.Thread(
-        target=_run_mission_discussion, args=(mission_id, preferred), daemon=True
+        target=_safe_discussion, args=(mission_id, preferred), daemon=True
     )
     thread.start()
     return mission.get("discussion")
@@ -1338,6 +1526,11 @@ def _mission_token_usage(mission):
         return int(evaluation.get("totalTokens") or 0)
     except Exception:
         return 0
+
+
+def _verification_failed(task):
+    verification = (task or {}).get("verification") or {}
+    return verification.get("status") == "failed"
 
 
 def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
@@ -1441,6 +1634,23 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                     if not ready:
                         review = [t for t in tasks if t.get("status") == "review"]
                         if review:
+                            rejected = [item for item in review if _verification_failed(item)]
+                            if rejected:
+                                for item in rejected:
+                                    MISSION_STORE.update_task(item["id"], {
+                                        "status": "blocked",
+                                        "blockedReason": "交付验证未通过，不能自动完成",
+                                    })
+                                MISSION_STORE.set_autorun(
+                                    mission_id, status="error", completed=done, total=len(tasks),
+                                    error="交付验证未通过，任务已阻塞；请在任务中心查看证据并重新交付",
+                                    finishedAt=now_iso(), tokensUsed=tokens_used, tokenBudget=budget,
+                                )
+                                _autorun_message(
+                                    mission_id,
+                                    "交付验证未通过，自动执行已停止；任务没有被标记完成。",
+                                )
+                                return
                             for item in review:
                                 MISSION_STORE.update_task(item["id"], {"status": "done"})
                             continue
@@ -1526,6 +1736,21 @@ def _run_mission_autorun(mission_id, preferred="", force_discuss=False):
                         retry=0, tokensUsed=tokens_used, tokenBudget=budget,
                     )
                 elif raw_task and raw_task.get("status") == "review":
+                    if _verification_failed(raw_task):
+                        MISSION_STORE.update_task(task["id"], {
+                            "status": "blocked",
+                            "blockedReason": "交付验证未通过，不能标记完成",
+                        })
+                        MISSION_STORE.set_autorun(
+                            mission_id, status="error", error="交付验证未通过：任务已阻塞",
+                            finishedAt=now_iso(), tokensUsed=tokens_used, tokenBudget=budget,
+                        )
+                        _autorun_message(
+                            mission_id,
+                            "「" + str(task.get("title") or task.get("id")) +
+                            "」交付验证未通过，任务已阻塞；请查看证据并重新交付。",
+                        )
+                        return
                     MISSION_STORE.update_task(task["id"], {"status": "done"})
                     mission = MISSION_STORE.find_mission(mission_id)
                     MISSION_STORE.set_autorun(
@@ -1631,11 +1856,24 @@ def resume_mission_after_approval(approval):
         if not auto.get("enabled") or auto.get("status") != "waiting_boss":
             return
         task_id = approval.get("taskId") or ""
+        blocked_by_verification = False
         if approval.get("status") == "approved":
             if task_id:
                 _, task = MISSION_STORE.find_task(task_id)
                 if task and task.get("status") == "review":
-                    MISSION_STORE.update_task(task_id, {"status": "done"})
+                    if _verification_failed(task):
+                        blocked_by_verification = True
+                        MISSION_STORE.update_task(task_id, {
+                            "status": "blocked",
+                            "blockedReason": "交付验证未通过；审批已通过但任务不能标记完成",
+                        })
+                        MISSION_STORE.set_autorun(
+                            mission_id, status="error",
+                            error="交付验证未通过，审批已通过但任务未完成",
+                            finishedAt=now_iso(),
+                        )
+                    else:
+                        MISSION_STORE.update_task(task_id, {"status": "done"})
             provider = auto.get("provider") or ""
         else:
             MISSION_STORE.set_autorun(
@@ -1643,7 +1881,7 @@ def resume_mission_after_approval(approval):
                 finishedAt=now_iso(),
             )
             provider = ""
-    if approval.get("status") == "approved":
+    if approval.get("status") == "approved" and not blocked_by_verification:
         start_mission_autorun(mission_id, provider)
 
 
@@ -2021,19 +2259,30 @@ def _repair_ai_report(data):
     return repaired, changed
 
 
-def run_mission_task(mission_id, task_id, preferred=""):
+def run_mission_task(mission_id, task_id, preferred="", previous_artifacts=None):
     if not MISSION_STORE or not missions:
         raise missions.MissionError("mission store is not available", "no_missions", 503)
     mission = MISSION_STORE.find_mission(mission_id)
     _, task = MISSION_STORE.find_task(task_id)
     if not mission or not task or task.get("missionId") != mission_id:
         raise missions.MissionError("task not found", "not_found", 404)
+    if previous_artifacts is None:
+        previous_artifacts = MISSION_STORE.task_artifacts(task)
     candidates = mission_provider_candidates(preferred)
     if not candidates:
         raise missions.MissionError(
             "no reachable model service; start a local gateway or configure a model API",
             "no_provider", 409)
     prompt = _mission_task_prompt(mission, task)
+    with MISSION_STORE.lock:
+        for raw in MISSION_STORE.data.get("missions", []):
+            if raw.get("id") != mission_id:
+                continue
+            for raw_task in raw.get("tasks", []):
+                if raw_task.get("id") == task_id:
+                    # Never let a previous run's evidence validate a new run.
+                    raw_task["verification"] = None
+            MISSION_STORE._save()
     system = (
         "你是 Agent Office 的任务执行 Agent。输出具体、可验收、可追溯。"
         "你的技术方案必须由自己解决；只有花费、业务拍板、扫码登录、授权可以请求老板。"
@@ -2185,6 +2434,12 @@ def run_mission_task(mission_id, task_id, preferred=""):
             "deliverable_missing", 502,
         )
     artifact_ids = [row["id"] for row in artifact_rows]
+    current_artifacts = [MISSION_STORE.find_artifact(artifact_id) for artifact_id in artifact_ids]
+    verification = None
+    difference = None
+    if verification_engine:
+        verification = verification_engine.verify_task(task, current_artifacts)
+        difference = verification_engine.artifact_diff(previous_artifacts, current_artifacts)
     with MISSION_STORE.lock:
         for raw in MISSION_STORE.data.get("missions", []):
             if raw.get("id") != mission_id:
@@ -2193,6 +2448,10 @@ def run_mission_task(mission_id, task_id, preferred=""):
                 if raw_task.get("id") == task_id:
                     raw_task["artifactIds"] = artifact_ids
                     raw_task["deliverable"] = deliverable
+                    if verification is not None:
+                        raw_task["verification"] = verification
+                    if difference is not None:
+                        raw_task["diff"] = difference
                     raw_task["updatedAt"] = now_iso()
             MISSION_STORE._save()
     with MISSION_STORE.lock:
@@ -2209,7 +2468,7 @@ def run_mission_task(mission_id, task_id, preferred=""):
     return {"task": MISSION_STORE.public_task(task, mission),
             "message": message, "artifact": artifact_rows[0],
             "artifacts": artifact_rows, "provider": provider_id,
-            "usage": usage}
+            "usage": usage, "verification": verification, "diff": difference}
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
 MCP_TOOLS = [
@@ -2245,7 +2504,18 @@ MCP_TOOLS = [
             "status": {"type": "string", "enum": ["review", "done", "blocked"]},
             "report": {"type": "object"},
             "usage": {"type": "object"},
+            "artifactIds": {"type": "array", "items": {"type": "string"}},
         }, "required": ["taskId", "report"], "additionalProperties": False},
+    },
+    {
+        "name": "agent_office_upload_deliverable",
+        "description": "Attach a text deliverable file to a task assigned to the MCP agent.",
+        "inputSchema": {"type": "object", "properties": {
+            "taskId": {"type": "string"},
+            "name": {"type": "string"},
+            "content": {"type": "string"},
+            "mime": {"type": "string"},
+        }, "required": ["taskId", "name", "content"], "additionalProperties": False},
     },
     {
         "name": "agent_office_send_message",
@@ -2278,7 +2548,7 @@ def mcp_text_result(payload, is_error=False):
     }
 
 
-def mcp_tool_call(agent_id, agent, name, arguments):
+def mcp_tool_call(agent_id, agent, name, arguments, identity_verified=False):
     args = arguments if isinstance(arguments, dict) else {}
     if name == "agent_office_status":
         return mcp_text_result({
@@ -2313,6 +2583,45 @@ def mcp_tool_call(agent_id, agent, name, arguments):
             "task": MISSION_STORE.public_task(task, mission),
             "mission": MISSION_STORE.public_mission(mission, summary=True),
         })
+    if name == "agent_office_upload_deliverable":
+        task_id = str(args.get("taskId") or "").strip()
+        name_value = str(args.get("name") or "").strip()
+        content = str(args.get("content") or "")
+        if not task_id or not name_value or not content.strip():
+            return mcp_text_result({"ok": False, "error": "taskId, name and content are required"}, True)
+        if len(content.encode("utf-8")) > 2 * 1024 * 1024:
+            return mcp_text_result({"ok": False, "error": "content is larger than 2MB"}, True)
+        try:
+            with MISSION_STORE.lock:
+                mission, task = MISSION_STORE.find_task(task_id)
+                if not task or not mission:
+                    return mcp_text_result({"ok": False, "error": "task not found"}, True)
+                if task.get("assigneeId") != agent_id:
+                    return mcp_text_result({"ok": False, "error": "task is not assigned to this agent"}, True)
+                safe_name = _safe_deliverable_name(name_value, "deliverable.md")
+                MISSION_STORE.upload_dir.mkdir(parents=True, exist_ok=True)
+                path = MISSION_STORE.upload_dir / (
+                    secrets.token_hex(10) + "-" + Path(safe_name).name)
+                path.write_text(content, "utf-8")
+                artifact = MISSION_STORE.add_artifact({
+                    "name": safe_name,
+                    "mime": str(args.get("mime") or _deliverable_mime(safe_name))[:120],
+                    "size": len(content.encode("utf-8")),
+                    "kind": "document",
+                    "path": str(path),
+                    "missionId": mission.get("id"),
+                    "conversationId": mission.get("conversationId"),
+                    "uploadedBy": agent_id,
+                    "extractedText": content[:20000],
+                    "extraction": "text",
+                })
+                task.setdefault("artifactIds", []).append(artifact["id"])
+                task["updatedAt"] = now_iso()
+                mission["updatedAt"] = now_iso()
+                MISSION_STORE._save()
+            return mcp_text_result({"ok": True, "artifact": artifact})
+        except (OSError, missions.MissionError) as exc:
+            return mcp_text_result({"ok": False, "error": str(exc)}, True)
     if name == "agent_office_report_task":
         task_id = str(args.get("taskId") or "").strip()
         try:
@@ -2320,7 +2629,10 @@ def mcp_tool_call(agent_id, agent, name, arguments):
                 task = MISSION_STORE.submit_task_report(task_id, {
                     "report": args.get("report"),
                     "usage": args.get("usage") or {},
-                }, actor=agent_id, status=str(args.get("status") or "review"))
+                    "artifactIds": args.get("artifactIds") or [],
+                }, actor=agent_id, status=str(args.get("status") or "review"),
+                    identity_basis=("agent-hmac" if identity_verified else "mcp-header"),
+                    identity_verified=bool(identity_verified))
             return mcp_text_result({"ok": True, "task": task})
         except missions.MissionError as exc:
             return mcp_text_result({"ok": False, "error": str(exc), "code": exc.code}, True)
@@ -2344,7 +2656,8 @@ def mcp_tool_call(agent_id, agent, name, arguments):
     return mcp_text_result({"ok": False, "error": "unknown tool: " + name}, True)
 
 
-def mcp_response(payload, header_value="", query_value=""):
+def mcp_response(payload, header_value="", query_value="", signature="",
+                 timestamp="", raw_body=b""):
     if not isinstance(payload, dict):
         return {"jsonrpc": "2.0", "id": None,
                 "error": {"code": -32600, "message": "invalid request"}}
@@ -2371,8 +2684,24 @@ def mcp_response(payload, header_value="", query_value=""):
         agent_id, agent = mcp_identity(header_value, query_value)
         name = str(params.get("name") or "")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        identity_verified = False
+        if signature or timestamp:
+            if not signature or not timestamp:
+                return {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "error": {"code": -32001,
+                              "message": "both signature and timestamp are required"},
+                }
+            identity_verified, reason = verify_agent_request(
+                agent, raw_body, signature, timestamp)
+            if not identity_verified:
+                return {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "error": {"code": -32001, "message": reason},
+                }
         try:
-            result = mcp_tool_call(agent_id, agent, name, arguments)
+            result = mcp_tool_call(agent_id, agent, name, arguments,
+                                   identity_verified=identity_verified)
         except ValueError as exc:
             result = mcp_text_result({"ok": False, "error": str(exc)}, True)
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
@@ -2533,8 +2862,77 @@ def online(agent: dict) -> bool:
     return (time.time() - float(seen)) < 40
 
 
+def new_agent_evidence_secret() -> str:
+    return secrets.token_hex(32)
+
+
+def agent_evidence_key_id(agent: dict) -> str:
+    secret = str((agent or {}).get("evidenceSecret") or "")
+    if not secret:
+        return ""
+    try:
+        return hashlib.sha256(bytes.fromhex(secret)).hexdigest()[:16]
+    except ValueError:
+        return ""
+
+
+def agent_signing_public(agent: dict) -> dict:
+    return {
+        "keyId": agent_evidence_key_id(agent),
+        "algorithm": "HMAC-SHA256",
+        "signed": "timestamp + '.' + raw JSON body",
+        "headers": {
+            "X-Agent-Signature": "hex HMAC-SHA256",
+            "X-Agent-Timestamp": "unix seconds",
+        },
+        "windowSeconds": 300,
+    }
+
+
+def verify_agent_request(agent: dict, raw_body: bytes, signature: str,
+                         timestamp: str) -> tuple:
+    """Verify an MCP request signed by the agent's local evidence secret.
+
+    The secret is issued once when the agent is created or rotated and is never
+    returned by public_agent. A signed request proves possession of that secret
+    for this body and timestamp; it does not prove the agent's real-world
+    identity.
+    """
+    secret = str((agent or {}).get("evidenceSecret") or "")
+    if not secret:
+        return False, "agent has no signing secret; rotate one in Agent Office"
+    try:
+        key = bytes.fromhex(secret)
+    except ValueError:
+        return False, "invalid agent signing secret"
+    try:
+        stamp = int(str(timestamp or "0"))
+    except (TypeError, ValueError):
+        return False, "invalid timestamp"
+    if abs(time.time() - stamp) > 300:
+        return False, "signature timestamp expired"
+    expected = hmac.new(
+        key, (str(stamp) + ".").encode("utf-8") + (raw_body or b""),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(str(signature or ""), expected):
+        return False, "signature mismatch"
+    digest = hashlib.sha256(str(signature).encode("utf-8")).hexdigest()
+    now = time.time()
+    with SIGNATURE_LOCK:
+        for key_id, seen_at in list(SIGNATURE_SEEN.items()):
+            if now - seen_at > 600:
+                SIGNATURE_SEEN.pop(key_id, None)
+        if digest in SIGNATURE_SEEN:
+            return False, "signature replay"
+        SIGNATURE_SEEN[digest] = now
+    return True, ""
+
+
 def public_agent(agent: dict) -> dict:
     out = dict(agent)
+    out.pop("evidenceSecret", None)
+    out["signingKeyId"] = agent_evidence_key_id(agent)
     out["status"] = "online" if online(agent) else "offline"
     out["eventCount"] = sum(1 for e in STATE["events"] if e.get("agentId") == agent.get("id"))
     out.pop("lastSeenTs", None)
@@ -2619,7 +3017,7 @@ def pair_setup_markdown(base: str, pair: dict) -> str:
         "  -H 'Content-Type: application/json' \\\n"
         "  -d '{\"name\":\"Your Agent\",\"runtime\":\"claude-code\",\"skills\":[\"repo-map\",\"edit\",\"test\"]}'\n"
         "```\n\n"
-        "The response contains `agent.id` and `bridge`. Store them.\n\n"
+        "The response contains `agent.id`, `bridge` and a one-time `signingSecret` for optional HMAC-signed MCP requests. Store the secret in the agent process, never in browser storage or logs.\n\n"
         "## 2. Heartbeat\n\n"
         "```bash\n"
         "curl -X POST " + base + "/agents/<agent-id>/heartbeat \\\n"
@@ -2669,6 +3067,7 @@ def create_agent_from_payload(body: dict, agent_id=None) -> dict:
         "createdAt": now_iso(),
         "lastSeen": None,
         "lastSeenTs": 0,
+        "evidenceSecret": new_agent_evidence_secret(),
     }
     agent.update(updates)
     STATE["agents"].append(agent)
@@ -3460,6 +3859,22 @@ class Handler(BaseHTTPRequestHandler):
         if not origin_allowed(origin):
             self.send_json({"error": "origin not allowed; serve the app from localhost"}, 403)
             return False
+        client = str((self.client_address or ("",))[0] or "")
+        if BRIDGE_TOKEN and client not in LOOPBACK_HOSTS:
+            supplied = (self.headers.get("Authorization") or "").strip()
+            if supplied.lower().startswith("bearer "):
+                supplied = supplied[7:].strip()
+            if not supplied:
+                supplied = (self.headers.get("X-Agent-Office-Token") or "").strip()
+            if not supplied:
+                try:
+                    supplied = (parse_qs(urlparse(self.path).query).get("token") or [""])[0]
+                except ValueError:
+                    supplied = ""
+            if not hmac.compare_digest(supplied, BRIDGE_TOKEN):
+                self.send_json({"error": "missing or invalid bridge token",
+                                "code": "unauthorized"}, 401)
+                return False
         self.allowed_origin = origin
         return True
 
@@ -3470,8 +3885,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type, X-Update-Token, X-Filename, X-Mime, X-Mission-Id, "
-            "X-Conversation-Id, X-Uploaded-By, X-Agent-Id",
+            "Content-Type, Authorization, X-Agent-Office-Token, X-Update-Token, X-Filename, "
+            "X-Mime, X-Mission-Id, X-Conversation-Id, X-Uploaded-By, X-Agent-Id, "
+            "X-Agent-Signature, X-Agent-Timestamp",
         )
         self.send_header("Cache-Control", "no-store")
 
@@ -3516,12 +3932,17 @@ class Handler(BaseHTTPRequestHandler):
         if length > 2 * 1024 * 1024:
             raise ValueError("body too large")
         raw = self.rfile.read(length) if length else b"{}"
+        self.raw_body = raw
         data = json.loads(raw.decode("utf-8") or "{}")
         if not isinstance(data, dict):
             raise ValueError("body must be an object")
         return data
 
     def handle_manual_update(self):
+        if not local_client_only(str((self.client_address or ("",))[0] or "")):
+            self.send_json({"error": "manual update is local-only",
+                            "code": "local_only"}, 403)
+            return
         if not updater:
             self.send_json({"error": "updater module is not installed",
                             "code": "no_updater"}, 503)
@@ -3719,6 +4140,46 @@ class Handler(BaseHTTPRequestHandler):
             )
         self.send_json({"ok": True, "artifact": artifact, "provider": provider})
 
+    def send_evidence(self, mission_id, bundle=False):
+        if not EVIDENCE_LOG:
+            self.send_json({
+                "error": "evidence log is not available",
+                "code": "no_evidence",
+                "detail": EVIDENCE_ERROR,
+            }, 503)
+            return
+        with MISSION_STORE.lock:
+            mission = MISSION_STORE.find_mission(mission_id)
+            if not mission:
+                self.send_json({"error": "mission not found", "code": "not_found"}, 404)
+                return
+            tasks = {}
+            for task in mission.get("tasks") or []:
+                tasks[task.get("id")] = dict(task)
+            artifacts = {
+                row.get("id"): dict(row)
+                for row in MISSION_STORE.data.get("artifacts", [])
+                if row.get("missionId") == mission_id
+            }
+        try:
+            verification = EVIDENCE_LOG.verify(mission_id, tasks=tasks,
+                                               artifacts_by_id=artifacts)
+            if bundle:
+                payload = EVIDENCE_LOG.bundle(mission_id, verification)
+            else:
+                payload = {
+                    "ok": True,
+                    "receipts": EVIDENCE_LOG.list(mission_id, limit=1000),
+                    "verification": verification,
+                }
+        except Exception as exc:
+            self.send_json({
+                "error": "cannot verify evidence: " + str(exc)[:300],
+                "code": "evidence_error",
+            }, 500)
+            return
+        self.send_json(payload)
+
     def handle_mission_action(self, path, body):
         if not MISSION_STORE:
             self.send_json({"error": "mission store is not available",
@@ -3800,6 +4261,8 @@ class Handler(BaseHTTPRequestHandler):
                                 and artifact.get("name") == str(task.get("title") or "") + ".md"
                                 and artifact.get("uploadedBy") == task.get("assigneeId")
                             ]
+                        previous_rows = [MISSION_STORE.find_artifact(aid) for aid in old_artifacts]
+                        previous_rows = [row for row in previous_rows if row]
                         task["status"] = "assigned"
                         task["progress"] = 15
                         task["report"] = None
@@ -3808,7 +4271,8 @@ class Handler(BaseHTTPRequestHandler):
                         mission["status"] = "active"
                         MISSION_STORE._save()
                     result = run_mission_task(
-                        parts[2], parts[4], str(body.get("providerId") or ""))
+                        parts[2], parts[4], str(body.get("providerId") or ""),
+                        previous_artifacts=previous_rows)
                     # Remove only the old placeholder files; real user or rich
                     # artifacts are retained as history.
                     for artifact_id in old_artifacts:
@@ -3816,6 +4280,53 @@ class Handler(BaseHTTPRequestHandler):
                         if artifact and int(artifact.get("size") or 0) < 80:
                             MISSION_STORE.delete_artifact(artifact_id)
                     self.send_json({"ok": True, **result})
+                    return
+            if path.startswith("/missions/") and path.endswith("/evidence/verify"):
+                parts = path.split("/")
+                if len(parts) == 5 and parts[3] == "evidence":
+                    self.send_evidence(parts[2])
+                    return
+            if path.startswith("/missions/") and path.endswith("/run-tests"):
+                parts = path.split("/")
+                if len(parts) == 6 and parts[3] == "tasks" and test_execution:
+                    with MISSION_STORE.lock:
+                        mission = MISSION_STORE.find_mission(parts[2])
+                        _, task = MISSION_STORE.find_task(parts[4])
+                        if not mission or not task or task.get("missionId") != parts[2]:
+                            self.send_json({"error": "task not found"}, 404)
+                            return
+                        artifacts = MISSION_STORE.task_artifacts(task)
+                    report = test_execution.run_task_tests(
+                        task, artifacts,
+                        command=str(body.get("command") or ""),
+                        allowed_root=MISSION_STORE.upload_dir,
+                        timeout_seconds=body.get("timeoutSeconds"),
+                    )
+                    try:
+                        updated = MISSION_STORE.save_task_test_run(parts[4], report)
+                    except missions.MissionError as exc:
+                        self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                        return
+                    self.send_json({"ok": True, "task": updated, "testRun": report})
+                    return
+            if path.startswith("/missions/") and path.endswith("/verify"):
+                parts = path.split("/")
+                if len(parts) == 6 and parts[3] == "tasks" and verification_engine:
+                    with MISSION_STORE.lock:
+                        mission = MISSION_STORE.find_mission(parts[2])
+                        _, task = MISSION_STORE.find_task(parts[4])
+                        if not mission or not task or task.get("missionId") != parts[2]:
+                            self.send_json({"error": "task not found"}, 404)
+                            return
+                        artifacts = MISSION_STORE.task_artifacts(task)
+                        report = verification_engine.verify_task(task, artifacts)
+                        try:
+                            updated = MISSION_STORE.save_task_verification(parts[4], report)
+                        except missions.MissionError as exc:
+                            self.send_json({"error": str(exc), "code": exc.code}, exc.status)
+                            return
+                    self.send_json({"ok": True, "task": updated,
+                                    "verification": report})
                     return
             if path.startswith("/missions/") and path.endswith("/run"):
                 parts = path.split("/")
@@ -4028,6 +4539,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(update_public_status())
             return
         if path == "/update/manual/token":
+            if not local_client_only(str((self.client_address or ("",))[0] or "")):
+                self.send_json({"error": "manual update is local-only",
+                                "code": "local_only"}, 403)
+                return
             if not updater:
                 self.send_json({"error": "updater module is not installed",
                                 "code": "no_updater"}, 503)
@@ -4036,6 +4551,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/missions/stream":
             self.stream_mission_messages(qs)
+            return
+        if path == "/execution/capabilities":
+            self.send_json({
+                "execution": test_execution.capabilities() if test_execution else {
+                    "available": False, "backend": "none",
+                    "reason": "execution module is not installed",
+                },
+                "evidence": {
+                    "available": bool(EVIDENCE_LOG),
+                    "error": EVIDENCE_ERROR,
+                },
+            })
             return
         if path in ("/missions", "/missions/overview", "/missions/agents",
                     "/conversations", "/approvals", "/mission-tasks",
@@ -4118,6 +4645,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"artifacts": MISSION_STORE.list_artifacts(
                     mission_id, conversation_id)})
                 return
+            if path.startswith("/missions/") and path.endswith("/evidence/bundle"):
+                parts = path.split("/")
+                if len(parts) == 5 and parts[3] == "evidence":
+                    self.send_evidence(parts[2], bundle=True)
+                    return
+            if path.startswith("/missions/") and path.endswith("/evidence"):
+                parts = path.split("/")
+                if len(parts) == 4:
+                    self.send_evidence(parts[2])
+                    return
             if path.startswith("/missions/") and path.endswith("/deliverables.zip"):
                 parts = path.split("/")
                 if len(parts) == 4:
@@ -4229,6 +4766,15 @@ class Handler(BaseHTTPRequestHandler):
                                              if a.get("status") == "pending")
                                          if MISSION_STORE else 0),
                     "demo": bool(STATE.get("demo")),
+                    "execution": (test_execution.capabilities()
+                                  if test_execution else {"available": False}),
+                    "evidence": {
+                        "available": bool(EVIDENCE_LOG),
+                        "error": EVIDENCE_ERROR,
+                    },
+                    "stateError": STATE_LOAD_ERROR,
+                    "missionsError": (getattr(MISSION_STORE, "load_error", "")
+                                      if MISSION_STORE else ""),
                     "time": now_iso(),
                 })
                 return
@@ -4318,7 +4864,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/autorun", "/missions/<id>/autorun/stop", "/missions/<id>/budget", "/missions/<id>/tasks/<taskId>/run", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/configure", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/execution/capabilities", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/autorun", "/missions/<id>/autorun/stop", "/missions/<id>/budget", "/missions/<id>/tasks/<taskId>/run", "/missions/<id>/tasks/<taskId>/verify", "/missions/<id>/tasks/<taskId>/run-tests", "/missions/<id>/evidence", "/missions/<id>/evidence/bundle", "/missions/<id>/evidence/verify", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/configure", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/agents/<id>/signing-key", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -4346,6 +4892,11 @@ class Handler(BaseHTTPRequestHandler):
                     body,
                     self.headers.get("X-Agent-Id") or "",
                     (query.get("agentId") or [""])[0],
+                    self.headers.get("X-Agent-Signature") or
+                    (query.get("signature") or [""])[0],
+                    self.headers.get("X-Agent-Timestamp") or
+                    (query.get("timestamp") or [""])[0],
+                    getattr(self, "raw_body", b""),
                 )
             except ValueError as exc:
                 self.send_json({
@@ -4495,6 +5046,8 @@ class Handler(BaseHTTPRequestHandler):
                         return
                 agent["lastSeen"] = now_iso()
                 agent["lastSeenTs"] = time.time()
+                if not agent.get("evidenceSecret"):
+                    agent["evidenceSecret"] = new_agent_evidence_secret()
                 pair["status"] = "claimed"
                 pair["agentId"] = agent["id"]
                 pair["claimedAt"] = now_iso()
@@ -4511,17 +5064,38 @@ class Handler(BaseHTTPRequestHandler):
                     "pair": public_pair(pair),
                     "bridge": self.base_url(),
                     "greeting": greeting,
+                    "signingSecret": agent.get("evidenceSecret", ""),
+                    "signing": agent_signing_public(agent),
                 })
                 return
             if path == "/agents":
                 agent_id = str(body.get("id") or ("ext-" + uuid.uuid4().hex[:8]))
+                existed = bool(find_agent(agent_id))
                 try:
                     agent = create_agent_from_payload(body, agent_id)
                 except ValueError as exc:
                     self.send_json({"error": str(exc)}, 400)
                     return
                 save_state()
-                self.send_json({"agent": public_agent(agent)})
+                payload = {"agent": public_agent(agent), "signing": agent_signing_public(agent)}
+                if not existed:
+                    payload["signingSecret"] = agent.get("evidenceSecret", "")
+                self.send_json(payload)
+                return
+            if path.startswith("/agents/") and path.endswith("/signing-key"):
+                agent_id = path.split("/")[2]
+                agent = find_agent(agent_id)
+                if not agent:
+                    self.send_json({"error": "unknown agent"}, 404)
+                    return
+                agent["evidenceSecret"] = new_agent_evidence_secret()
+                save_state()
+                self.send_json({
+                    "ok": True,
+                    "agent": public_agent(agent),
+                    "signingSecret": agent["evidenceSecret"],
+                    "signing": agent_signing_public(agent),
+                })
                 return
             if path.startswith("/agents/") and path.endswith("/heartbeat"):
                 agent_id = path.split("/")[2]
@@ -4625,6 +5199,11 @@ class Handler(BaseHTTPRequestHandler):
                 "text": result["text"][:500],
                 "tokensIn": result["tokensIn"],
                 "tokensOut": result["tokensOut"],
+                "cost": result.get("cost"),
+                "currency": result.get("currency") or "",
+                "cachedTokensIn": result.get("cachedTokensIn", 0),
+                "priceSource": result.get("priceSource") or "",
+                "peak": bool(result.get("peak")),
                 "durationMs": duration_ms,
             })
             return
@@ -4658,6 +5237,11 @@ class Handler(BaseHTTPRequestHandler):
             "text": result["text"][:2000],
             "tokensIn": result["tokensIn"],
             "tokensOut": result["tokensOut"],
+            "cost": result.get("cost"),
+            "currency": result.get("currency") or "",
+            "cachedTokensIn": result.get("cachedTokensIn", 0),
+            "priceSource": result.get("priceSource") or "",
+            "peak": bool(result.get("peak")),
             "durationMs": duration_ms,
             "event": event,
             "agent": public_agent(agent),
@@ -5005,10 +5589,28 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
+    if args.host not in LOOPBACK_HOSTS:
+        if not ALLOW_REMOTE or len(BRIDGE_TOKEN) < 24:
+            print("Refusing non-loopback bind: set BRIDGE_ALLOW_REMOTE=1 and "
+                  "BRIDGE_TOKEN=<at least 24 random characters> first. The bridge is "
+                  "local-first; exposing it without authentication is not allowed.",
+                  file=sys.stderr)
+            sys.exit(2)
+    if bool(BRIDGE_TLS_CERT) != bool(BRIDGE_TLS_KEY):
+        print("BRIDGE_TLS_CERT and BRIDGE_TLS_KEY must be set together.", file=sys.stderr)
+        sys.exit(2)
     if STATE.get("demo"):
         start_demo()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Agent Office Bridge on http://{args.host}:{args.port}")
+    scheme = "http"
+    if BRIDGE_TLS_CERT:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(BRIDGE_TLS_CERT, BRIDGE_TLS_KEY)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+    print(f"Agent Office Bridge on {scheme}://{args.host}:{args.port}"
+          + (" (token required)" if BRIDGE_TOKEN else " (loopback only)"))
     print("  GET  /health")
     print("  GET  /agents")
     print("  POST /agents")

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Agent Office">
+  <rect width="16" height="16" rx="4" fill="#07131d"/>
+  <rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="none" stroke="#1b3a4a"/>
+  <!-- pixel A / office roof, 2px strokes -->
+  <g fill="#55d6c2">
+    <rect x="6" y="2" width="4" height="1"/>
+    <rect x="5" y="3" width="2" height="1"/><rect x="9" y="3" width="2" height="1"/>
+    <rect x="4" y="4" width="2" height="1"/><rect x="10" y="4" width="2" height="1"/>
+    <rect x="3" y="5" width="2" height="1"/><rect x="11" y="5" width="2" height="1"/>
+    <rect x="2" y="6" width="2" height="1"/><rect x="12" y="6" width="2" height="1"/>
+    <rect x="2" y="7" width="2" height="6"/><rect x="12" y="7" width="2" height="6"/>
+    <rect x="1" y="12" width="2" height="2"/><rect x="13" y="12" width="2" height="2"/>
+  </g>
+  <rect x="3" y="7" width="10" height="1" fill="#f2b544"/>
+  <rect x="4" y="9" width="2" height="2" fill="#ff7fa8"/>
+  <rect x="7" y="9" width="2" height="2" fill="#55d6c2"/>
+  <rect x="10" y="9" width="2" height="2" fill="#b58cff"/>
+  <rect x="4" y="12" width="8" height="1" fill="#2a4c5e"/>
+  <rect x="12" y="1" width="3" height="3" rx="0.6" fill="#f2b544"/>
+</svg>

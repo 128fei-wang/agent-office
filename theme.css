@@ -57,10 +57,11 @@ html[data-theme="day"] .topbar {
   border-bottom-color: #d8c8b4;
   box-shadow: 0 10px 32px rgba(92, 70, 43, 0.12);
 }
-html[data-theme="day"] .brand-mark {
-  background: #fffaf2;
-  border-color: #d8c8b4;
-  box-shadow: 0 0 0 1px #e7dac8, 0 4px 12px rgba(92, 70, 43, 0.14);
+html[data-theme="day"] .brand > .brand-mark {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 5px 12px rgba(92, 70, 43, 0.18));
 }
 html[data-theme="day"] .brand-copy h1 {
   background: none;

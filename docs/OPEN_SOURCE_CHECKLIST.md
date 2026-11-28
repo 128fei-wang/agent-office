@@ -26,12 +26,13 @@
    `A local-first multi-agent office and one-person-company workspace with realtime chat, task isolation, audit, Trace Lab, external-agent pairing and bilingual UI.`
 4. Add topics:
    `agents`, `multi-agent`, `observability`, `llm`, `agentops`, `opentelemetry`, `simulation`, `pixel-art`, `local-first`, `one-person-company`, `group-chat`, `i18n`.
-5. Upload a screenshot as the social preview (use `docs/screenshots/office.jpg`).
-6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.22.0`).
+5. Upload `assets/brand/og-image.png` as the social preview (or `docs/screenshots/office.jpg` for a product screenshot).
+6. Tag releases and publish notes from `CHANGELOG.md` (currently `v1.28.0`).
 7. Enable Issues and Discussions (recommended).
 8. Enable GitHub Pages with **Source: GitHub Actions** if you want a live UI demo
    (the static office works; external-agent pairing needs a local bridge).
 9. Do not publish bridge state, update backups or provider keys: they live in `~/.agent-office/`, outside the repo.
+10. macOS app bundles with a Chromium `Assets.car` must use `scripts/install-macos-icon.sh` (or apply its unique `CFBundleIconFile` + remove `CFBundleIconName` change) or macOS may keep the stock Chromium icon.
 
 ## Publish from this folder
 

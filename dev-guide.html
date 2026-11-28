@@ -27,7 +27,9 @@
     $('[data-guide-demo-toggle]').click();
     await wait(800);
     check('guide toggle turns demo off',/恢复演示/.test($('#demoQuickBtn').textContent));
-    check('guide toggle enters real workspace',!!$('#realModeCover')&&$('#realModeCover').hidden&&!!$('#realStageNote')&&!$('#realStageNote').hidden);
+    const note=$('#realStageNote'),hasMissions=!!$('.real-mission-row');
+    check('guide toggle enters real workspace',!!$('#realModeCover')&&$('#realModeCover').hidden&&
+      (hasMissions?!!note&&note.hidden:!!note&&!note.hidden)&&!!$('#realOpsBtn')&&!$('#realOpsBtn').hidden);
     check('guide reopens in real mode',!!$('.guide-status.off')||/真实模式/.test(($('.feature-guide')||{}).textContent||''));
     const close=$('[data-guide-close]');if(close)close.click();
     await wait(150);

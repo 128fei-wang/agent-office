@@ -635,6 +635,7 @@
         '<button type="button" class="update-mini" data-mcp-action="create">＋ ' + esc(this.t("mcpCreateAgent")) + '</button></div>' +
         '<pre class="mcp-config">' + esc(this.mcpConfig()) + '</pre>' +
         '<p class="update-hint">' + esc(this.t("mcpTools")) + '</p>' +
+        '<p class="update-hint">' + esc(this.t("mcpSigningHint")) + '</p>' +
         (this.mcpNotice ? '<p class="update-hint ai-notice">' + esc(this.mcpNotice) + '</p>' : "") +
         '<div class="update-actions"><button type="button" class="btn" data-mcp-action="refresh">' +
         esc(this.t("mcpRefresh")) + '</button><button type="button" class="btn ghost" data-mcp-action="copy">' +

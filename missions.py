@@ -22,6 +22,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -400,10 +401,13 @@ def choose_agents(directory, requested, description):
 
 
 class MissionStore:
-    def __init__(self, path, upload_dir):
+    def __init__(self, path, upload_dir, evidence=None, evidence_error=""):
         self.path = Path(path)
         self.upload_dir = Path(upload_dir)
+        self.evidence = evidence
+        self.evidence_error = str(evidence_error or "")[:300]
         self.lock = threading.RLock()
+        self.load_error = ""
         self.data = self._load()
         if not self.data.get("_modelCallsBackfilled"):
             self._backfill_model_calls()
@@ -423,10 +427,38 @@ class MissionStore:
             "next": {"message": 1},
         }
 
+    def _quarantine_file(self):
+        """Move a corrupt missions file aside so it is never silently overwritten."""
+        try:
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+            target = self.path.with_name(self.path.name + ".corrupt-" + stamp)
+            suffix = 1
+            while target.exists():
+                suffix += 1
+                target = self.path.with_name(
+                    self.path.name + ".corrupt-" + stamp + "-" + str(suffix))
+            os.replace(self.path, target)
+            try:
+                os.chmod(target, 0o600)
+            except OSError:
+                pass
+            return str(target)
+        except OSError:
+            return ""
+
     def _load(self):
         if self.path.exists():
+            raw = None
             try:
-                data = json.loads(self.path.read_text("utf-8"))
+                raw = self.path.read_text("utf-8")
+            except OSError as exc:
+                self.load_error = "missions file is unreadable: %s" % str(exc)[:200]
+            if raw is not None:
+                data = None
+                try:
+                    data = json.loads(raw)
+                except Exception as exc:
+                    self.load_error = "missions file is corrupt: %s" % str(exc)[:200]
                 if isinstance(data, dict):
                     data.setdefault("missions", [])
                     data.setdefault("conversations", [])
@@ -444,8 +476,13 @@ class MissionStore:
                                 [int(m.get("seq") or 0) for m in data.get("messages", [])
                                  if m.get("conversationId") == conv.get("id")] or [0])
                     return data
-            except Exception:
-                pass
+                if data is not None and not self.load_error:
+                    self.load_error = "missions file must contain a JSON object"
+            if self.load_error:
+                quarantined = self._quarantine_file()
+                if quarantined:
+                    self.load_error += "; quarantined to " + quarantined
+                print("missions state error: " + self.load_error, file=sys.stderr)
         return self._empty()
 
     def _save(self):
@@ -584,6 +621,12 @@ class MissionStore:
             "contextTokens": int(data.get("contextTokens") or 0),
             "tokensIn": int(data.get("tokensIn") or 0),
             "tokensOut": int(data.get("tokensOut") or 0),
+            "cachedTokensIn": int(data.get("cachedTokensIn") or 0),
+            "peak": bool(data.get("peak")),
+            "cost": (round(float(data.get("cost")), 8)
+                     if data.get("cost") is not None else None),
+            "currency": _text(data.get("currency"), 8).upper(),
+            "priceSource": _text(data.get("priceSource") or data.get("costSource"), 40),
             "durationMs": int(data.get("durationMs") or 0),
             "ok": bool(data.get("ok", True)),
             "error": _text(data.get("error"), 500),
@@ -596,6 +639,33 @@ class MissionStore:
                 del calls[:len(calls) - 800]
             self._save()
         return call
+
+    def reprice_provider_calls(self, provider_id, pricing):
+        """Apply a user price table to historical unpriced calls for one provider."""
+        if not provider_id or not isinstance(pricing, dict) or not pricing:
+            return 0
+        try:
+            price_in = float(pricing.get("inputPerMillion") or 0)
+            price_out = float(pricing.get("outputPerMillion") or 0)
+        except (TypeError, ValueError):
+            return 0
+        if price_in < 0 or price_out < 0 or (price_in == 0 and price_out == 0):
+            return 0
+        currency = str(pricing.get("currency") or "USD").upper()[:8] or "USD"
+        changed = 0
+        with self.lock:
+            for call in self.data.get("modelCalls", []):
+                if call.get("provider") != provider_id or call.get("cost") is not None:
+                    continue
+                cost = (int(call.get("tokensIn") or 0) / 1000000.0) * price_in + \
+                       (int(call.get("tokensOut") or 0) / 1000000.0) * price_out
+                call["cost"] = round(cost, 8)
+                call["currency"] = currency
+                call["costSource"] = "reprice"
+                changed += 1
+            if changed:
+                self._save()
+        return changed
 
     def list_model_calls(self, mission_id="", task_id="", purpose="", query="", limit=120):
         q = str(query or "").strip().lower()
@@ -618,10 +688,20 @@ class MissionStore:
             "calls": len(rows),
             "tokensIn": sum(int(r.get("tokensIn") or 0) for r in rows),
             "tokensOut": sum(int(r.get("tokensOut") or 0) for r in rows),
+            "cachedTokensIn": sum(int(r.get("cachedTokensIn") or 0) for r in rows),
             "durationMs": sum(int(r.get("durationMs") or 0) for r in rows),
             "failures": sum(0 if r.get("ok", True) else 1 for r in rows),
             "providers": sorted(set(r.get("provider") for r in rows if r.get("provider"))),
         }
+        priced = [r for r in rows if r.get("cost") is not None]
+        currencies = sorted(set(str(r.get("currency") or "") for r in priced
+                                if r.get("currency")))
+        summary["pricedCalls"] = len(priced)
+        summary["currencies"] = currencies
+        summary["currency"] = currencies[0] if len(currencies) == 1 else (
+            "MIXED" if len(currencies) > 1 else "")
+        summary["cost"] = (round(sum(float(r.get("cost") or 0) for r in priced), 8)
+                           if priced and len(currencies) <= 1 else None)
         summary["avgMs"] = round(summary["durationMs"] / len(rows)) if rows else 0
         return {"calls": rows, "summary": summary}
 
@@ -903,7 +983,47 @@ class MissionStore:
         out["overdue"] = False
         if "progress" not in out:
             out["progress"] = TASK_PROGRESS_DEFAULT.get(task.get("status"), 0)
+        if self.evidence:
+            try:
+                mission_id = (mission or {}).get("id") or task.get("missionId") or ""
+                receipts = self.evidence.list(mission_id, task.get("id") or "", limit=5)
+                if receipts:
+                    out["evidence"] = receipts
+            except Exception as exc:
+                out["evidenceError"] = str(exc)[:300]
+        elif self.evidence_error:
+            out["evidenceError"] = self.evidence_error
         return out
+
+    def task_artifacts(self, task):
+        rows = []
+        for artifact_id in task.get("artifactIds") or []:
+            artifact = self.find_artifact(artifact_id)
+            if artifact:
+                rows.append(artifact)
+        return rows
+
+    def save_task_verification(self, task_id, report):
+        with self.lock:
+            mission, task = self.find_task(task_id)
+            if not mission or not task:
+                raise MissionError("task not found", "not_found", 404)
+            task["verification"] = report
+            task["updatedAt"] = now_iso()
+            mission["updatedAt"] = now_iso()
+            self._save()
+            return self.public_task(task, mission)
+
+    def save_task_test_run(self, task_id, report):
+        with self.lock:
+            mission, task = self.find_task(task_id)
+            if not mission or not task:
+                raise MissionError("task not found", "not_found", 404)
+            task["testRun"] = report
+            task["updatedAt"] = now_iso()
+            mission["updatedAt"] = now_iso()
+            self._save()
+            return self.public_task(task, mission)
 
     def mission_evaluation(self, mission):
         tasks = mission.get("tasks", [])
@@ -961,6 +1081,35 @@ class MissionStore:
         total_tokens = actual_tokens + discussion_tokens
         calls = [c for c in self.data.get("modelCalls", [])
                  if c.get("missionId") == mission.get("id")]
+        for agent in agents:
+            agent_calls = [c for c in calls if c.get("agentId") == agent.get("id")]
+            agent_priced = [c for c in agent_calls if c.get("cost") is not None]
+            agent_currencies = sorted(set(str(c.get("currency") or "")
+                                          for c in agent_priced if c.get("currency")))
+            agent["pricedCalls"] = len(agent_priced)
+            agent["currency"] = agent_currencies[0] if len(agent_currencies) == 1 else (
+                "MIXED" if len(agent_currencies) > 1 else "")
+            agent["actualCost"] = (round(sum(float(c.get("cost") or 0)
+                                              for c in agent_priced), 8)
+                                   if agent_priced and len(agent_currencies) <= 1 else None)
+        priced_calls = [c for c in calls if c.get("cost") is not None]
+        currencies = sorted(set(str(c.get("currency") or "")
+                                for c in priced_calls if c.get("currency")))
+        model_cost = (round(sum(float(c.get("cost") or 0) for c in priced_calls), 8)
+                      if priced_calls and len(currencies) <= 1 else None)
+        task_costs = {}
+        for task in tasks:
+            task_priced = [c for c in calls if c.get("taskId") == task.get("id")
+                           and c.get("cost") is not None]
+            task_currencies = sorted(set(str(c.get("currency") or "")
+                                         for c in task_priced if c.get("currency")))
+            task_costs[task.get("id")] = {
+                "cost": (round(sum(float(c.get("cost") or 0) for c in task_priced), 8)
+                         if task_priced and len(task_currencies) <= 1 else None),
+                "currency": task_currencies[0] if len(task_currencies) == 1 else (
+                    "MIXED" if len(task_currencies) > 1 else ""),
+                "pricedCalls": len(task_priced),
+            }
         return {
             "estimatedMinutes": estimated_minutes,
             "estimatedTokens": estimated_tokens,
@@ -981,6 +1130,12 @@ class MissionStore:
             "modelFailures": sum(0 if c.get("ok", True) else 1 for c in calls),
             "modelAvgMs": round(sum(int(c.get("durationMs") or 0) for c in calls) / len(calls))
                            if calls else 0,
+            "modelCost": model_cost,
+            "currency": currencies[0] if len(currencies) == 1 else (
+                "MIXED" if len(currencies) > 1 else ""),
+            "pricedModelCalls": len(priced_calls),
+            "modelCurrencies": currencies,
+            "taskCosts": task_costs,
             "confidence": confidence,
             "deadline": deadline,
             "deadlineDays": deadline_days,
@@ -1668,7 +1823,61 @@ class MissionStore:
             "approval": report.get("approval") if isinstance(report.get("approval"), dict) else None,
         }
 
-    def submit_task_report(self, task_id, body, actor="", status="review"):
+    def _evidence_identity(self, mission, task, actor="", sender_type="agent"):
+        member_id = str(actor or task.get("assigneeId") or "")
+        member = next(
+            (row for row in mission.get("members") or [] if row.get("id") == member_id),
+            None,
+        )
+        if sender_type == "boss":
+            return member_id or "boss", "老板", "human", "local-user", True
+        name = ((member or {}).get("titleZh") or (member or {}).get("name") or
+                task.get("assigneeName") or member_id or "Agent")
+        if member and (str(member.get("source") or "") == "external" or
+                       member_id.startswith("ext-")):
+            return member_id, name, "external-agent", "mcp-header", False
+        if member:
+            return member_id, name, "bridge-ai", "local-member", True
+        if member_id.startswith("ext-"):
+            return member_id, name, "external-agent", "self-declared", False
+        return member_id, name, "agent", "unknown", False
+
+    def _record_evidence(self, mission, task, report, actor="",
+                         sender_type="agent", status="review",
+                         identity_basis="", identity_verified=None):
+        if not self.evidence or not isinstance(report, dict):
+            return None
+        agent_id, agent_name, source, basis, verified = self._evidence_identity(
+            mission, task, actor, sender_type)
+        if identity_basis:
+            basis = identity_basis
+        if identity_verified is not None:
+            verified = bool(identity_verified)
+        try:
+            receipt = self.evidence.issue(
+                mission_id=mission.get("id") or task.get("missionId") or "",
+                task_id=task.get("id") or "",
+                task_title=task.get("title") or "",
+                report=report,
+                artifacts=self.task_artifacts(task),
+                agent_id=agent_id,
+                agent_name=agent_name,
+                source=source,
+                status=status,
+                identity_basis=basis,
+                identity_verified=verified,
+            )
+            task.setdefault("evidenceIds", []).append(receipt["receiptId"])
+            task.pop("evidenceError", None)
+            return receipt
+        except Exception as exc:
+            # A receipt failure must not silently turn into a completed task;
+            # expose it on the task while preserving the report itself.
+            task["evidenceError"] = str(exc)[:300]
+            return None
+
+    def submit_task_report(self, task_id, body, actor="", status="review",
+                           identity_basis="", identity_verified=None):
         mission, task = self.find_task(task_id)
         if not mission or not task:
             raise MissionError("task not found", "not_found", 404)
@@ -1677,6 +1886,17 @@ class MissionStore:
             raise MissionError("only the assignee can report this task", "not_assignee", 403)
         if status not in TASK_STATUSES:
             status = "review"
+        artifact_ids = _list(body.get("artifactIds"))
+        if artifact_ids:
+            valid = []
+            for artifact_id in artifact_ids[:50]:
+                artifact = self.find_artifact(artifact_id)
+                if not artifact or artifact.get("missionId") != mission.get("id"):
+                    raise MissionError(
+                        "artifact not found in this mission: " + artifact_id,
+                        "bad_artifact", 400)
+                valid.append(artifact_id)
+            task["artifactIds"] = valid
         task["report"] = report
         task["status"] = status
         task["progress"] = TASK_PROGRESS_DEFAULT.get(status, 90)
@@ -1687,6 +1907,10 @@ class MissionStore:
             usage = report["usage"]
         if usage:
             _record_task_usage(task, usage)
+        self._record_evidence(mission, task, report, actor=actor,
+                              sender_type="agent", status=status,
+                              identity_basis=identity_basis,
+                              identity_verified=identity_verified)
         mission["status"] = "review" if status == "review" else mission.get("status")
         mission["updatedAt"] = now_iso()
         if status == "done":
@@ -1780,14 +2004,56 @@ class MissionStore:
         return message
 
     def set_discussion(self, mission_id, **fields):
-        mission = self.find_mission(mission_id)
-        if not mission:
-            raise MissionError("mission not found", "not_found", 404)
-        discussion = mission.setdefault("discussion", {})
-        discussion.update(fields)
-        mission["updatedAt"] = now_iso()
-        self._save()
+        with self.lock:
+            mission = self.find_mission(mission_id)
+            if not mission:
+                raise MissionError("mission not found", "not_found", 404)
+            discussion = mission.setdefault("discussion", {})
+            discussion.update(fields)
+            mission["updatedAt"] = now_iso()
+            self._save()
         return discussion
+
+    def recover_interrupted_runs(self):
+        """Mark autorun/discussion states left running by a bridge restart.
+
+        We deliberately do not auto-restart model work after a crash: restarting
+        blind could duplicate spend. The UI can resume explicitly.
+        """
+        changed = 0
+        with self.lock:
+            for mission in self.data.get("missions", []):
+                auto = mission.get("autoRun")
+                if isinstance(auto, dict) and auto.get("status") in (
+                        "running", "discussing", "queued"):
+                    auto["status"] = "error"
+                    auto["finishedAt"] = now_iso()
+                    auto["error"] = (
+                        "Bridge restarted before this run completed; open the mission and resume."
+                        if mission.get("language") == "en" else
+                        "Bridge 重启前自动执行未完成；请打开任务重新开始。")
+                    auto["currentTaskId"] = ""
+                    auto["currentTaskTitle"] = ""
+                    auto["currentTaskStartedAt"] = ""
+                    auto["currentAgentId"] = ""
+                    auto["currentAgentName"] = ""
+                    auto["currentRole"] = ""
+                    mission["updatedAt"] = now_iso()
+                    changed += 1
+                discussion = mission.get("discussion")
+                if isinstance(discussion, dict) and discussion.get("status") in (
+                        "running", "queued"):
+                    discussion["status"] = "error"
+                    discussion["finishedAt"] = now_iso()
+                    discussion["error"] = (
+                        "Bridge restarted before discussion completed."
+                        if mission.get("language") == "en" else
+                        "Bridge 重启前讨论未完成；请重新发起讨论。")
+                    mission["updatedAt"] = now_iso()
+                    changed += 1
+            if changed:
+                self._save()
+        return changed
 
     def set_autorun(self, mission_id, **fields):
         mission = self.find_mission(mission_id)
@@ -1925,6 +2191,9 @@ class MissionStore:
                     _mark_task_actual(task, "review")
                     if usage:
                         _record_task_usage(task, usage)
+                    self._record_evidence(
+                        mission, task, report, actor=sender_id,
+                        sender_type=sender_type, status="review")
                     mission["status"] = "review"
                     mission["updatedAt"] = now_iso()
                     message["meta"]["taskId"] = task_id
@@ -2097,7 +2366,10 @@ class MissionStore:
                 auto.get("tokensUsed"),
                 auto.get("error"),
                 [[t.get("id"), t.get("status"), t.get("progress"),
-                  t.get("updatedAt"), t.get("assigneeId")]
+                  t.get("updatedAt"), t.get("assigneeId"),
+                  (t.get("verification") or {}).get("status", ""),
+                  (t.get("testRun") or {}).get("status", ""),
+                  len(t.get("evidenceIds") or [])]
                  for t in mission.get("tasks", [])],
             ])
         approvals = [[a.get("id"), a.get("status"), a.get("resolvedAt"),
@@ -2111,6 +2383,185 @@ class MissionStore:
                              ensure_ascii=False, sort_keys=True)
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:20]
 
+    def recent_activity(self, limit=40):
+        """Real business events for the office feed.
+
+        The demo feed is fictional. Real mode should still feel alive, but every
+        row has to come from the mission store: task changes, approvals,
+        deliverables, discussions and model calls.
+        """
+        limit = max(1, min(120, int(limit or 40)))
+        missions = [m for m in self.data["missions"] if not m.get("archivedAt")]
+        mission_by_id = {m.get("id"): m for m in missions}
+        member_by_id = {}
+        for mission in missions:
+            for member in mission.get("members") or []:
+                member_by_id[(mission.get("id"), member.get("id"))] = member
+        events = []
+
+        def add(kind, at, mission, title, detail="", actor_id="", actor_name="",
+                status="", progress=0, extra=None):
+            if not at or not mission:
+                return
+            row = {
+                "id": kind + ":" + str(mission.get("id")) + ":" + str(at) + ":" +
+                      str(title)[:40],
+                "kind": kind,
+                "at": at,
+                "missionId": mission.get("id") or "",
+                "missionTitle": mission.get("title") or "",
+                "title": title or "",
+                "detail": detail or "",
+                "actorId": actor_id or "",
+                "actorName": actor_name or "",
+                "status": status or "",
+                "progress": int(progress or 0),
+            }
+            if extra:
+                row.update(extra)
+            events.append(row)
+
+        task_labels = {
+            "done": "完成", "review": "提交评审", "in_progress": "开始执行",
+            "assigned": "领取", "blocked": "阻塞", "backlog": "待处理",
+        }
+        for mission in missions:
+            mission_title = mission.get("title") or ""
+            tasks = mission.get("tasks") or []
+            total = len(tasks)
+            done_total = sum(1 for row in tasks if row.get("status") == "done")
+            for task in tasks:
+                status = task.get("status") or ""
+                at = task.get("updatedAt") or task.get("createdAt")
+                actor = task.get("assigneeName") or ""
+                label = task_labels.get(status, status or "更新")
+                task_title = task.get("title") or "任务"
+                detail = mission_title
+                if total:
+                    detail += " · " + str(done_total) + "/" + str(total) + " 任务"
+                add("task", at, mission, label + "「" + task_title + "」",
+                    detail, task.get("assigneeId") or "", actor, status,
+                    task.get("progress") or 0,
+                    {"taskId": task.get("id") or "", "taskTitle": task_title})
+            discussion = mission.get("discussion") or {}
+            at = discussion.get("finishedAt") or discussion.get("startedAt")
+            if at and discussion.get("status") in ("done", "error"):
+                messages = int(discussion.get("messages") or 0)
+                usage = discussion.get("usage") or {}
+                tokens = int(usage.get("tokensIn") or 0) + int(usage.get("tokensOut") or 0)
+                detail = mission_title
+                if messages:
+                    detail += " · " + str(messages) + " 条讨论"
+                if tokens:
+                    detail += " · " + str(tokens) + " tokens"
+                if discussion.get("status") == "error":
+                    add("discussion", at, mission,
+                        "讨论中断 · " + (discussion.get("error") or "需要重试"),
+                        detail, "", "团队", "error")
+                else:
+                    add("discussion", at, mission, "团队讨论完成", detail,
+                        "", "团队", "done", 100)
+        for approval in self.data.get("approvals") or []:
+            mission = mission_by_id.get(approval.get("missionId"))
+            if not mission:
+                continue
+            status = approval.get("status") or "pending"
+            at = approval.get("resolvedAt") or approval.get("createdAt")
+            title = approval.get("title") or "审批事项"
+            if status == "approved":
+                add("approval", at, mission, "老板批准「" + title + "」",
+                    mission.get("title") or "", "", "老板", status, 100,
+                    {"approvalId": approval.get("id") or ""})
+            elif status == "rejected":
+                add("approval", at, mission, "老板驳回「" + title + "」",
+                    mission.get("title") or "", "", "老板", status, 0,
+                    {"approvalId": approval.get("id") or ""})
+            else:
+                add("approval", at, mission, "提交审批「" + title + "」",
+                    mission.get("title") or "", approval.get("requestedBy") or "",
+                    "团队", status, 0, {"approvalId": approval.get("id") or ""})
+
+        for artifact in self.data.get("artifacts") or []:
+            mission = mission_by_id.get(artifact.get("missionId"))
+            if not mission:
+                continue
+            actor_id = artifact.get("uploadedBy") or ""
+            actor = "老板" if actor_id == "boss" else "团队"
+            member = member_by_id.get((mission.get("id"), actor_id))
+            if member:
+                actor = member.get("name") or member.get("titleZh") or actor
+            size = int(artifact.get("size") or 0)
+            size_label = (str(round(size / 1024.0, 1)) + " KB") if size >= 1024 else (str(size) + " B")
+            add("artifact", artifact.get("createdAt"), mission,
+                "交付「" + (artifact.get("name") or "文件") + "」",
+                (mission.get("title") or "") + " · " + size_label,
+                actor_id, actor, "done", 100,
+                {"artifactId": artifact.get("id") or "", "artifactName": artifact.get("name") or ""})
+
+        purpose_labels = {
+            "discussion": "团队讨论", "task": "任务执行", "deliverable": "交付生成",
+            "chat": "群聊回复", "review": "任务评审",
+        }
+        for call in self.data.get("modelCalls") or []:
+            mission = mission_by_id.get(call.get("missionId"))
+            if not mission:
+                continue
+            title = call.get("taskTitle") or purpose_labels.get(call.get("purpose") or "", "模型调用")
+            tokens = int(call.get("tokensIn") or 0) + int(call.get("tokensOut") or 0)
+            duration = int(call.get("durationMs") or 0)
+            detail = mission.get("title") or ""
+            if tokens:
+                detail += " · " + str(tokens) + " tokens"
+            if duration:
+                detail += " · " + str(round(duration / 1000.0, 1)) + "s"
+            actor_id = call.get("agentId") or ""
+            actor_name = call.get("agentName") or ""
+            at = call.get("createdAt")
+            # Backfilled discussion calls were stamped when the ledger was
+            # created, not when the discussion happened. Use the mission
+            # timestamp so the live feed does not bunch old work at the top.
+            if call.get("fallback") == "history" and call.get("purpose") == "discussion":
+                at = (mission.get("discussion") or {}).get("finishedAt") or at
+            if not actor_id:
+                task_id = call.get("taskId") or ""
+                task = next((t for t in mission.get("tasks") or []
+                             if t.get("id") == task_id), None)
+                if task:
+                    actor_id = task.get("assigneeId") or ""
+                    actor_name = actor_name or task.get("assigneeName") or ""
+            add("model", at, mission,
+                "调用 " + (call.get("model") or call.get("provider") or "模型") +
+                " · " + title,
+                detail, actor_id, actor_name or "团队",
+                "ok" if call.get("ok", True) else "error", 100,
+                {"model": call.get("model") or "", "provider": call.get("provider") or "",
+                 "tokens": tokens, "durationMs": duration, "ok": bool(call.get("ok", True))})
+
+        events.sort(key=lambda row: row.get("at") or "", reverse=True)
+        seen = set()
+        unique = []
+        for row in events:
+            key = (row.get("kind"), row.get("missionId"), row.get("at"), row.get("title"))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(row)
+            if len(unique) >= limit:
+                break
+        # A run can produce dozens of artifacts in one burst, pushing approvals
+        # and discussion out of the time window. Keep the filter tabs useful by
+        # appending the newest event of any kind that would otherwise vanish.
+        present = {row.get("kind") for row in unique}
+        for kind in ("task", "artifact", "model", "approval", "discussion"):
+            if kind in present:
+                continue
+            extra = next((row for row in events if row.get("kind") == kind), None)
+            if extra:
+                unique.append(extra)
+                present.add(kind)
+        unique.sort(key=lambda row: row.get("at") or "", reverse=True)
+        return unique[:limit + 5]
+
     def snapshot(self):
         return {
             "revision": self.revision(),
@@ -2119,6 +2570,7 @@ class MissionStore:
             "approvals": [self.public_approval(a) for a in self.data["approvals"]
                           if a.get("status") == "pending"],
             "artifacts": [self.public_artifact(a) for a in self.data["artifacts"][-50:]],
+            "activity": self.recent_activity(60),
         }
 
     def _delete_artifacts(self, predicate):

@@ -172,6 +172,14 @@
     },
 
     noteDismissed: false,
+    hasRealMissions: false,
+
+    setHasRealMissions(value) {
+      const next = !!value;
+      if (this.hasRealMissions === next) return;
+      this.hasRealMissions = next;
+      this.refreshCover();
+    },
 
     setCoverDismissed(value, quiet) {
       writeCoverDismissed(!!value);
@@ -214,7 +222,8 @@
       document.documentElement.dataset.demo = enabled ? "on" : "off";
       cover.hidden = enabled || this.coverDismissed;
       const note = document.getElementById("realStageNote");
-      if (note) note.hidden = enabled || !this.coverDismissed || this.noteDismissed;
+      if (note) note.hidden = enabled || !this.coverDismissed || this.noteDismissed ||
+        this.hasRealMissions;
       const close = cover.querySelector("[data-real-cover-close]");
       if (close) {
         close.title = AO.t("realModeClosePanelTitle");
@@ -340,6 +349,15 @@
     const external = event.target.closest("[data-real-open-external]");
     if (external) {
       DemoMode.openExternal();
+      return;
+    }
+    const feedFilter = event.target.closest("[data-real-feed-filter]");
+    if (feedFilter) {
+      const view = renderer();
+      if (view) {
+        view.realFeedFilter = feedFilter.getAttribute("data-real-feed-filter") || "all";
+        view.renderFeed(true);
+      }
       return;
     }
     const create = event.target.closest("[data-real-create-mission]");

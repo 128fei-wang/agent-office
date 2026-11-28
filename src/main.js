@@ -501,6 +501,9 @@
   const missionLive = AO.MissionLive ? new AO.MissionLive(renderer) : null;
   renderer.missionLive = missionLive;
   AO.missionLive = missionLive;
+  if (missionLive && params.get("intro") !== "0" && AO.DemoMode && AO.DemoMode.enabled) {
+    window.setTimeout(function () { missionLive.showIntro(); }, 900);
+  }
 
   document.addEventListener("agent-office:demo-change", function (event) {
     const enabled = event.detail && event.detail.enabled;
@@ -516,6 +519,7 @@
     } else if (pausedByDemo) {
       engine.paused = false;
       pausedByDemo = false;
+      if (missionLive) window.setTimeout(function () { missionLive.showIntro(); }, 250);
     }
     setPlayLabel();
     renderer.render();
@@ -567,3 +571,14 @@
     });
   });
 })();
+
+/* Install identity: a network-only service worker makes the manifest
+ * installable without caching stale local UI. */
+if ("serviceWorker" in navigator &&
+    (location.protocol === "https:" ||
+     location.hostname === "127.0.0.1" ||
+     location.hostname === "localhost")) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}

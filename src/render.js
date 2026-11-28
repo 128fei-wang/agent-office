@@ -91,6 +91,7 @@
       this.stage = document.getElementById("stage");
       this.viewport = document.getElementById("stageViewport");
       this.officeLayer = document.getElementById("officeLayer");
+      this.ambienceLayer = document.getElementById("ambienceLayer");
       this.charLayer = document.getElementById("charLayer");
       this.confettiLayer = document.getElementById("confettiLayer");
       this.teamList = document.getElementById("teamList");
@@ -409,6 +410,7 @@
     build() {
       this.world = this.engine.world;
       this.officeLayer.innerHTML = "";
+      if (this.ambienceLayer) this.ambienceLayer.innerHTML = "";
       this.charLayer.innerHTML = "";
       this.confettiLayer.innerHTML = "";
       this.charEls = {};
@@ -424,6 +426,7 @@
       this.wasDoneFx = false;
       this.closeDrawer();
       this.buildOffice();
+      this.buildAmbience();
       this.buildCharacters();
       this.feedList.innerHTML = "";
       this.board.hidden = this.boardView !== "board";
@@ -499,7 +502,7 @@
       // whiteboard
       const board = div("whiteboard", pos(340, 58, 250, 82));
       board.innerHTML =
-        '<div class="wb-top"><span>SPRINT 01</span><span id="wbDay">DAY 1</span></div>' +
+        '<div class="wb-top"><span id="wbSprint">SPRINT 01</span><span id="wbDay">DAY 1</span></div>' +
         '<div class="wb-goal" id="wbGoal"></div>' +
         '<div class="wb-line"><span id="wbMeta"></span><i class="wb-bar"><b id="wbBar"></b></i></div>';
       stage.appendChild(board);
@@ -632,7 +635,7 @@
         '<div class="room-plaque meeting-plaque">MEETING ROOM</div>' +
         '<div class="meeting-screen" style="left:' + (meeting.screen.x - mdx) + "px;top:" +
           (meeting.screen.y - mdy) + "px;width:" + meeting.screen.w + "px;height:" +
-          meeting.screen.h + 'px;"><i class="ms-glow"></i><span>Q3 · SHIP IT</span>' +
+          meeting.screen.h + 'px;"><i class="ms-glow"></i><span id="meetingScreenLabel">Q3 · SHIP IT</span>' +
           '<i class="ms-chart"><b></b><b></b><b></b><b></b></i></div>' +
         '<div class="meeting-table" style="left:' + (meeting.table.x - mdx) + "px;top:" +
           (meeting.table.y - mdy) + "px;width:" + meeting.table.w + "px;height:" +
@@ -807,6 +810,75 @@
       // floor stencils
       stage.appendChild(div("zone-label", pos(140, 556, 150, 14), "OPEN OFFICE"));
       stage.appendChild(div("zone-label", pos(672, 562, 120, 14), "LOUNGE"));
+    }
+
+    buildAmbience() {
+      if (!this.ambienceLayer) return;
+      const layer = this.ambienceLayer;
+      const dust = div("ambience-dust");
+      const motes = [
+        [80, 120, 2, 11], [210, 90, 1, 15], [350, 180, 2, 13], [520, 120, 1, 17],
+        [690, 90, 2, 12], [820, 160, 1, 16], [930, 95, 2, 14], [140, 300, 1, 18],
+        [300, 360, 2, 12], [460, 290, 1, 15], [610, 360, 2, 13], [760, 300, 1, 17],
+        [880, 380, 2, 14], [200, 520, 1, 16], [380, 550, 2, 12], [540, 500, 1, 19],
+        [700, 560, 2, 13], [900, 520, 1, 15], [470, 80, 1, 14], [590, 220, 2, 16]
+      ];
+      motes.forEach(function (m, i) {
+        const mote = document.createElement("i");
+        mote.style.left = m[0] + "px";
+        mote.style.top = m[1] + "px";
+        mote.style.width = m[2] + "px";
+        mote.style.height = m[2] + "px";
+        mote.style.animationDelay = (-i * 0.73) + "s";
+        mote.style.animationDuration = (m[3] + 6) + "s";
+        dust.appendChild(mote);
+      });
+      layer.appendChild(dust);
+
+      const beams = div("ambience-beams");
+      beams.innerHTML = '<i class="b1"></i><i class="b2"></i><i class="b3"></i>';
+      layer.appendChild(beams);
+
+      const monitors = div("ambience-monitors");
+      AO.DESKS.filter(function (desk) { return !desk.boss; }).forEach(function (desk, i) {
+        const glow = document.createElement("i");
+        glow.style.left = (desk.x - 22 - (i % 2) * 3) + "px";
+        glow.style.top = (desk.y - 57 + (i % 3) * 2) + "px";
+        glow.style.animationDelay = (-i * 0.9) + "s";
+        monitors.appendChild(glow);
+      });
+      layer.appendChild(monitors);
+
+      const projector = div("ambience-projector");
+      projector.style.left = (AO.MEETING.screen.x - 6) + "px";
+      projector.style.top = (AO.MEETING.screen.y + AO.MEETING.screen.h) + "px";
+      projector.style.width = (AO.MEETING.screen.w + 12) + "px";
+      projector.style.height = (AO.MEETING.table.y - AO.MEETING.screen.y - AO.MEETING.screen.h + 10) + "px";
+      layer.appendChild(projector);
+
+      const steam = div("ambience-steam");
+      steam.style.left = "914px";
+      steam.style.top = "430px";
+      steam.innerHTML = '<i></i><i></i><i></i><i></i>';
+      layer.appendChild(steam);
+
+      const scan = div("ambience-scan");
+      layer.appendChild(scan);
+
+      const roomba = document.createElement("i");
+      roomba.className = "ambience-roomba";
+      roomba.setAttribute("aria-hidden", "true");
+      layer.appendChild(roomba);
+
+      const pendants = div("ambience-pendants");
+      [190, 470, 790].forEach(function (x, i) {
+        const pendant = document.createElement("i");
+        pendant.className = "ambience-pendant p" + i;
+        pendant.style.left = x + "px";
+        pendant.innerHTML = '<b></b><u></u>';
+        pendants.appendChild(pendant);
+      });
+      layer.appendChild(pendants);
     }
 
     buildCharacters() {
@@ -1100,32 +1172,99 @@
       }
       const ext = this.external ? this.external.agents : [];
       if (ext.length) {
+        const liveState = this.missionLive || AO.missionLive;
+        const liveMission = liveState && liveState.realMission;
+        const liveDetail = liveState && liveState.realDetail;
+        const liveStatus = (liveMission && liveMission.autoRun && liveMission.autoRun.status) || "";
+        const liveActive = ["running", "discussing", "queued", "waiting_boss", "scheduled"].indexOf(liveStatus) >= 0;
+        const liveCelebrating = !!(liveMission && liveState.realTransient && liveStatus === "done");
+        const liveMembers = new Set(((liveMission && liveMission.members) || []).map(function (m) { return m.id; }));
         html += '<div class="team-external-title"><span>EXTERNAL AGENTS</span><b>' +
           ext.length + "</b></div>";
-        ext.forEach((a) => {
+        ext.forEach((a, index) => {
           const online = a.status === "online";
+          const ready = online || !!(a.runtime || a.endpoint);
           const roleName = AO.lang === "en" ? a.roleLabelEn : a.roleLabelZh;
-          const live = this.missionActivity && this.missionActivity.external &&
+          const idlePlan = real && !liveMission && liveState && typeof liveState.realIdlePlan === "function" ?
+            liveState.realIdlePlan(a, index, Date.now()) : null;
+          const currentLive = this.missionActivity && this.missionActivity.external &&
             this.missionActivity.agentId === a.id;
-          const liveProgress = live && this.missionActivity.total ?
+          const liveProgress = currentLive && this.missionActivity.total ?
             Math.min(100, Math.round((this.missionActivity.done / this.missionActivity.total) * 100)) : 0;
-          html += '<button class="team-card external-card' + (live ? " mission-active" : "") +
+          const memberLive = real && !currentLive && (liveActive || liveCelebrating) && liveMembers.has(a.id);
+          const memberTask = memberLive && liveDetail && liveDetail.id === liveMission.id ?
+            ((liveDetail.tasks || []).find(function (task) {
+              return task.assigneeId === a.id &&
+                ["in_progress", "review", "assigned", "blocked"].indexOf(task.status) >= 0;
+            }) || (liveDetail.tasks || []).find(function (task) {
+              return task.assigneeId === a.id;
+            })) : null;
+          const missionPct = memberLive ? Math.max(0, Math.min(100,
+            Math.round(Number((liveMission.stats || {}).progress ||
+              (liveMission.autoRun || {}).completed || 0)))) : 0;
+          const memberProgress = (memberLive && liveCelebrating) ? 100 :
+            (memberLive && (liveStatus === "discussing" ||
+            liveStatus === "queued" || liveStatus === "scheduled" ||
+            liveStatus === "waiting_boss")) ? missionPct :
+            (memberTask ? Math.max(0, Math.min(100, Math.round(Number(memberTask.progress ||
+              (memberTask.status === "done" ? 100 : 0))))) : 0);
+          const activeCard = currentLive || memberLive;
+          const progressWidth = currentLive ? liveProgress : (memberLive ? Math.max(2, memberProgress) : (ready ? 62 : 18));
+          let stateClass = currentLive || memberLive ? "mission" :
+            (idlePlan && idlePlan.state !== "idle" ?
+              (idlePlan.state === "reviewing" ? "working" : idlePlan.state) :
+              (online ? "online" : (ready ? "ready" : "offline")));
+          let stateText = "";
+          if (currentLive) {
+            stateText = AO.t("missionLiveRunning") + " · " + (this.missionActivity.taskTitle || "");
+          } else if (memberLive) {
+            if (liveCelebrating) {
+              stateText = AO.t("missionLiveDone") + " · " + (liveMission.title || "");
+            } else if (liveStatus === "waiting_boss") {
+              stateText = AO.t("missionLiveWaiting") + " · " + (liveMission.title || "");
+            } else if (liveStatus === "discussing" || liveStatus === "queued" || liveStatus === "scheduled") {
+              stateText = AO.t("missionLiveDiscussing") + " · " + (liveMission.title || "");
+            } else if (memberTask) {
+              const taskLabel = memberTask.status === "review" ? AO.t("boardReview") :
+                memberTask.status === "assigned" ? AO.t("missionLiveQueued") :
+                memberTask.status === "blocked" ? AO.t("statusBlocked") :
+                memberTask.status === "done" ? AO.t("missionLiveDone") :
+                AO.t("missionLiveRunning");
+              stateText = taskLabel + " · " + memberTask.title;
+            } else {
+              stateText = AO.t("realModeReady") + " · " + (liveMission.title || "");
+            }
+          } else if (idlePlan) {
+            stateText = idlePlan.bubble || (idlePlan.state === "reviewing" ? "复盘交付" :
+              (idlePlan.state === "coffee" ? "咖啡时间" :
+                (idlePlan.state === "chatting" ? "回群消息" : "巡检中 · 待命")));
+          } else {
+            stateText = (ready ? AO.t("realModeReady") : (roleName || a.role || "operator")) + " · " +
+              (a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
+              (ready ? " · 可调度" : " · " + (a.eventCount || 0) + " ev");
+          }
+          const moodText = currentLive ? liveProgress + "%" :
+            (memberLive ? memberProgress + "%" :
+              (idlePlan ? (idlePlan.state === "coffee" ? "☕" :
+                (idlePlan.state === "chatting" ? "…" :
+                  (idlePlan.state === "reviewing" ? "◎" : "·"))) :
+                (ready ? AO.t("realModeReady") : "⇢")));
+          html += '<button class="team-card external-card' + (activeCard ? " mission-active" : "") +
             '" data-external="' + a.id +
-            '" title="' + esc(live ? (this.missionActivity.missionTitle + " · " + this.missionActivity.taskTitle) :
-              (a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent")) + '">' +
+            '" title="' + esc(activeCard && liveMission ?
+              (liveMission.title + " · " + (currentLive ? (this.missionActivity.taskTitle || "") : (memberTask ? memberTask.title : stateText))) :
+              (a.brand ? a.brand + " · " : "") + (a.note || a.endpoint || "外部 agent") +
+              (ready && !online ? " · 未连接心跳，仍可由本机 AI 调度" : "")) + '">' +
             '<span class="ext-glyph' + (a.logoText ? " brand-mark" : "") +
             (a.logoSource === "preset" ? " emoji" : "") + AO.logoClass(a) +
             '" style="--c:' + esc(a.logoColor || "#b58cff") + '">' + AO.logoMarkHTML(a) + '</span>' +
             '<span class="team-main"><span class="team-line"><b>' + esc(a.name) +
             '</b><em class="role-pill ext">EXT</em></span>' +
-            '<span class="team-state"><i class="state-dot ' + (live ? "mission" : (online ? "online" : "offline")) +
-            '"></i>' + (live ? esc(AO.t("missionLiveRunning") + " · " + (this.missionActivity.taskTitle || "")) :
-              esc(roleName || a.role || "operator") + " · " +
-              esc(a.provider ? a.provider + (a.model ? " · " + a.model : "") : (a.runtime || "external")) +
-              " · " + (a.eventCount || 0) + " ev") + '</span>' +
-            '<span class="energy ext-bar"><i style="width:' +
-            (live ? liveProgress : (online ? "100" : "18")) + '%"></i></span></span>' +
-            '<span class="team-mood">' + (live ? esc(liveProgress + "%") : "⇢") + '</span></button>';
+            '<span class="team-state"><i class="state-dot ' + stateClass +
+            '"></i>' + esc(stateText) + '</span>' +
+            '<span class="energy ext-bar"><i style="width:' + progressWidth +
+            '%"></i></span></span>' +
+            '<span class="team-mood">' + esc(moodText) + '</span></button>';
         });
       }
       const waitingPairs = this.external ? this.external.pendingPairs() : [];
@@ -1164,7 +1303,9 @@
       let morale;
       if (real) {
         const ext = (this.external && this.external.agents) || [];
-        const online = ext.filter(function (agent) { return agent.status === "online"; }).length;
+        const ready = ext.filter(function (agent) {
+          return agent.status === "online" || !!(agent.runtime || agent.endpoint);
+        }).length;
         const live = this.missionLive || AO.missionLive;
         const overview = live && live.lastOverview;
         const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
@@ -1175,8 +1316,8 @@
         const active = missions.filter(function (mission) {
           return Number((mission.stats || {}).progress || 0) < 100;
         }).length;
-        const onlineRatio = ext.length ? online / ext.length : 0;
-        morale = Math.min(100, 40 + onlineRatio * 25 + progress * 0.35 + (active ? 10 : 0));
+        const readyRatio = ext.length ? ready / ext.length : 0;
+        morale = Math.min(100, 40 + readyRatio * 25 + progress * 0.35 + (active ? 10 : 0));
       } else {
         morale = w.agents.reduce((sum, a) => sum + a.mood, 0) / Math.max(1, w.agents.length);
       }
@@ -1197,9 +1338,12 @@
         const extCount = this.external ? this.external.agents.length : 0;
         const waiting = this.external ? this.external.pendingPairs().length : 0;
         if (real) {
+          const ready = this.external ? this.external.agents.filter(function (a) {
+            return a.status === "online" || !!(a.runtime || a.endpoint);
+          }).length : 0;
           teamSub.textContent = AO.t("realModeTeamSub", {
             count: extCount,
-            online: this.external ? this.external.agents.filter((a) => a.status === "online").length : 0
+            online: ready
           });
         } else {
           teamSub.textContent = w.agents.length + " " + AO.t("local") +
@@ -1230,7 +1374,47 @@
       }
       const live = this.missionLive || AO.missionLive;
       const overview = (live && live.lastOverview) || null;
-      const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+      const missions = ((overview && overview.missions) || [])
+        .filter(function (mission) { return !mission.archived; })
+        .slice()
+        .sort(function (a, b) {
+          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        });
+      let focusHtml = "";
+      const focusMission = live && live.realMission;
+      const focusDetail = live && live.realDetail;
+      if (focusMission && focusDetail && focusDetail.id === focusMission.id) {
+        const focusTasks = focusDetail.tasks || [];
+        const focusStats = focusMission.stats || {};
+        const focusAuto = focusMission.autoRun || {};
+        const focusTotal = Number(focusAuto.total || focusStats.tasks || focusTasks.length || 0);
+        const focusDone = Number(focusAuto.completed || focusStats.done || 0);
+        const focusPct = focusTotal ? Math.min(100, Math.round((focusDone / focusTotal) * 100)) : 0;
+        const groups = [
+          { key: "active", label: "进行中", rows: focusTasks.filter(function (t) { return t.status === "in_progress" || t.status === "blocked"; }) },
+          { key: "review", label: "评审中", rows: focusTasks.filter(function (t) { return t.status === "review"; }) },
+          { key: "todo", label: "待开始", rows: focusTasks.filter(function (t) { return t.status === "assigned" || t.status === "backlog"; }) },
+          { key: "done", label: "已完成", rows: focusTasks.filter(function (t) { return t.status === "done"; }).slice(-3) }
+        ];
+        const groupsHtml = groups.map(function (group) {
+          if (!group.rows.length) return "";
+          const taskRows = group.rows.slice(0, 5).map(function (task) {
+            const pct = Math.max(0, Math.min(100, Math.round(Number(task.progress || (task.status === "done" ? 100 : 0)))));
+            return '<button type="button" class="real-focus-task status-' + esc(task.status || "") +
+              '" data-real-mission="' + esc(focusMission.id) + '"><i></i><span><b>' +
+              esc(task.title || task.id) + '</b><em>' + esc(task.assigneeName || "未分配") +
+              '</em></span><strong>' + pct + '%</strong></button>';
+          }).join("");
+          return '<div class="real-focus-group"><div class="real-focus-label"><span>' +
+            esc(group.label) + '</span><b>' + group.rows.length + '</b></div>' + taskRows + '</div>';
+        }).join("");
+        focusHtml = '<div class="real-board-focus"><div class="real-focus-head"><span>MISSION FOCUS</span><b>' +
+          focusPct + '%</b></div><div class="real-focus-title">' + esc(focusMission.title || focusMission.id) +
+          '</div><div class="real-focus-bar"><i style="width:' + focusPct + '%"></i></div>' +
+          '<div class="real-focus-meta"><span>' + focusDone + '/' + focusTotal + ' 任务</span><span>' +
+          (focusAuto.currentTaskTitle ? esc(focusAuto.currentTaskTitle) : esc(this.autorunShort(focusAuto.status || "off"))) +
+          '</span></div>' + (groupsHtml || '<div class="real-focus-none">任务正在编排中…</div>') + '</div>';
+      }
       const rows = missions.map((mission) => {
         const auto = mission.autoRun || {};
         const stats = mission.stats || {};
@@ -1248,6 +1432,24 @@
           '</b><span>' + esc(detail.join(" · ")) + '</span></span>' +
           '<em>' + progress + '%</em></button>';
       }).join("");
+      let nextActionHtml = "";
+      if (!focusMission && missions.length) {
+        const latest = missions[0];
+        const latestStats = latest.stats || {};
+        const latestAuto = latest.autoRun || {};
+        const latestDone = Number(latestAuto.completed || latestStats.done || 0);
+        const latestTotal = Number(latestAuto.total || latestStats.tasks || 0);
+        const finished = latestTotal > 0 && latestDone >= latestTotal;
+        const aiReady = !!(overview && overview.ai && overview.ai.available);
+        nextActionHtml = '<div class="real-next-action"><span>NEXT ACTION</span><b>' +
+          esc(finished ? "本轮已交付，下一步？" : "任务待继续") + '</b><p>' +
+          esc((latest.title || latest.id) + " · " + latestDone + "/" + latestTotal) + '</p>' +
+          '<div><button type="button" class="primary" data-real-mission="' +
+          esc(latest.id) + '">' + esc(finished ? "查看交付 / 下一轮" : "打开任务") + '</button>' +
+          '<button type="button" data-real-create-mission>新建任务</button>' +
+          (!aiReady ? '<button type="button" data-real-open-ai>接入 AI</button>' : '') +
+          '</div></div>';
+      }
       const loading = !overview;
       const empty = !loading && !missions.length ?
         '<div class="real-board-empty"><b>' + esc(AO.t("realModeBoardEmpty")) + '</b>' +
@@ -1256,9 +1458,35 @@
         esc(AO.t("realModeCreateMission")) + '</button></div>' : "";
       const loadingHtml = loading ?
         '<div class="real-board-empty"><b>正在读取真实任务…</b><p>等待本地 bridge 返回 Missions 数据。</p></div>' : "";
-      this.board.innerHTML = '<div class="real-board"><div class="real-board-head">' +
-        '<span>REAL OPERATIONS</span><b>' + esc(AO.t("realModeBoardTitle")) + '</b><em>' +
-        missions.length + '</em></div>' + (rows || loadingHtml || empty) + '</div>';
+      const activity = (overview && overview.activity) || [];
+      const artifacts = activity.filter(function (row) { return row.kind === "artifact"; }).slice(0, 3);
+      let deliverableRows = artifacts.map(function (row) {
+        return '<button type="button" class="real-deliverable-row" data-real-mission="' +
+          esc(row.missionId || "") + '"><i>▣</i><span><b>' +
+          esc(row.artifactName || row.title || "交付物") + '</b><em>' +
+          esc(row.missionTitle || row.detail || "") + '</em></span><strong>↗</strong></button>';
+      }).join("");
+      if (!deliverableRows && overview && (overview.artifacts || []).length) {
+        const byId = {};
+        missions.forEach(function (mission) { byId[mission.id] = mission; });
+        deliverableRows = (overview.artifacts || []).filter(function (artifact) {
+          return byId[artifact.missionId];
+        }).slice(-3).reverse().map(function (artifact) {
+          return '<button type="button" class="real-deliverable-row" data-real-mission="' +
+            esc(artifact.missionId || "") + '"><i>▣</i><span><b>' +
+            esc(artifact.name || "交付物") + '</b><em>' +
+            esc((byId[artifact.missionId] || {}).title || "") +
+            '</em></span><strong>↗</strong></button>';
+        }).join("");
+      }
+      const deliverablesHtml = deliverableRows ?
+        '<div class="real-board-head deliverables"><span>DELIVERABLES</span><b>最近交付</b><em>' +
+        (artifacts.length || (deliverableRows.match(/real-deliverable-row/g) || []).length) +
+        '</em></div>' + deliverableRows : "";
+      this.board.innerHTML = '<div class="real-board">' + focusHtml + nextActionHtml +
+        '<div class="real-board-head"><span>REAL OPERATIONS</span><b>' +
+        esc(AO.t("realModeBoardTitle")) + '</b><em>' + missions.length + '</em></div>' +
+        (rows || loadingHtml || empty) + deliverablesHtml + '</div>';
     }
 
     autorunShort(status) {
@@ -2524,7 +2752,9 @@
       const feedSub = document.getElementById("feedSub");
       if (real) {
         const extCount = this.external ? this.external.agents.length : 0;
-        const online = this.external ? this.external.agents.filter((a) => a.status === "online").length : 0;
+        const online = this.external ? this.external.agents.filter(function (a) {
+          return a.status === "online" || !!(a.runtime || a.endpoint);
+        }).length : 0;
         const live = this.missionLive || AO.missionLive;
         const overview = live && live.lastOverview;
         const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
@@ -2559,7 +2789,7 @@
         });
         if (boardTitle) boardTitle.textContent = "REAL BOARD";
         if (boardSub) boardSub.textContent = AO.t("realModeBoardSub");
-        if (feedTitle) feedTitle.textContent = "REAL OPS";
+        if (feedTitle) feedTitle.textContent = "LIVE FEED";
         if (feedSub) feedSub.textContent = AO.t("realModeFeedSub");
       } else {
         const resetStat = function (id, key) {
@@ -2653,15 +2883,47 @@
 
     renderWhiteboard() {
       const w = this.world;
-      const total = w.tasks.length;
-      const done = w.tasks.filter((t) => t.status === "done").length;
-      const active = w.tasks.filter((t) => t.status === "in_progress").length;
-      document.getElementById("wbGoal").textContent = w.goal;
-      document.getElementById("wbMeta").textContent =
-        done + "/" + total + " 完成 · " + active + " 进行中";
-      document.getElementById("wbDay").textContent = "DAY " + w.day;
+      let total = w.tasks.length;
+      let done = w.tasks.filter((t) => t.status === "done").length;
+      let active = w.tasks.filter((t) => t.status === "in_progress").length;
+      let goal = w.goal;
+      let sprint = "SPRINT 01";
+      let day = "DAY " + w.day;
+      if (this.demoOff()) {
+        const live = this.missionLive || AO.missionLive;
+        const overview = live && live.lastOverview;
+        const missions = ((overview && overview.missions) || [])
+          .filter(function (mission) { return !mission.archived; })
+          .slice()
+          .sort(function (a, b) {
+            return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+          });
+        const activeStatuses = ["running", "discussing", "queued", "waiting_boss", "scheduled"];
+        const focus = missions.find(function (mission) {
+          return activeStatuses.indexOf(((mission.autoRun || {}).status)) >= 0;
+        }) || missions[0] || null;
+        const stats = (focus && focus.stats) || {};
+        total = Number(stats.tasks || 0);
+        done = Number(stats.done || 0);
+        active = Math.max(0, total - done);
+        goal = focus ? (focus.title || focus.id) : (AO.lang === "en" ? "Awaiting a real mission" : "等待真实任务");
+        sprint = "REAL OPS";
+        day = "LIVE";
+      }
+      const goalEl = document.getElementById("wbGoal");
+      if (goalEl) goalEl.textContent = goal;
+      const metaEl = document.getElementById("wbMeta");
+      if (metaEl) metaEl.textContent = done + "/" + total + " 完成 · " + active + " 进行中";
+      const sprintEl = document.getElementById("wbSprint");
+      if (sprintEl) sprintEl.textContent = sprint;
+      const dayEl = document.getElementById("wbDay");
+      if (dayEl) dayEl.textContent = day;
       const bar = document.getElementById("wbBar");
-      bar.style.width = (total ? (done / total) * 100 : 0) + "%";
+      if (bar) bar.style.width = (total ? (done / total) * 100 : 0) + "%";
+      const meetingScreen = document.getElementById("meetingScreenLabel");
+      if (meetingScreen) {
+        meetingScreen.textContent = this.demoOff() ? "REAL OPS · LIVE" : "Q3 · SHIP IT";
+      }
     }
 
     renderInspector() {
@@ -2719,30 +2981,87 @@
         const live = this.missionLive || AO.missionLive;
         const overview = live && live.lastOverview;
         const missions = ((overview && overview.missions) || []).filter(function (mission) { return !mission.archived; });
+        const activity = (overview && overview.activity) || [];
+        const filter = this.realFeedFilter || "all";
+        const kindMatch = {
+          task: function (row) { return row.kind === "task"; },
+          artifact: function (row) { return row.kind === "artifact"; },
+          model: function (row) { return row.kind === "model"; },
+          approval: function (row) { return row.kind === "approval"; },
+          discussion: function (row) { return row.kind === "discussion"; }
+        };
+        const filtered = filter === "all" ? activity : activity.filter(kindMatch[filter] || function () { return true; });
+        const feedTime = function (value) {
+          const parsed = Date.parse(value || "");
+          if (Number.isNaN(parsed)) return "";
+          const date = new Date(parsed);
+          return String(date.getHours()).padStart(2, "0") + ":" +
+            String(date.getMinutes()).padStart(2, "0");
+        };
+        const feedStatus = {
+          done: "完成", review: "评审中", in_progress: "进行中", assigned: "待开始",
+          blocked: "阻塞", backlog: "待办", approved: "已批准", rejected: "已驳回",
+          pending: "待审批", ok: "调用成功", error: "失败", stopped: "已停止"
+        };
         if (!missions.length) {
           this.feedList.innerHTML = '<div class="real-feed-empty"><b>REAL OPERATIONS ONLY</b>' +
             '<p>' + esc(AO.t("realModeFeedText")) + '</p>' +
             '<button type="button" data-real-open-missions>' +
             esc(AO.t("realModeOpenMissions")) + '</button></div>';
         } else {
-          const rows = missions.slice(0, 8).map((mission) => {
+          const icons = {
+            task: "✓", artifact: "▣", model: "⌁", approval: "◆", discussion: "◌"
+          };
+          const counts = { all: activity.length };
+          activity.forEach(function (row) { counts[row.kind] = (counts[row.kind] || 0) + 1; });
+          const tabs = [
+            ["all", AO.t("realFeedAll")],
+            ["task", AO.t("realFeedTasks")],
+            ["artifact", AO.t("realFeedArtifacts")],
+            ["model", AO.t("realFeedModels")],
+            ["approval", AO.t("realFeedApprovals")]
+          ].map(function (pair) {
+            return '<button type="button" data-real-feed-filter="' + pair[0] + '"' +
+              (filter === pair[0] ? ' class="active"' : '') + '>' + esc(pair[1]) +
+              '<em>' + (counts[pair[0]] || 0) + '</em></button>';
+          }).join("");
+          const rows = filtered.slice(0, 12).map(function (row) {
+            const actor = row.actorName ? row.actorName + " " : "";
+            const statusText = row.kind === "task" && row.status === "done" ? "" :
+              (feedStatus[row.status] || row.status || "");
+            const meta = [row.missionTitle, statusText].filter(Boolean).join(" · ");
+            const icon = row.kind === "task" ?
+              (row.status === "done" ? "✓" : row.status === "review" ? "◉" :
+                row.status === "blocked" ? "!" : row.status === "in_progress" ? "▶" : "·") :
+              (icons[row.kind] || "·");
+            return '<button type="button" class="real-feed-row activity kind-' +
+              esc(row.kind || "task") + ' status-' + esc(row.status || "") +
+              '" data-real-mission="' + esc(row.missionId || "") +
+              '" title="' + esc(actor + row.title) + '">' +
+              '<i class="real-feed-icon">' + icon + '</i>' +
+              '<span><b>' + esc(actor + row.title) + '</b><em>' + esc(meta) + '</em></span>' +
+              '<time>' + esc(feedTime(row.at)) + '</time></button>';
+          }).join("");
+          // Older bridges do not ship recent activity yet. Keep the panel
+          // useful by falling back to real mission rows instead of an empty box.
+          const fallbackRows = activity.length ? "" : missions.slice(0, 6).map((mission) => {
             const auto = mission.autoRun || {};
             const stats = mission.stats || {};
             const status = auto.status || "off";
             const progress = Number(stats.progress || 0);
-            const detail = [this.autorunShort(status), progress + "%"];
-            if (stats.approvals) detail.push(stats.approvals + " " + AO.t("missionApprovals"));
-            if (auto.currentTaskTitle) detail.push(auto.currentTaskTitle);
-            return '<button type="button" class="real-feed-row status-' + esc(status) +
-              '" data-real-mission="' + esc(mission.id) + '"><i class="real-mission-dot ' +
-              esc(status) + '"></i><span><b>' + esc(mission.title || mission.id) + '</b><em>' +
-              esc(detail.join(" · ")) + '</em></span><strong>' +
-              esc(progress + "%") + '</strong></button>';
+            return '<button type="button" class="real-feed-row activity kind-task status-' +
+              esc(status) + '" data-real-mission="' + esc(mission.id) + '">' +
+              '<i class="real-feed-icon">✓</i><span><b>' +
+              esc(mission.title || mission.id) + '</b><em>' +
+              esc(this.autorunShort(status) + " · " + progress + "%") +
+              '</em></span><time>—</time></button>';
           }).join("");
-          this.feedList.innerHTML = '<div class="real-feed-list"><div class="real-feed-head"><span>' +
-            esc(AO.t("realModeFeedActive")) + '</span><b>' + missions.length + '</b></div>' +
-            rows + '<button type="button" class="real-feed-open" data-real-open-missions>' +
-            esc(AO.t("realModeOpenMissions")) + '</button></div>';
+          this.feedList.innerHTML = '<div class="real-feed-list activity-feed">' +
+            '<div class="real-feed-head"><span>' + esc(AO.t("realModeFeedActive")) +
+            '</span><b>' + filtered.length + '</b><em>LIVE</em></div>' +
+            '<div class="real-feed-filters">' + tabs + '</div>' +
+            (rows || fallbackRows || '<div class="real-feed-none">' + esc(AO.t("realFeedEmpty")) + '</div>') +
+            '</div>';
         }
         this.lastMessageId = 0;
         return;

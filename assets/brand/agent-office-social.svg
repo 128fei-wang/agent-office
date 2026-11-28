@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="aoSocialTitle aoSocialDesc">
+  <title id="aoSocialTitle">Agent Office — a local-first pixel office for AI teams</title>
+  <desc id="aoSocialDesc">Agent Office — SEE THE TEAM. SHIP THE WORK.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2030"/><stop offset="0.55" stop-color="#081520"/><stop offset="1" stop-color="#050d14"/>
+    </linearGradient>
+    <radialGradient id="teal" cx="0.2" cy="0.2" r="0.65">
+      <stop offset="0" stop-color="#55d6c2" stop-opacity="0.16"/><stop offset="1" stop-color="#55d6c2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="amber" cx="0.85" cy="0.2" r="0.5">
+      <stop offset="0" stop-color="#f2b544" stop-opacity="0.12"/><stop offset="1" stop-color="#f2b544" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#050d14"/>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#teal)"/>
+  <rect width="1200" height="630" fill="url(#amber)"/>
+  <g stroke="#55d6c2" stroke-opacity="0.06" stroke-width="1">
+    <path d="M0 60H1200M0 120H1200M0 180H1200M0 240H1200M0 300H1200M0 360H1200M0 420H1200M0 480H1200M0 540H1200M0 600H1200"/>
+    <path d="M60 0V630M120 0V630M180 0V630M240 0V630M300 0V630M360 0V630M420 0V630M480 0V630M540 0V630M600 0V630M660 0V630M720 0V630M780 0V630M840 0V630M900 0V630M960 0V630M1020 0V630M1080 0V630M1140 0V630"/>
+  </g>
+  <svg x="96" y="165" width="300" height="300" viewBox="0 0 512 512">
+  <title id="aoMarkTitle">Agent Office</title>
+  <desc id="aoMarkDesc">A pixel office shaped like the letter A: a teal stepped roof and legs, three agent pixels at a desk, an amber crossbar and a completion check.</desc>
+  <defs>
+    <linearGradient id="aoBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2030"/>
+      <stop offset="0.55" stop-color="#081520"/>
+      <stop offset="1" stop-color="#050d14"/>
+    </linearGradient>
+    <radialGradient id="aoTealGlow" cx="0.28" cy="0.28" r="0.62">
+      <stop offset="0" stop-color="#55d6c2" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#55d6c2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aoAmberGlow" cx="0.82" cy="0.28" r="0.42">
+      <stop offset="0" stop-color="#f2b544" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#f2b544" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="aoTile"><rect x="16" y="16" width="480" height="480" rx="112"/></clipPath>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#aoBg)"/>
+  <g clip-path="url(#aoTile)">
+    <rect x="16" y="16" width="480" height="480" fill="url(#aoTealGlow)"/>
+    <rect x="16" y="16" width="480" height="480" fill="url(#aoAmberGlow)"/>
+  </g>
+  <rect x="17" y="17" width="478" height="478" rx="111" fill="none" stroke="#1b3a4a" stroke-width="2"/>
+  <g transform="translate(0 40)">
+    <!-- stepped pixel A / office roof -->
+    <path d="M96 384 V352 H112 V208 H144 V176 H176 V144 H208 V112 H240 V80 H272 V112 H304 V144 H336 V176 H368 V208 H400 V352 H416 V384"
+          fill="none" stroke="#55d6c2" stroke-width="64" stroke-linejoin="miter" stroke-linecap="butt"/>
+    <!-- amber crossbar -->
+    <rect x="136" y="272" width="240" height="32" fill="#f2b544"/>
+    <rect x="136" y="272" width="240" height="6" fill="#ffd27a" opacity="0.7"/>
+    <!-- agent pixels at a desk -->
+    <rect x="180" y="320" width="40" height="40" rx="6" fill="#ff7fa8"/>
+    <rect x="236" y="320" width="40" height="40" rx="6" fill="#55d6c2"/>
+    <rect x="292" y="320" width="40" height="40" rx="6" fill="#b58cff"/>
+    <g fill="#07131d">
+      <rect x="188" y="332" width="6" height="6"/><rect x="204" y="332" width="6" height="6"/>
+      <rect x="244" y="332" width="6" height="6"/><rect x="260" y="332" width="6" height="6"/>
+      <rect x="300" y="332" width="6" height="6"/><rect x="316" y="332" width="6" height="6"/>
+    </g>
+    <rect x="160" y="376" width="192" height="8" fill="#2a4c5e"/>
+    <rect x="160" y="376" width="192" height="2" fill="#7ff0dc" opacity="0.35"/>
+    <!-- completion check -->
+    <circle cx="416" cy="112" r="40" fill="#f2b544" stroke="#07131d" stroke-width="8"/>
+    <path d="M398 112 L410 124 L436 96" fill="none" stroke="#07131d" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter"/>
+  </g>
+</svg>
+<g fill="#e8f0f8" shape-rendering="crispEdges">
+<path d="M484 176h42v14h-42zM470 190h14v14h-14zM526 190h14v14h-14zM470 204h14v14h-14zM526 204h14v14h-14zM470 218h70v14h-70zM470 232h14v14h-14zM526 232h14v14h-14zM470 246h14v14h-14zM526 246h14v14h-14zM470 260h14v14h-14zM526 260h14v14h-14z"/>
+<path d="M568 176h42v14h-42zM554 190h14v14h-14zM610 190h14v14h-14zM554 204h14v14h-14zM554 218h14v14h-14zM582 218h42v14h-42zM554 232h14v14h-14zM610 232h14v14h-14zM554 246h14v14h-14zM610 246h14v14h-14zM568 260h42v14h-42z"/>
+<path d="M638 176h70v14h-70zM638 190h14v14h-14zM638 204h14v14h-14zM638 218h56v14h-56zM638 232h14v14h-14zM638 246h14v14h-14zM638 260h70v14h-70z"/>
+<path d="M722 176h14v14h-14zM778 176h14v14h-14zM722 190h28v14h-28zM778 190h14v14h-14zM722 204h14v14h-14zM750 204h14v14h-14zM778 204h14v14h-14zM722 218h14v14h-14zM764 218h28v14h-28zM722 232h14v14h-14zM778 232h14v14h-14zM722 246h14v14h-14zM778 246h14v14h-14zM722 260h14v14h-14zM778 260h14v14h-14z"/>
+<path d="M806 176h70v14h-70zM834 190h14v14h-14zM834 204h14v14h-14zM834 218h14v14h-14zM834 232h14v14h-14zM834 246h14v14h-14zM834 260h14v14h-14z"/>
+</g>
+<g fill="#55d6c2" shape-rendering="crispEdges">
+<path d="M484 298h42v14h-42zM470 312h14v14h-14zM526 312h14v14h-14zM470 326h14v14h-14zM526 326h14v14h-14zM470 340h14v14h-14zM526 340h14v14h-14zM470 354h14v14h-14zM526 354h14v14h-14zM470 368h14v14h-14zM526 368h14v14h-14zM484 382h42v14h-42z"/>
+<path d="M554 298h70v14h-70zM554 312h14v14h-14zM554 326h14v14h-14zM554 340h56v14h-56zM554 354h14v14h-14zM554 368h14v14h-14zM554 382h14v14h-14z"/>
+<path d="M638 298h70v14h-70zM638 312h14v14h-14zM638 326h14v14h-14zM638 340h56v14h-56zM638 354h14v14h-14zM638 368h14v14h-14zM638 382h14v14h-14z"/>
+<path d="M722 298h70v14h-70zM750 312h14v14h-14zM750 326h14v14h-14zM750 340h14v14h-14zM750 354h14v14h-14zM750 368h14v14h-14zM722 382h70v14h-70z"/>
+<path d="M820 298h42v14h-42zM806 312h14v14h-14zM862 312h14v14h-14zM806 326h14v14h-14zM806 340h14v14h-14zM806 354h14v14h-14zM806 368h14v14h-14zM862 368h14v14h-14zM820 382h42v14h-42z"/>
+<path d="M890 298h70v14h-70zM890 312h14v14h-14zM890 326h14v14h-14zM890 340h56v14h-56zM890 354h14v14h-14zM890 368h14v14h-14zM890 382h70v14h-70z"/>
+</g>
+  <rect x="976" y="382" width="14" height="14" fill="#f2b544"/>
+  <rect x="470" y="414" width="520" height="2" fill="#2a4c5e"/>
+<g fill="#8fb3c4" shape-rendering="crispEdges">
+<path d="M474 448h16v4h-16zM470 452h4v4h-4zM470 456h4v4h-4zM474 460h12v4h-12zM486 464h4v4h-4zM486 468h4v4h-4zM470 472h16v4h-16z"/>
+<path d="M494 448h20v4h-20zM494 452h4v4h-4zM494 456h4v4h-4zM494 460h16v4h-16zM494 464h4v4h-4zM494 468h4v4h-4zM494 472h20v4h-20z"/>
+<path d="M518 448h20v4h-20zM518 452h4v4h-4zM518 456h4v4h-4zM518 460h16v4h-16zM518 464h4v4h-4zM518 468h4v4h-4zM518 472h20v4h-20z"/>
+<path d="M554 448h20v4h-20zM562 452h4v4h-4zM562 456h4v4h-4zM562 460h4v4h-4zM562 464h4v4h-4zM562 468h4v4h-4zM562 472h4v4h-4z"/>
+<path d="M578 448h4v4h-4zM594 448h4v4h-4zM578 452h4v4h-4zM594 452h4v4h-4zM578 456h4v4h-4zM594 456h4v4h-4zM578 460h20v4h-20zM578 464h4v4h-4zM594 464h4v4h-4zM578 468h4v4h-4zM594 468h4v4h-4zM578 472h4v4h-4zM594 472h4v4h-4z"/>
+<path d="M602 448h20v4h-20zM602 452h4v4h-4zM602 456h4v4h-4zM602 460h16v4h-16zM602 464h4v4h-4zM602 468h4v4h-4zM602 472h20v4h-20z"/>
+<path d="M638 448h20v4h-20zM646 452h4v4h-4zM646 456h4v4h-4zM646 460h4v4h-4zM646 464h4v4h-4zM646 468h4v4h-4zM646 472h4v4h-4z"/>
+<path d="M662 448h20v4h-20zM662 452h4v4h-4zM662 456h4v4h-4zM662 460h16v4h-16zM662 464h4v4h-4zM662 468h4v4h-4zM662 472h20v4h-20z"/>
+<path d="M690 448h12v4h-12zM686 452h4v4h-4zM702 452h4v4h-4zM686 456h4v4h-4zM702 456h4v4h-4zM686 460h20v4h-20zM686 464h4v4h-4zM702 464h4v4h-4zM686 468h4v4h-4zM702 468h4v4h-4zM686 472h4v4h-4zM702 472h4v4h-4z"/>
+<path d="M710 448h4v4h-4zM726 448h4v4h-4zM710 452h8v4h-8zM722 452h8v4h-8zM710 456h4v4h-4zM718 456h4v4h-4zM726 456h4v4h-4zM710 460h4v4h-4zM726 460h4v4h-4zM710 464h4v4h-4zM726 464h4v4h-4zM710 468h4v4h-4zM726 468h4v4h-4zM710 472h4v4h-4zM726 472h4v4h-4z"/>
+<path d="M742 468h8v4h-8zM742 472h8v4h-8z"/>
+<path d="M774 448h16v4h-16zM770 452h4v4h-4zM770 456h4v4h-4zM774 460h12v4h-12zM786 464h4v4h-4zM786 468h4v4h-4zM770 472h16v4h-16z"/>
+<path d="M794 448h4v4h-4zM810 448h4v4h-4zM794 452h4v4h-4zM810 452h4v4h-4zM794 456h4v4h-4zM810 456h4v4h-4zM794 460h20v4h-20zM794 464h4v4h-4zM810 464h4v4h-4zM794 468h4v4h-4zM810 468h4v4h-4zM794 472h4v4h-4zM810 472h4v4h-4z"/>
+<path d="M818 448h20v4h-20zM826 452h4v4h-4zM826 456h4v4h-4zM826 460h4v4h-4zM826 464h4v4h-4zM826 468h4v4h-4zM818 472h20v4h-20z"/>
+<path d="M842 448h16v4h-16zM842 452h4v4h-4zM858 452h4v4h-4zM842 456h4v4h-4zM858 456h4v4h-4zM842 460h16v4h-16zM842 464h4v4h-4zM842 468h4v4h-4zM842 472h4v4h-4z"/>
+<path d="M878 448h20v4h-20zM886 452h4v4h-4zM886 456h4v4h-4zM886 460h4v4h-4zM886 464h4v4h-4zM886 468h4v4h-4zM886 472h4v4h-4z"/>
+<path d="M902 448h4v4h-4zM918 448h4v4h-4zM902 452h4v4h-4zM918 452h4v4h-4zM902 456h4v4h-4zM918 456h4v4h-4zM902 460h20v4h-20zM902 464h4v4h-4zM918 464h4v4h-4zM902 468h4v4h-4zM918 468h4v4h-4zM902 472h4v4h-4zM918 472h4v4h-4z"/>
+<path d="M926 448h20v4h-20zM926 452h4v4h-4zM926 456h4v4h-4zM926 460h16v4h-16zM926 464h4v4h-4zM926 468h4v4h-4zM926 472h20v4h-20z"/>
+<path d="M962 448h4v4h-4zM978 448h4v4h-4zM962 452h4v4h-4zM978 452h4v4h-4zM962 456h4v4h-4zM978 456h4v4h-4zM962 460h4v4h-4zM970 460h4v4h-4zM978 460h4v4h-4zM962 464h4v4h-4zM970 464h4v4h-4zM978 464h4v4h-4zM962 468h8v4h-8zM974 468h8v4h-8zM962 472h4v4h-4zM978 472h4v4h-4z"/>
+<path d="M990 448h12v4h-12zM986 452h4v4h-4zM1002 452h4v4h-4zM986 456h4v4h-4zM1002 456h4v4h-4zM986 460h4v4h-4zM1002 460h4v4h-4zM986 464h4v4h-4zM1002 464h4v4h-4zM986 468h4v4h-4zM1002 468h4v4h-4zM990 472h12v4h-12z"/>
+<path d="M1010 448h16v4h-16zM1010 452h4v4h-4zM1026 452h4v4h-4zM1010 456h4v4h-4zM1026 456h4v4h-4zM1010 460h16v4h-16zM1010 464h4v4h-4zM1018 464h4v4h-4zM1010 468h4v4h-4zM1022 468h4v4h-4zM1010 472h4v4h-4zM1026 472h4v4h-4z"/>
+<path d="M1034 448h4v4h-4zM1050 448h4v4h-4zM1034 452h4v4h-4zM1046 452h4v4h-4zM1034 456h4v4h-4zM1042 456h4v4h-4zM1034 460h8v4h-8zM1034 464h4v4h-4zM1042 464h4v4h-4zM1034 468h4v4h-4zM1046 468h4v4h-4zM1034 472h4v4h-4zM1050 472h4v4h-4z"/>
+<path d="M1066 468h8v4h-8zM1066 472h8v4h-8z"/>
+</g>
+  <g transform="translate(96 530)">
+    <rect width="10" height="10" fill="#ff7fa8"/><rect x="16" width="10" height="10" fill="#55d6c2"/><rect x="32" width="10" height="10" fill="#b58cff"/>
+  </g>
+  <text x="96" y="575" fill="#61758a" font-family="SFMono-Regular, Menlo, monospace" font-size="15" letter-spacing="2">LOCAL-FIRST · MULTI-AGENT · PIXEL OFFICE</text>
+</svg>

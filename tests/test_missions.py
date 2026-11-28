@@ -53,6 +53,48 @@ class MissionTest(unittest.TestCase):
         self.assertNotEqual(revision, changed)
         self.assertEqual(changed, self.store.revision())
 
+    def test_recent_activity_feed_uses_real_mission_events(self):
+        mission = self.make()
+        task = mission["tasks"][0]
+        self.store.update_task(task["id"], {"status": "in_progress", "progress": 40})
+        self.store.add_model_call({
+            "provider": "test", "model": "test-model", "purpose": "task",
+            "missionId": mission["id"], "missionTitle": mission["title"],
+            "taskId": task["id"], "taskTitle": task["title"],
+            "agentId": task.get("assigneeId") or "ext-test",
+            "agentName": task.get("assigneeName") or "Test Worker",
+            "tokensIn": 120, "tokensOut": 80, "durationMs": 900, "ok": True,
+        })
+        self.store.add_artifact({
+            "name": "deliverable.md", "mime": "text/markdown", "size": 2048,
+            "kind": "document", "missionId": mission["id"],
+            "uploadedBy": task.get("assigneeId") or "ext-test",
+        })
+        rows = self.store.recent_activity(40)
+        kinds = {row["kind"] for row in rows}
+        self.assertIn("task", kinds)
+        self.assertIn("model", kinds)
+        self.assertIn("artifact", kinds)
+        self.assertTrue(all(row["missionId"] == mission["id"] for row in rows))
+        self.assertTrue(self.store.snapshot()["activity"])
+        self.store.set_archived(mission["id"], True)
+        self.assertEqual(self.store.recent_activity(40), [])
+
+    def test_task_verification_is_persisted_and_revisioned(self):
+        mission = self.make()
+        task = mission["tasks"][0]
+        before = self.store.revision()
+        saved = self.store.save_task_verification(task["id"], {
+            "status": "passed", "level": "syntax", "reason": "syntax check passed",
+            "files": 1, "passed": 1, "failed": 0, "skipped": 0,
+            "checks": [{"name": "app.py", "kind": "syntax", "status": "passed"}],
+        })
+        self.assertEqual(saved["verification"]["status"], "passed")
+        detail = self.store.get_mission(mission["id"])
+        row = next(item for item in detail["tasks"] if item["id"] == task["id"])
+        self.assertEqual(row["verification"]["status"], "passed")
+        self.assertNotEqual(before, self.store.revision())
+
     def test_scheduled_autorun_status(self):
         mission = self.make(autoRun=True, scheduleAt="2030-01-01T10:00")
         self.assertEqual(mission["autoRun"]["status"], "scheduled")
@@ -185,6 +227,59 @@ class MissionTest(unittest.TestCase):
         self.assertEqual(len(approvals), 1)
         self.assertEqual(approvals[0]["type"], "spend")
         self.assertEqual(approvals[0]["amount"], 250.0)
+
+    def test_recover_interrupted_autorun_after_restart(self):
+        mission = self.make()
+        self.store.set_autorun(mission["id"], status="running", currentTaskId="task-x")
+        self.store.set_discussion(mission["id"], status="running")
+        changed = self.store.recover_interrupted_runs()
+        self.assertGreaterEqual(changed, 2)
+        raw = self.store.find_mission(mission["id"])
+        self.assertEqual(raw["autoRun"]["status"], "error")
+        self.assertIn("重启", raw["autoRun"]["error"])
+        self.assertEqual(raw["discussion"]["status"], "error")
+        self.assertEqual(self.store.recover_interrupted_runs(), 0)
+
+    def test_model_call_cost_summary_and_mission_evaluation(self):
+        mission = self.make()
+        task = mission["tasks"][0]
+        self.store.add_model_call({
+            "provider": "one", "model": "m1", "purpose": "task",
+            "missionId": mission["id"], "taskId": task["id"],
+            "agentId": task.get("assigneeId") or "ext-test",
+            "tokensIn": 1000000, "tokensOut": 500000,
+            "cost": 1.5, "currency": "usd", "durationMs": 10,
+        })
+        self.store.add_model_call({
+            "provider": "two", "model": "m2", "purpose": "chat",
+            "missionId": mission["id"], "taskId": task["id"],
+            "agentId": task.get("assigneeId") or "ext-test",
+            "tokensIn": 1000, "tokensOut": 1000,
+            "cost": 0.25, "currency": "USD", "durationMs": 20,
+        })
+        self.store.add_model_call({
+            "provider": "two", "model": "m3", "purpose": "chat",
+            "missionId": mission["id"], "taskId": task["id"],
+            "tokensIn": 1000, "tokensOut": 1000,
+            "cost": None, "currency": "", "durationMs": 20,
+        })
+        summary = self.store.list_model_calls(mission["id"])["summary"]
+        self.assertEqual(summary["cost"], 1.75)
+        self.assertEqual(summary["currency"], "USD")
+        self.assertEqual(summary["pricedCalls"], 2)
+        raw = self.store.find_mission(mission["id"])
+        evaluation = self.store.mission_evaluation(raw)
+        self.assertEqual(evaluation["modelCost"], 1.75)
+        self.assertEqual(evaluation["currency"], "USD")
+        self.assertEqual(evaluation["pricedModelCalls"], 2)
+        self.assertEqual(evaluation["taskCosts"][task["id"]]["cost"], 1.75)
+        changed = self.store.reprice_provider_calls("two", {
+            "inputPerMillion": 1.0, "outputPerMillion": 2.0, "currency": "USD",
+        })
+        self.assertEqual(changed, 1)
+        history = self.store.list_model_calls(mission["id"])["summary"]
+        self.assertEqual(history["pricedCalls"], 3)
+        self.assertEqual(history["cost"], 1.753)
 
     def test_report_validation_and_approval(self):
         mission = self.make()

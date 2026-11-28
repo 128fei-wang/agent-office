@@ -63,6 +63,19 @@
     return (value / 1000).toFixed(value < 10000 ? 1 : 0) + "k";
   }
 
+  function fmtCost(value, currency) {
+    if (value === null || value === undefined) return "—";
+    const code = String(currency || "").toUpperCase();
+    if (code === "MIXED") return "MIXED";
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return "—";
+    const prefix = code === "CNY" ? "¥" : code === "USD" ? "$" :
+      (code ? code + " " : "");
+    const amount = n > 0 && n < 0.0001 ? "<0.0001" :
+      (n >= 1 ? n.toFixed(2) : n.toFixed(4));
+    return prefix + amount;
+  }
+
   function initials(name) {
     const text = String(name || "?").trim();
     return text ? text.slice(0, 1).toUpperCase() : "?";
@@ -125,6 +138,11 @@
       this.artifactFocus = null;
       this.artifactBusy = false;
       this.rerunTaskId = "";
+      this.verifyTaskId = "";
+      this.testRunTaskId = "";
+      this.evidenceTaskId = "";
+      this.evidenceResults = {};
+      this.testCommandDraft = {};
       this.mobileDetail = false;
       this.stream = null;
       this.pollTimer = null;
@@ -357,6 +375,27 @@
           if (usage) usage.open({ missionId: (this.mission && this.mission.id) || "" });
           return;
         }
+        const verifyTask = event.target.closest("[data-task-verify]");
+        if (verifyTask) { self.verifyTask(verifyTask.getAttribute("data-task-verify")); return; }
+        const runTests = event.target.closest("[data-task-test]");
+        if (runTests) { self.runTaskTests(runTests.getAttribute("data-task-test")); return; }
+        const customTests = event.target.closest("[data-task-test-custom]");
+        if (customTests) {
+          const id = customTests.getAttribute("data-task-test-custom");
+          const input = self.root.querySelector('[data-test-command="' + id + '"]');
+          self.runTaskTests(id, { command: input ? input.value.trim() : "" });
+          return;
+        }
+        const evidenceVerify = event.target.closest("[data-task-evidence-verify]");
+        if (evidenceVerify) {
+          self.verifyEvidence(evidenceVerify.getAttribute("data-task-evidence-verify"));
+          return;
+        }
+        const evidenceExport = event.target.closest("[data-task-evidence-export]");
+        if (evidenceExport) {
+          self.exportEvidence(evidenceExport.getAttribute("data-task-evidence-export"));
+          return;
+        }
         const rerunTask = event.target.closest("[data-task-rerun]");
         if (rerunTask) { self.rerunTask(rerunTask.getAttribute("data-task-rerun")); return; }
         if (event.target.closest("[data-ai-discuss]")) { self.discuss(); return; }
@@ -449,6 +488,10 @@
         if (event.target.id === "missionSearch") {
           self.search = event.target.value;
           self.renderSidebarOnly();
+        }
+        const testCommand = event.target.closest("[data-test-command]");
+        if (testCommand) {
+          self.testCommandDraft[testCommand.getAttribute("data-test-command")] = testCommand.value;
         }
         if (self.formMode === "mission" &&
             ["title", "description", "acceptance", "priority"].indexOf(event.target.name) >= 0) {
@@ -1510,6 +1553,15 @@
           (member.id === this.taskAgentFilter ? " selected" : "") + '>' +
           esc(this.agentName(member)) + '</option>').join("");
       const selected = all.filter((task) => this.selectedTasks.has(task.id));
+      const verifyTasks = all.filter((task) => task.status === "done" || task.verification);
+      const verifyCounts = {
+        passed: verifyTasks.filter((task) => (task.verification || {}).status === "passed").length,
+        failed: verifyTasks.filter((task) => (task.verification || {}).status === "failed").length
+      };
+      verifyCounts.unverified = verifyTasks.length - verifyCounts.passed - verifyCounts.failed;
+      const verifySummary = verifyTasks.length ?
+        '<span class="mission-verify-summary">' + esc(this.t("missionVerifySummary", verifyCounts)) +
+        '</span>' : "";
       const selectedReview = selected.filter((task) => task.status === "review");
       const selectedOpen = selected.filter((task) => task.status !== "done");
       const bulk = selected.length ?
@@ -1526,7 +1578,7 @@
         '<select data-task-agent-filter>' + options + '</select></label>' +
         '<span>' + esc(this.t("missionFilteredTasks", {
           count: tasks.length, total: all.length, agent: filterName || this.t("missionAllAgents")
-        })) + '</span></div>' + bulk +
+        })) + '</span>' + verifySummary + '</div>' + bulk +
         (tasks.map((task) => this.taskHTML(task)).join("") ||
           '<div class="mission-empty small">' + esc(this.t("missionNoTasksForAgent")) + '</div>') +
         '</div>';
@@ -1561,6 +1613,156 @@
           '</em></button>').join("") + "</div>" : "";
       const deliverableWarning = task.status === "done" && !usableDeliverable ?
         '<p class="mission-deliverable-warning">' + esc(this.t("missionDeliverableMissing")) + "</p>" : "";
+      const verification = task.verification || null;
+      const verifyStatus = verification ? verification.status : "unverified";
+      const verifyLabel = verifyStatus === "passed" ? this.t("missionVerified") :
+        verifyStatus === "failed" ? this.t("missionVerifyFailed") : this.t("missionUnverified");
+      const taskAgent = (this.mission.members || []).find(function (member) {
+        return member.id === task.assigneeId;
+      });
+      const externalTask = !!(taskAgent && taskAgent.source === "external");
+      const verifyHint = verifyStatus === "passed" ? this.t("missionVerificationHint") :
+        verifyStatus === "failed" ? this.t("missionVerificationFailedHint") :
+        (externalTask ? this.t("missionVerificationExternalHint") :
+          (taskArtifacts.length ? this.t("missionVerificationUnverifiedHint") : this.t("missionVerificationNoFiles")));
+      const checkStatus = {
+        passed: this.t("missionVerificationCheckPassed"),
+        failed: this.t("missionVerificationCheckFailed"),
+        skipped: this.t("missionVerificationCheckSkipped")
+      };
+      const checkRows = verification ? (verification.checks || []).slice(0, 24).map(function (check) {
+        return '<li class="' + esc(check.status) + '"><i></i><span><b>' +
+          esc(check.name) + '</b><em>' + esc(check.detail) + '</em></span><strong>' +
+          esc(checkStatus[check.status] || check.status) + '</strong></li>';
+      }).join("") : "";
+      const fileRows = verification ? (verification.fileEvidence || []).slice(0, 24).map(function (file) {
+        return '<li><span>' + esc(file.name) + '</span><code>' +
+          esc(String(file.sha256 || "").slice(0, 12) || "no-hash") + '</code></li>';
+      }).join("") : "";
+      const diff = task.diff || null;
+      const diffRows = diff ? (diff.files || []).slice(0, 20).map(function (file) {
+        return '<details class="mission-diff-file"><summary><i class="' + esc(file.status) + '"></i><b>' +
+          esc(file.name) + '</b><em>+' + Number(file.added || 0) + ' / −' + Number(file.removed || 0) +
+          '</em></summary><pre>' + esc(file.preview || "") + '</pre></details>';
+      }).join("") : "";
+      const diffHTML = diff && (diff.changed || diff.added || diff.removed) ?
+        '<div class="mission-diff"><div class="mission-diff-head"><b>' + esc(this.t("missionDiff")) +
+        '</b><span>' + esc(this.t("missionDiffSummary", {
+          files: diff.changed || 0, added: diff.added || 0, removed: diff.removed || 0
+        })) + '</span><details><summary>' + esc(this.t("missionDiffPreview")) + '</summary>' +
+        (diffRows || '<p>' + esc(this.t("missionDiffEmpty")) + '</p>') + '</details></div></div>' : "";
+      const testRun = task.testRun || null;
+      const testStatus = testRun ? testRun.status : "skipped";
+      const testLabel = testStatus === "passed" ? this.t("missionTestPassed") :
+        testStatus === "failed" ? this.t("missionTestFailed") :
+          testStatus === "unavailable" ? this.t("missionTestUnavailable") : this.t("missionTestSkipped");
+      const backendText = testRun && testRun.backend ?
+        (testRun.backend === "macos-seatbelt" ? "macOS seatbelt" :
+          testRun.backend === "linux-bwrap" ? "Linux bubblewrap" : testRun.backend) : "";
+      const testRunHTML = (taskArtifacts.length || testRun) ?
+        '<div class="mission-test-run status-' + esc(testStatus) + '">' +
+        '<div class="mission-test-head"><b>' + esc(this.t("missionTestRun")) + '</b>' +
+        '<span class="mission-test-pill">' + esc(testLabel) + '</span>' +
+        '<small>' + esc(backendText ?
+          this.t("missionTestBackend", { backend: backendText }) : this.t("missionTestSandbox")) +
+        '</small>' +
+        (taskArtifacts.length ? '<button type="button" data-task-test="' + esc(task.id) + '"' +
+          (this.testRunTaskId === task.id ? " disabled" : "") + '>' +
+          esc(this.testRunTaskId === task.id ? this.t("missionTesting") : this.t("missionRunTests")) +
+          '</button>' : '') + '</div>' +
+        (testRun ? '<p>' + esc(testRun.reason || "") + '</p>' +
+          '<div class="mission-test-meta-row">' +
+          (testRun.runner ? '<span>' + esc(this.t("missionTestRunner", { runner: testRun.runner })) + '</span>' : '') +
+          (testRun.command ? '<code>' + esc(testRun.command) + '</code>' : '') +
+          (testRun.outputTruncated ? '<span>' + esc(this.t("missionTestTruncated")) + '</span>' : '') +
+          '</div>' +
+          (testRun.exitCode != null ? '<span class="mission-test-meta">' +
+            esc(this.t("missionTestExit", { code: testRun.exitCode, ms: testRun.durationMs || 0 })) +
+            '</span>' : '') +
+          (testRun.output ? '<details class="mission-test-output"><summary>' +
+            esc(this.t("missionTestOutput")) + '</summary><pre>' +
+            esc(String(testRun.output).slice(-8000)) + '</pre></details>' : '') : '') +
+        (taskArtifacts.length ?
+          '<details class="mission-test-custom"><summary>' + esc(this.t("missionTestCustom")) +
+          '</summary><div class="mission-test-custom-row"><input type="text" maxlength="300" ' +
+          'data-test-command="' + esc(task.id) + '" value="' +
+          esc(this.testCommandDraft[task.id] || "") + '" placeholder="' +
+          esc(this.t("missionTestCustomPlaceholder")) + '" /><button type="button" ' +
+          'data-task-test-custom="' + esc(task.id) + '"' +
+          (this.testRunTaskId === task.id ? " disabled" : "") + '>' +
+          esc(this.t("missionTestCustomRun")) + '</button></div><small>' +
+          esc(this.t("missionTestCustomHint")) + '</small></details>' : '') +
+        '<small>' + esc(testStatus === "skipped" ? this.t("missionTestSkippedHint") :
+          testStatus === "failed" ? this.t("missionTestFailedHint") :
+            testStatus === "unavailable" ? this.t("missionTestUnavailable") :
+              this.t("missionTestPassedHint")) + '</small></div>' : "";
+      const evidence = task.evidence || [];
+      const evidenceResult = this.evidenceResults[task.id] || null;
+      const evidenceStatus = task.evidenceError ? "error" :
+        evidenceResult ? evidenceResult.status : (evidence.length ? "pending" : "empty");
+      const evidenceLabel = evidenceStatus === "valid" || evidenceStatus === "verified" ?
+        this.t("missionEvidenceVerified") :
+        evidenceStatus === "changed" ? this.t("missionEvidenceChanged") :
+          evidenceStatus === "tampered" ? this.t("missionEvidenceTampered") :
+            evidenceStatus === "error" ? this.t("missionEvidenceUnavailable") :
+            evidenceStatus === "unverified" ? this.t("missionEvidenceUnverified") :
+              this.t("missionEvidencePending");
+      const evidenceFileIds = new Set();
+      evidence.forEach(function (receipt) {
+        (receipt.artifacts || []).forEach(function (artifact) {
+          if (artifact.id) evidenceFileIds.add(artifact.id);
+        });
+      });
+      const evidenceFiles = evidenceFileIds.size;
+      const evidenceRows = evidence.slice(-3).map(function (receipt) {
+        const attestation = receipt.attestation || {};
+        const source = receipt.source === "external-agent" ? "MCP" :
+          receipt.source === "human" ? "BOSS" : "LOCAL";
+        return '<li><span>#' + Number(receipt.seq || 0) + '</span><b>' + esc(source) +
+          '</b><em>' + esc(receipt.agentName || receipt.agentId || "") + '</em><code>' +
+          esc(String(receipt.payloadHash || "").slice(0, 12)) + '</code>' +
+          (attestation.identityVerified === false ? '<i>!</i>' : '') + '</li>';
+      }).join("");
+      const evidenceHTML = (evidence.length || task.report || task.evidenceError) ?
+        '<div class="mission-receipts status-' + esc(evidenceStatus) + '">' +
+        '<div class="mission-receipts-head"><b>' + esc(this.t("missionEvidenceReceipts")) + '</b>' +
+        '<span class="mission-receipts-pill">' + esc(evidenceLabel) + '</span>' +
+        (evidence.length ? '<button type="button" data-task-evidence-verify="' + esc(task.id) + '"' +
+          (this.evidenceTaskId === task.id ? " disabled" : "") + '>' +
+          esc(this.evidenceTaskId === task.id ? this.t("missionEvidenceVerifying") : this.t("missionEvidenceVerify")) +
+          '</button><button type="button" data-task-evidence-export="' + esc(task.id) + '">' +
+          esc(this.t("missionEvidenceExport")) + '</button>' : '') + '</div>' +
+        (evidence.length ? '<div class="mission-receipts-count">' +
+          esc(this.t("missionEvidenceCount", { count: evidence.length, files: evidenceFiles })) +
+          '</div><ul class="mission-receipts-list">' + evidenceRows + '</ul>' : '') +
+        (task.evidenceError ? '<p class="mission-receipts-error">' + esc(task.evidenceError) + '</p>' :
+          (!evidence.length ? '<p>' + esc(this.t("missionEvidenceEmpty")) + '</p>' : '')) +
+        (evidence.some(function (receipt) {
+          return (receipt.attestation || {}).identityBasis === "mcp-header";
+        }) ? '<small class="mission-receipts-external">' + esc(this.t("missionEvidenceExternalHint")) + '</small>' : '') +
+        (evidence.some(function (receipt) {
+          return (receipt.attestation || {}).identityBasis === "agent-hmac" &&
+            receipt.attestation.identityVerified === true;
+        }) ? '<small class="mission-receipts-agent">' + esc(this.t("missionEvidenceAgentVerified")) + '</small>' : '') +
+        '<small>' + esc(this.t("missionEvidenceHint")) + '</small></div>' : "";
+      const verificationHTML = (taskArtifacts.length || verification || task.status === "done" || task.status === "review") ?
+        '<div class="mission-verification status-' + esc(verifyStatus) + '">' +
+        '<div class="mission-verification-head"><b>' + esc(this.t("missionVerification")) + '</b>' +
+        '<span class="mission-verification-pill">' + esc(verifyLabel) + '</span>' +
+        '<button type="button" data-task-verify="' + esc(task.id) + '"' +
+        (this.verifyTaskId === task.id ? " disabled" : "") + '>' +
+        esc(this.verifyTaskId === task.id ? this.t("missionVerifying") : this.t("missionRunVerify")) +
+        '</button></div><p>' + esc(verifyHint) + '</p>' +
+        (verification ? '<div class="mission-verification-count">' +
+          esc(this.t("missionVerificationFiles", {
+            files: verification.files || 0, passed: verification.passed || 0,
+            failed: verification.failed || 0
+          })) + '</div>' : '') +
+        (checkRows || fileRows ? '<details class="mission-verification-evidence"><summary>' +
+          esc(this.t("missionVerificationEvidence")) + '</summary><ul>' + checkRows + '</ul>' +
+          (fileRows ? '<div class="mission-verification-files"><b>FILES</b>' + fileRows + '</div>' : '') +
+          '</details>' : '') +
+        '<small>' + esc(this.t("missionVerificationLocal")) + '</small></div>' : "";
       const current = task.id === this.currentTaskId() &&
         task.status !== "done";
       return '<details class="mission-task ' + this.taskClass(task.status) +
@@ -1572,6 +1774,11 @@
         '<span class="mission-task-status"></span><b>' + esc(task.title) + '</b><em>' +
         esc(task.assigneeName || task.assigneeId) + '</em>' +
         (current ? '<i class="mission-task-live">' + esc(this.t("missionCurrent")) + '</i>' : '') +
+        ((task.status === "done" || task.status === "review") ?
+          '<i class="mission-verify-mark ' + esc(verifyStatus) + '" title="' +
+          esc(verifyLabel) + '">' +
+          (verifyStatus === "passed" ? "✓" : verifyStatus === "failed" ? "!" : "?") +
+          '</i>' : '') +
         '<span>' + esc(this.taskStatus(task.status)) + '</span></summary>' +
         '<div class="mission-task-progress"><i><u style="width:' + pct + '%"></u></i><b>' + pct + '%</b></div>' +
         '<p>' + esc(task.brief) + '</p>' +
@@ -1588,13 +1795,18 @@
         (task.actual && (task.actual.minutes || task.actual.tokens || task.actual.durationMs) ?
           '<span>' + esc(this.t("missionActual")) + '：' +
           fmtDuration(task.actual.minutes, task.actual.durationMs) + ' · ' +
-          fmtTokens(task.actual.tokens) + ' tokens</span>' : '') +
+          fmtTokens(task.actual.tokens) + ' tokens' +
+          ((this.mission && this.mission.evaluation && this.mission.evaluation.taskCosts &&
+            this.mission.evaluation.taskCosts[task.id] &&
+            this.mission.evaluation.taskCosts[task.id].pricedCalls) ?
+            ' · ' + fmtCost(this.mission.evaluation.taskCosts[task.id].cost,
+              this.mission.evaluation.taskCosts[task.id].currency) : '') + '</span>' : '') +
         (approval ? '<span class="mission-gate">' + esc(this.approvalType(approval.type)) + ' · ' +
           esc(approval.status) + '</span>' : '') + '</div>' +
         (task.report ? '<div class="mission-report compact"><b>' + esc(this.t("missionReport")) + '</b><p>' +
           esc(task.report.summary) + '</p><span class="mission-solution">' + esc(this.t("missionSolution")) +
           '：' + esc(task.report.solution) + '</span></div>' : '') +
-        deliverableHTML + deliverableWarning +
+        deliverableHTML + deliverableWarning + verificationHTML + testRunHTML + evidenceHTML + diffHTML +
         '<div class="mission-task-actions"><button type="button" data-dm-agent="' +
         esc(task.assigneeId) + '">' + esc(this.t("missionDmAgent")) + '</button>' +
         (task.status !== "done" && !this.isExternalAgent(task.assigneeId) ?
@@ -1645,11 +1857,13 @@
         const est = task.estimate || {};
         const actual = task.actual || {};
         const delta = (actual.tokens || 0) - (est.tokens || 0);
+        const taskCost = (ev.taskCosts || {})[task.id] || {};
         return '<div class="mission-eval-row"><span class="mission-eval-status ' + this.taskClass(task.status) +
           '"></span><div><b>' + esc(task.title) + '</b><em>' + esc(task.assigneeName || "") + '</em></div>' +
           '<span>' + fmtDuration(est.minutes) + ' / ' +
           fmtDuration(actual.minutes, actual.durationMs) + '</span>' +
           '<span>' + fmtTokens(est.tokens) + ' / ' + fmtTokens(actual.tokens) + '</span>' +
+          '<span class="mission-eval-cost">' + fmtCost(taskCost.cost, taskCost.currency) + '</span>' +
           '<em class="' + (delta > 0 ? 'over' : 'under') + '">' + (delta >= 0 ? '+' : '') +
           fmtTokens(delta) + '</em></div>';
       }).join("");
@@ -1660,7 +1874,9 @@
           '<b>' + esc(agent.name) + '</b><span>' + agent.tasks + ' ' + esc(this.t("missionTasksLower")) +
           '</span><span>' + fmtDuration(agent.estimatedMinutes) + ' / ' +
           fmtDuration(agent.actualMinutes, agent.actualDurationMs) +
-          '</span><span>' + fmtTokens(agent.estimatedTokens) + ' / ' + fmtTokens(agent.actualTokens) + '</span></div>'
+          '</span><span>' + fmtTokens(agent.estimatedTokens) + ' / ' + fmtTokens(agent.actualTokens) +
+          '</span><span class="mission-agent-cost-value">' + fmtCost(agent.actualCost, agent.currency) +
+          '</span></div>'
       ).join("");
       return '<div class="mission-panel mission-eval">' +
         '<div class="mission-eval-grid">' +
@@ -1671,6 +1887,10 @@
         '<div><span>' + esc(this.t("missionActualTokens")) + '</span><b>' + fmtTokens(ev.actualTokens) + '</b></div>' +
         '<div><span>' + esc(this.t("missionElapsed")) + '</span><b>' + fmtDuration(ev.elapsedMinutes) + '</b></div>' +
         '<div><span>' + esc(this.t("missionConfidence")) + '</span><b>' + esc(ev.confidence || "medium") + '</b></div>' +
+        '<div><span>' + esc(this.t("missionModelCost")) + '</span><b class="mission-cost-value">' +
+        esc((ev.currency === "MIXED" ? "MIXED" : (ev.modelCost == null ?
+          this.t("missionCostUnpriced") : fmtCost(ev.modelCost, ev.currency))) +
+          (ev.modelCalls && ev.pricedModelCalls != null && ev.pricedModelCalls < ev.modelCalls ? " *" : "")) + '</b></div>' +
         '</div>' +
         '<div class="mission-eval-bar"><div><span>' + esc(this.t("missionTimeUsage")) + ' ' + timePct + '%</span>' +
         '<i><b style="width:' + timePct + '%"></b></i></div>' +
@@ -1687,8 +1907,11 @@
         '<h4>' + esc(this.t("missionTaskEval")) + '</h4>' +
         '<div class="mission-eval-head"><span></span><span>' + esc(this.t("missionTask")) + '</span><span>' +
         esc(this.t("missionTimeEstimate")) + '</span><span>' + esc(this.t("missionTokenEstimate")) +
-        '</span><span>Δ</span></div>' + (rows || '<div class="mission-empty small">—</div>') +
+        '</span><span>' + esc(this.t("usageCost", "成本")) + '</span><span>Δ</span></div>' + (rows || '<div class="mission-empty small">—</div>') +
         '<h4>' + esc(this.t("missionAgentCost")) + '</h4>' + (agents || '<div class="mission-empty small">—</div>') +
+        (ev.modelCalls && ev.pricedModelCalls != null && ev.pricedModelCalls < ev.modelCalls ?
+          '<p class="mission-note">' + esc(this.t("missionCostPartial")) + '</p>' : '') +
+        '<p class="mission-note">' + esc(this.t("missionCostHint")) + '</p>' +
         '<p class="mission-note">' + esc(this.t("missionEvalHint")) + '</p></div>';
     }
 
@@ -1712,6 +1935,9 @@
         '<div><span>' + esc(this.t("missionModelCalls")) + '</span><b>' + calls + '</b></div>' +
         '<div><span>' + esc(this.t("missionActualIO")) + '</span><b>' + fmtTokens(actualIn) + ' / ' + fmtTokens(actualOut) + '</b></div>' +
         '<div><span>' + esc(this.t("missionAvgLatency")) + '</span><b>' + (avg ? avg + ' ms' : '—') + '</b></div>' +
+        '<div><span>' + esc(this.t("missionModelCost")) + '</span><b>' +
+        esc(ev.currency === "MIXED" ? "MIXED" : (ev.modelCost == null ?
+          this.t("missionCostUnpriced") : fmtCost(ev.modelCost, ev.currency))) + '</b></div>' +
         '</div>' +
         '<p class="mission-context-sources">' + esc(this.t("missionContextSources", {
           base: Number(insight.baseChars || 0),
@@ -2522,6 +2748,134 @@
       }
       await this.refreshOverview();
       this.render();
+    }
+
+    async verifyTask(taskId) {
+      if (!this.mission || !taskId || this.verifyTaskId) return;
+      this.verifyTaskId = taskId;
+      this.render();
+      try {
+        const result = await this.api("/missions/" + encodeURIComponent(this.mission.id) +
+          "/tasks/" + encodeURIComponent(taskId) + "/verify", {
+          method: "POST", body: JSON.stringify({})
+        }, 30000);
+        const verification = result.verification || {};
+        this.toast(verification.status === "failed" ?
+          this.t("missionVerifyFailedToast") : this.t("missionVerifyDone"));
+        await this.loadActive();
+        await this.refreshOverview();
+        this.render();
+      } catch (err) {
+        this.toast(this.t("missionVerifyFailedToast") +
+          (err.message ? " · " + err.message : ""));
+      } finally {
+        this.verifyTaskId = "";
+      this.testRunTaskId = "";
+        this.render();
+      }
+    }
+
+    async runTaskTests(taskId, options) {
+      if (!this.mission || !taskId || this.testRunTaskId) return;
+      if (!window.confirm(this.t("missionTestConfirm"))) return;
+      const command = String((options && options.command) || "").trim();
+      this.testRunTaskId = taskId;
+      this.render();
+      try {
+        const result = await this.api("/missions/" + encodeURIComponent(this.mission.id) +
+          "/tasks/" + encodeURIComponent(taskId) + "/run-tests", {
+          method: "POST", body: JSON.stringify(command ? { command: command } : {})
+        }, 90000);
+        const report = result.testRun || {};
+        this.toast(report.status === "passed" ? this.t("missionTestPassed") :
+          report.status === "failed" ? this.t("missionTestFailed") :
+            report.status === "unavailable" ? this.t("missionTestUnavailable") : this.t("missionTestSkipped"));
+        await this.loadActive();
+        await this.refreshOverview();
+        this.render();
+      } catch (err) {
+        this.toast(this.t("missionTestFailed") + (err.message ? " · " + err.message : ""));
+      } finally {
+        this.testRunTaskId = "";
+        this.render();
+      }
+    }
+
+    async verifyEvidence(taskId) {
+      if (!this.mission || !taskId || this.evidenceTaskId) return;
+      this.evidenceTaskId = taskId;
+      this.render();
+      try {
+        const result = await this.api("/missions/" + encodeURIComponent(this.mission.id) +
+          "/evidence/verify", { method: "POST", body: JSON.stringify({}) }, 30000);
+        const verification = result.verification || {};
+        this.evidenceResults[taskId] = verification;
+        this.toast(verification.status === "valid" ? this.t("missionEvidenceValid") :
+          verification.status === "unverified" ? this.t("missionEvidenceUnverified") :
+            this.t("missionEvidenceFailed"));
+        await this.loadActive();
+        await this.refreshOverview();
+        this.render();
+      } catch (err) {
+        this.toast(this.t("missionEvidenceFailed") + (err.message ? " · " + err.message : ""));
+      } finally {
+        this.evidenceTaskId = "";
+        this.render();
+      }
+    }
+
+    async exportEvidence(taskId) {
+      if (!this.mission) return;
+      try {
+        const result = await this.api("/missions/" + encodeURIComponent(this.mission.id) +
+          "/evidence/bundle", {}, 30000);
+        const receipts = result.receipts || [];
+        if (!receipts.length) {
+          this.toast(this.t("missionEvidenceExportEmpty"));
+          return;
+        }
+        const bundle = taskId ? Object.assign({}, result, {
+          receipts: receipts.filter(function (receipt) { return receipt.taskId === taskId; })
+        }) : result;
+        if (!bundle.receipts.length) {
+          this.toast(this.t("missionEvidenceExportEmpty"));
+          return;
+        }
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "agent-office-evidence-" + this.mission.id + ".json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        this.toast(this.t("missionEvidenceExported"));
+      } catch (err) {
+        this.toast(this.t("missionEvidenceFailed") + (err.message ? " · " + err.message : ""));
+      }
+    }
+
+    async rerunTask(taskId) {
+      if (!this.mission || !taskId || this.rerunTaskId) return;
+      this.rerunTaskId = taskId;
+      this.render();
+      try {
+        await this.api("/missions/" + encodeURIComponent(this.mission.id) +
+          "/tasks/" + encodeURIComponent(taskId) + "/rerun", {
+          method: "POST", body: JSON.stringify({})
+        }, 90000);
+        this.toast(this.t("missionRerunDone"));
+        await this.loadActive();
+        await this.refreshOverview();
+        this.render();
+      } catch (err) {
+        this.toast(this.t("missionRerunFailed") +
+          (err.message ? " · " + err.message : ""));
+      } finally {
+        this.rerunTaskId = "";
+        this.render();
+      }
     }
 
     async patchTask(taskId, patch) {

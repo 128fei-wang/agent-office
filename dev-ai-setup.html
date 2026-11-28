@@ -28,6 +28,10 @@
     const pickedName=(picked.querySelector('.ai-provider-copy b')||{}).textContent||'';
     picked.click();await wait(200);
     check('step 2 connection form',!!$('#aiSetupRoot [name="aiModel"]')&&!!$('#aiSetupRoot [data-ai-setup-next]'));
+    check('pricing fields rendered',!!$('#aiSetupRoot [name="aiPriceIn"]')&&!!$('#aiSetupRoot [name="aiPriceOut"]')&&!!$('#aiSetupRoot [name="aiPriceCurrency"]'));
+    if($('#aiSetupRoot [name="aiPriceIn"]'))$('#aiSetupRoot [name="aiPriceIn"]').value='1';
+    if($('#aiSetupRoot [name="aiPriceOut"]'))$('#aiSetupRoot [name="aiPriceOut"]').value='2';
+    if($('#aiSetupRoot [name="aiPriceCurrency"]'))$('#aiSetupRoot [name="aiPriceCurrency"]').value='USD';
     check('picked provider shown',new RegExp(pickedName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).test($('#aiSetupRoot').textContent));
     const next=$('#aiSetupRoot [data-ai-setup-next]');
     if(next){next.click();await wait(150);}
@@ -40,6 +44,7 @@
       if(String(url).indexOf('/providers/')>=0&&String(url).indexOf('/configure')>=0){
         const provider=setup.provider()||{id:'test',name:'Test'};
         const body=JSON.parse((opts&&opts.body)||'{}');
+        w.__aiConfigurePayload=body;
         const payload={ok:true,saved:true,provider:Object.assign({},provider,{configured:true,detected:false,keySource:'file',model:body.model||provider.model}),test:{text:'OK',model:body.model||provider.model,durationMs:42,tokensIn:5,tokensOut:3}};
         return Promise.resolve(new w.Response(JSON.stringify(payload),{status:200,headers:{'Content-Type':'application/json'}}));
       }
@@ -48,6 +53,7 @@
     const test=$('#aiSetupRoot [data-ai-setup-test]');
     if(test){test.click();await wait(500);}
     check('test success state',!!$('#aiSetupRoot .ai-success'));
+    check('pricing sent to bridge',!!w.__aiConfigurePayload&&!!w.__aiConfigurePayload.pricing&&w.__aiConfigurePayload.pricing.inputPerMillion===1&&w.__aiConfigurePayload.pricing.outputPerMillion===2);
     check('ai-ready event',aiReady);
     check('done action',!!$('#aiSetupRoot [data-ai-setup-done]'));
     const done=$('#aiSetupRoot [data-ai-setup-done]');
@@ -91,6 +97,9 @@
       // Simulate the exact state from the reported incident: discussion finished, execution not started.
       mv.mission.discussion={status:'done'};
       mv.mission.autoRun={status:'off',completed:0,total:(mv.mission.tasks||[]).length};
+      // This check simulates the UI after a successful setup; do not depend on
+      // the shared local bridge having a real provider configured.
+      mv.ai={available:true,provider:'self-check'};
       mv.render();await wait(100);
       check('discussed mission shows start',/开始执行/.test($('.mission-command').textContent||''));
       check('discussed mission marks boss action',/需要你操作/.test($('.mission-command').textContent||''));

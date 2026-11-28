@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "verify/**"]
   pull_request:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
           node-version: "20"
 
       - name: Python syntax
-        run: python -m py_compile bridge.py updater.py missions.py
+        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py pricing.py
 
       - name: JavaScript syntax
         run: |
@@ -38,3 +38,71 @@ jobs:
 
       - name: Repository checks
         run: bash scripts/check.sh
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+
+      - name: Browser E2E smoke
+        run: >-
+          python scripts/browser_suite.py --smoke --jobs 2
+          --chrome "${{ steps.setup-chrome.outputs.chrome-path }}"
+
+  linux-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
+      - name: Sandbox capabilities
+        run: |
+          python - <<'PY'
+          import json, execution
+          print(json.dumps(execution.capabilities(), ensure_ascii=False, indent=2))
+          if not execution.available():
+              print("bubblewrap is installed but user namespaces are unavailable; executor tests will skip")
+          PY
+
+      - name: Executor isolation tests
+        run: python -m unittest tests.test_execution -v
+
+  windows-compat:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python syntax
+        run: python -m py_compile bridge.py updater.py missions.py verification.py execution.py evidence.py pricing.py
+
+      - name: Windows reports no native sandbox
+        shell: bash
+        run: |
+          python - <<'PY'
+          import execution
+          caps = execution.capabilities()
+          print("backend=%s available=%s sandboxed=%s" % (
+              caps["backend"], caps["available"], caps["sandboxed"]))
+          assert caps["backend"] in ("none", "linux-bwrap")
+          PY

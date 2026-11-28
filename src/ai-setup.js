@@ -259,7 +259,16 @@
         apiKey: "",
         baseUrl: provider.baseUrl || "",
         model: provider.model || "",
-        useEnvironment: !!provider.detected
+        useEnvironment: !!provider.detected,
+        pricingSource: provider.pricingSource || "none",
+        pricingPreset: provider.pricingPreset || {},
+        pricing: {
+          inputPerMillion: provider.pricing && provider.pricing.inputPerMillion != null ?
+            provider.pricing.inputPerMillion : "",
+          outputPerMillion: provider.pricing && provider.pricing.outputPerMillion != null ?
+            provider.pricing.outputPerMillion : "",
+          currency: (provider.pricing && provider.pricing.currency) || "USD"
+        }
       };
       this.step = 2;
       this.error = "";
@@ -273,9 +282,15 @@
       const key = this.root.querySelector("[name='aiKey']");
       const model = this.root.querySelector("[name='aiModel']");
       const base = this.root.querySelector("[name='aiBase']");
+      const priceIn = this.root.querySelector("[name='aiPriceIn']");
+      const priceOut = this.root.querySelector("[name='aiPriceOut']");
+      const currency = this.root.querySelector("[name='aiPriceCurrency']");
       if (key) this.draft.apiKey = key.value;
       if (model) this.draft.model = model.value;
       if (base) this.draft.baseUrl = base.value;
+      if (priceIn) this.draft.pricing.inputPerMillion = priceIn.value;
+      if (priceOut) this.draft.pricing.outputPerMillion = priceOut.value;
+      if (currency) this.draft.pricing.currency = currency.value;
     }
 
     next() {
@@ -338,6 +353,17 @@
         };
         const key = String(this.draft.apiKey || "").trim();
         if (key) payload.apiKey = key;
+        const priceIn = Number(this.draft.pricing.inputPerMillion || 0);
+        const priceOut = Number(this.draft.pricing.outputPerMillion || 0);
+        if (priceIn > 0 || priceOut > 0) {
+          payload.pricing = {
+            inputPerMillion: priceIn,
+            outputPerMillion: priceOut,
+            currency: String(this.draft.pricing.currency || "USD").trim().toUpperCase()
+          };
+        } else {
+          payload.clearPricing = true;
+        }
         const data = await this.fetchJson(
           "/providers/" + encodeURIComponent(provider.id) + "/configure",
           { method: "POST", body: payload, timeout: 60000 }
@@ -357,6 +383,21 @@
         this.busy = false;
         this.render();
       }
+    }
+
+    pricingFields() {
+      const pricing = this.draft.pricing || {};
+      return '<div class="ai-price-grid">' +
+        '<label class="ai-field"><span>' + esc(this.t("aiSetupPriceIn")) + '</span>' +
+        '<input type="number" min="0" step="0.0001" name="aiPriceIn" value="' +
+        esc(pricing.inputPerMillion == null ? "" : pricing.inputPerMillion) + '" /></label>' +
+        '<label class="ai-field"><span>' + esc(this.t("aiSetupPriceOut")) + '</span>' +
+        '<input type="number" min="0" step="0.0001" name="aiPriceOut" value="' +
+        esc(pricing.outputPerMillion == null ? "" : pricing.outputPerMillion) + '" /></label>' +
+        '<label class="ai-field"><span>' + esc(this.t("aiSetupPriceCurrency")) + '</span>' +
+        '<input type="text" maxlength="8" name="aiPriceCurrency" value="' +
+        esc(pricing.currency || "USD") + '" spellcheck="false" /></label></div>' +
+        '<small class="ai-price-hint">' + esc(this.t("aiSetupPriceHint")) + '</small>';
     }
 
     badges(provider) {
@@ -425,10 +466,13 @@
           '<label class="ai-field"><span>' + esc(this.t("aiSetupModel")) + '</span>' +
           '<input type="text" name="aiModel" value="' + esc(this.draft.model) + '" spellcheck="false" /></label>' +
           (baseVisible ? '<label class="ai-field"><span>' + esc(this.t("aiSetupBase")) + '</span>' +
-            '<input type="text" name="aiBase" value="' + esc(this.draft.baseUrl) + '" spellcheck="false" /></label>' :
+            '<input type="text" name="aiBase" value="' + esc(this.draft.baseUrl) + '" spellcheck="false" /></label>' +
+            '<details class="ai-advanced"><summary>' + esc(this.t("aiSetupPrice")) + '</summary>' +
+            this.pricingFields() + '</details>' :
             '<details class="ai-advanced"><summary>' + esc(this.t("aiSetupAdvanced")) + '</summary>' +
             '<label class="ai-field"><span>' + esc(this.t("aiSetupBase")) + '</span>' +
             '<input type="text" name="aiBase" value="' + esc(this.draft.baseUrl) + '" spellcheck="false" /></label>' +
+            this.pricingFields() +
             '</details>') +
           (this.error ? '<p class="ai-setup-error-text">' + esc(this.error) + '</p>' : '');
       }
@@ -439,6 +483,10 @@
         '<div><span>' + esc(this.t("aiSetupAuth")) + '</span><b>' + esc(auth) + '</b></div>' +
         '<div><span>' + esc(this.t("aiSetupModel")) + '</span><b>' + esc(this.draft.model) + '</b></div>' +
         '<div><span>' + esc(this.t("aiSetupBase")) + '</span><b>' + esc(this.draft.baseUrl) + '</b></div>' +
+        '<div><span>' + esc(this.t("aiSetupPrice")) + '</span><b>' +
+        esc((Number(this.draft.pricing.inputPerMillion || 0) ? this.draft.pricing.inputPerMillion : "0") +
+          " / " + (Number(this.draft.pricing.outputPerMillion || 0) ? this.draft.pricing.outputPerMillion : "0") +
+          " " + (this.draft.pricing.currency || "USD") + " / 1M") + '</b></div>' +
         '</div>' +
         (this.success ? '<div class="ai-success"><span>✓</span><div><b>' + esc(this.t("aiSetupSuccess")) +
           '</b><p>' + esc(this.t("aiSetupSuccessHint")) + '</p>' +

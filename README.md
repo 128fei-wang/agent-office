@@ -1,19 +1,26 @@
+<p align="center">
+  <img src="assets/brand/agent-office-logo.png" alt="Agent Office — 看见 AI 团队，把事做完" width="560">
+</p>
+
 # Agent Office
 
-[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [团队记忆](docs/MEMORY.md) · [Token 与模型调用](docs/USAGE.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[English](README.en.md) · [架构](docs/ARCHITECTURE.md) · [品牌标识](docs/BRAND.md) · [外部 Agent 配对](docs/PAIRING.md) · [模型 API](docs/PROVIDERS.md) · [AI 三步接入](docs/AI_SETUP.md) · [任务委派](docs/TASK_DELEGATION.md) · [一人公司](docs/COMPANY_OS.md) · [任务工作台](docs/MISSIONS.md) · [聊天工作台](docs/CHAT_UI.md) · [团队记忆](docs/MEMORY.md) · [Token 与模型调用](docs/USAGE.md) · [交付验证](docs/VERIFICATION.md) · [MCP 部署](docs/MCP.md) · [2026 趋势](docs/TRENDS.md) · [动画状态机](docs/ANIMATION.md) · [使用指南](docs/GUIDE.md) · [布局说明](docs/LAYOUT.md) · [自行升级](docs/UPGRADING.md) · [事件协议](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能导航栏、双栏群聊/单聊聊天工作台、QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
+> **看见 AI 团队，把事做完。**<br>
+> 谁在干 · 干到哪 · 交付了什么，一眼看清。
 
-没有 Node、没有构建步骤、没有外部美术资源。所有角色精灵和办公室都由代码画出来。
+一个零依赖、本地优先的「多 agent 可视化办公室 + 一人公司 + 任务工作台」：6 个自主协作的 agent 在像素办公室里认领任务、互相评审、开会、处理突发需求，最后把产品发上线；同时提供任务章程、外部 Agent 优先推荐、可编辑职务与头像、逐任务分配、时间与 token 消耗评估、可选价格表（含 DeepSeek 缓存命中/峰谷价）与真实成本核算、群聊与私聊、文档/图片上传与识别、老板审批门禁、结构化汇报、可追责的工作账本、交付验证与文件哈希证据、本机签名证据回执、沙箱测试执行、审计、Trace Lab、Evals、外部 Agent 配对、任务委派、中英文切换、自行升级，以及左侧功能导航栏、双栏群聊/单聊聊天工作台、QQ/微信聊天窗口风格、白天/夜间主题和移动端布局。
+
+运行时没有 Node、没有构建步骤、没有外部美术资源。品牌标识是仓库内置的本地 SVG/PNG；所有角色精灵和办公室都由代码画出来。
 
 ![Agent Office](docs/screenshots/office.jpg)
 
-> **Status:** early-stage open-source prototype. 不是生产级可观测平台，也不是真实代码执行沙箱。边界见 [Roadmap](docs/ROADMAP.md)。
+> **Status:** early-stage open-source prototype. 不是生产级可观测平台，也不是硬化虚拟机。交付验证只做文件存在性、占位内容与语法/结构检查，不运行生成的应用代码；项目测试需要手动触发，在 macOS seatbelt / Linux bubblewrap 进程级沙箱内执行。证据回执是本机 HMAC，不等同外部 Agent 身份签名。边界见 [Roadmap](docs/ROADMAP.md)。
 >
 > **第一次使用？** 看 [使用指南](docs/GUIDE.md)。关闭演示：点右上角 **「关闭演示」**，或左侧 设置 → 演示与预设。
 
@@ -46,7 +53,9 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 - **协作**：评审、串门聊天、临时会议、阻塞清除会、发布前风险会。
 - **意外**：CEO 临时加需求、接口字段对不上、CDN 告警、支付事故……点「制造意外」可以随时再塞一个。
 - **完整叙事**：任务看板、白板目标、实时消息流、会议纪要、上线庆祝和彩蛋。
-- **可追溯**：每个 agent 认领了什么、调用了哪个 skill/tool、改了哪个文件哪几行、提交/评审/返工/阻塞的完整时间线，都能点开看。
+- **电影感**：演示首屏有 Sprint 开场简报；真实任务开始/等待审批/完成有过场动画、Agent 协作数据网、跟随聚光和办公室环境动效。
+- **可验证交付**：真实任务显示文件哈希、语法/结构检查、通过/未验证/失败和真实 diff；失败交付会阻塞任务；可手动在 macOS seatbelt / Linux bubblewrap 沙箱里运行 Python/Node 测试，并生成可验证的本机签名证据回执。
+- **可追溯（演示模式）**：每个 agent 认领了什么、调用了哪个 skill/tool、改了哪个文件哪几行、提交/评审/返工/阻塞的完整时间线，都能点开看。
 - **可审计**：每个任务带基础工作检查清单（测试、无障碍、性能、安全、回滚、监控…）；审计面板实时汇总「已覆盖 / 风险 / 遗漏 / 待验证」，并给出补齐建议。
 - **可导出**：一键导出 Markdown 审计报告或 JSON 原始证据，包含任务、agent、技能、文件行号、评审与遗漏项。
 - **两个场景**：「产品发布冲刺」和「支付事故响应」。
@@ -76,7 +85,9 @@ python3 bridge.py          # 外部 Agent bridge，127.0.0.1:8787
 
 ## 工作可追溯 / 审计
 
-这是这一版最重要的产品能力。模拟不只是「看起来在忙」，而是留下可检查的证据链：
+这是这一版最重要的产品能力。演示模式用可检查的模拟证据链展示协作；真实任务另有文件级交付验证（文件存在性/大小/SHA-256/占位内容/语法检查），见 [交付验证](docs/VERIFICATION.md)。
+
+> **边界**：下面的任务轨迹、技能、代码行号和 diff 预览属于**演示模拟**；真实任务不会伪造 diff，验证结果会明确标注「语法检查 / 未执行项目测试 / 外部自报」。
 
 - **任务轨迹**：点任意任务卡，打开 `TASK TRACE` 抽屉。按时间顺序列出认领、阻塞、恢复、技能调用、文件修改、提交评审、退回/返工、通过、完成。
 - **技能调用**：每个工作步骤绑定一个 skill 和 tool，例如 `React 实现` + `edit`、`竞品分析` + `web_search`、`E2E` + `playwright`。Agent 档案里会按角色列出技能矩阵和调用次数。
@@ -503,7 +514,7 @@ MCP 和配对码、模型 API 一样，是外部 Agent 的连接方式之一；B
 | 项目 | 借鉴的能力 | 在我们的实现 |
 | --- | --- | --- |
 | [langfuse/langfuse](https://github.com/langfuse/langfuse) | Trace / session / cost / evals / OTel | Trace Lab 的 run、span、token、cost、Evals 和 OTLP JSON |
-| [AgentOps-AI/agentops](https://github.com/AgentOps-AI/agentops) | Session replay、step-by-step execution graph、cost | 回放 scrubber、任务/事件时间线、模拟 token/cost |
+| [AgentOps-AI/agentops](https://github.com/AgentOps-AI/agentops) | Session replay、step-by-step execution graph、cost | 回放 scrubber、任务/事件时间线；真实模型调用台账含用户价格表成本，Trace Lab 为模拟 token/cost |
 | [Arize-ai/phoenix](https://github.com/Arize-ai/phoenix) | OpenTelemetry tracing、evaluation、experiment | OTLP 导出、确定性 eval 断言、评测历史 |
 | [raga-ai-hub/RagaAI-Catalyst](https://github.com/raga-ai-hub/RagaAI-Catalyst) | Timeline + execution graph、tool utilization、TRACE 管理 | 任务时间线、tool/skill 调用统计、span detail |
 | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) | Durable execution、human-in-the-loop、state transitions | replay cursor、人工审批门禁、状态重建 |
@@ -847,11 +858,23 @@ open http://127.0.0.1:5173/dev-check.html
 
 `dev-ai-setup.html`、`dev-mission-live.html` 和 `dev-demo-mode.html` 会验证 3 步 AI 接入、首页 MISSION LIVE、演示关闭 / 真实 Agent 模式、真实任务看板和恢复演示。`dev-activity.html` 会验证任务进度到角色进度条、完成后庆祝自动回到日常活动，以及「新一轮」重置。
 
-bridge 自身的 32 个集成测试、更新器的 14 个单元测试、任务工作台的 13 个单元测试和上下文的 1 个单元测试（共 60 个）不依赖浏览器：
+当前 139 个 Python 测试（bridge 集成、更新器、任务工作台、上下文、交付验证、证据回执、沙箱执行器、成本与 MCP 签名、品牌安装面）不依赖浏览器：
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+浏览器侧提供自动化 E2E runner，无需 Node/Playwright：
+
+```bash
+python3 scripts/browser_suite.py --jobs 4
+# CI 无 bridge 的 smoke 子集
+python3 scripts/browser_suite.py --smoke --jobs 2
+```
+
+共享本机 bridge 的页面（任务、聊天、公司、记忆、外部 Agent、AI 设置等）会串行执行，其余页面并行；这样不会因为一个页面删除 Agent/任务导致另一个页面计数失败。当前 29 个自检页全部通过（`--smoke` 为 6 页）。
+
+真实交付验证的接口与限制见 [交付验证](docs/VERIFICATION.md)。
 
 ## 开源与贡献
 
@@ -864,7 +887,7 @@ python3 -m unittest discover -s tests -v
 - 发布清单：[docs/OPEN_SOURCE_CHECKLIST.md](docs/OPEN_SOURCE_CHECKLIST.md)
 - Roadmap / 已知缺口：[docs/ROADMAP.md](docs/ROADMAP.md)
 
-仓库已经公开；当前版本 `1.22.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
+仓库已经公开；当前版本 `1.28.0`，历史版本见 GitHub Releases。发布清单见 `docs/OPEN_SOURCE_CHECKLIST.md`。
 
 ## 已知限制
 
@@ -885,8 +908,8 @@ python3 -m unittest discover -s tests -v
 - 任务工作台把数据存在 `~/.agent-office/missions.json`；大型部署应迁移到 SQLite/Postgres。
 - 自行升级不会后台自动安装；自动升级需要能访问官方 GitHub Release，手动升级需要本地包且版本必须高于当前版本。更新需要 bridge 运行，并会重启 bridge。1.2.0 及更早版本需要先手动升级一次到 1.3.0+ 才能使用内置工具面板。
 - 压缩包更新不会删除上游已移除的旧文件；这些文件不影响运行，可手动清理。
-- 连接码是邀请机制，不是密码；bridge 无鉴权/TLS，只应在本机使用。
-- 模型 API 是单次调用适配器，不会自动完成模拟任务；`cost` 不按厂商价格计算，token 以返回的 usage 为准。
-- bridge 是 localhost 开发服务，没有鉴权、TLS 或多租户；不要直接暴露到公网。
+- 连接码是邀请机制，不是密码；bridge 默认仅 loopback，远程模式需要 token，可选 TLS，但仍不是多租户身份系统。
+- 模型 API 是单次调用适配器，不会自动完成模拟任务；token 以返回的 usage 为准。真实模型调用成本只在用户配置价格表后按 token 计算；不会自动抓取厂商价格。Trace Lab 里的 cost 仍是可复现模拟值。
+- bridge 默认是 localhost 服务；远程模式可启用 token/TLS，但没有多租户身份系统；不要直接暴露到公网。
 - 办公室布局是固定坐标，加太多工位需要调 `AO.HUBS` / 障碍物。
 - 所有美术资源由代码生成，可以自由改成你的品牌配色。

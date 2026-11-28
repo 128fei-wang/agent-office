@@ -14,6 +14,8 @@
   async function run(){
     const d=f.contentDocument,w=f.contentWindow,app=w.AgentOfficeApp,$=s=>d.querySelector(s),$$=s=>Array.from(d.querySelectorAll(s));
     check('app exposed',!!app);
+    check('memorable product tagline',/看见 AI 团队|Watch an AI team/.test(($('.brand-tagline')||{}).textContent||''));
+    check('tagline proof line',/谁在干|Who's on it/.test(($('.brand-proof')||{}).textContent||''));
     if(!app){finish();return;}
     const demo=w.AgentOffice.DemoMode;
     check('demo mode exposed',!!demo);
@@ -27,10 +29,11 @@
     check('html marks real mode',d.documentElement.dataset.demo==='off');
     check('simulation paused',!!app.engine.paused);
     check('cover stays closed by default',!!$('#realModeCover')&&$('#realModeCover').hidden);
-    check('demo off lands in real workspace',!!$('#realStageNote')&&!$('#realStageNote').hidden);
+    check('demo off lands in real workspace',!!$('#realOpsBtn')&&!$('#realOpsBtn').hidden&&!!$('#realMissionBtn'));
     check('real panel label available',/面板/.test(($('#realOpsBtn')||{}).textContent||''));
     check('preset team cards hidden',$$('.team-card[data-agent]').length===0);
     check('real office agent activity rendered',$$('.real-char').length>=1,'agents='+$$('.real-char').length);
+    check('stage ambience layer',!!$('.ambience-layer'));
     check('char layer hidden by css',w.getComputedStyle($('.char-layer')).display==='none');
     check('top stats show real metrics',w.getComputedStyle($('.top-stats')).display!=='none'&&/\//.test(($('#statTasks')||{}).textContent||''));
     const live=w.AgentOffice.missionLive;
@@ -44,20 +47,59 @@
     check('real active agent working',!!$('.real-char.is-working'));
     check('real active task bubble',/真实任务动画/.test(($('.real-char.is-working .rc-bubble.show')||{}).textContent||''));
     check('real active progress bar',!!$('.real-char.is-working .rc-progress.show'));
+    check('real collaboration web',$$('.real-web-link').length>=1);
+    check('real focus spotlight',!!$('.real-spotlight.show'));
+    check('real mission cinema',!!$('.real-cinema.kind-start'));
+    live.realDetail={id:'real-anim-test',artifacts:[],tasks:[
+      {id:'ft1',title:'真实任务动画',status:'in_progress',progress:25,assigneeId:realAgent.id,assigneeName:realAgent.name},
+      {id:'ft2',title:'失败回归测试',status:'review',progress:100,assigneeId:realAgent.id,assigneeName:realAgent.name}
+    ]};
+    live.realDetailId='real-anim-test';
+    app.renderer.renderBoard();
+    app.renderer.renderRoster();
+    await wait(150);
+    check('real board mission focus',!!$('.real-board-focus'));
+    check('real board task rows',$$('.real-focus-task').length>=2);
+    check('real roster member task',/真实任务动画/.test(($('.external-card.mission-active .team-state')||{}).textContent||''));
+    const fakeMission={id:'real-anim-test',title:'真实动画测试',archived:false,
+      stats:{tasks:8,done:2,progress:25,approvals:0},members:[realAgent]};
+    live.applyOverview({approvals:[],missions:[Object.assign({},fakeMission,{discussion:{status:'running'},
+      autoRun:{status:'discussing',currentAgentId:'',completed:2,total:8}})]});
+    await wait(200);
+    check('real meeting choreography',!!$('.real-char.state-meeting'));
+    check('real meeting one speaker',$$('.real-char.state-meeting .rc-bubble.show').length<=1);
+    live.applyOverview({approvals:[],missions:[Object.assign({},fakeMission,{
+      autoRun:{status:'waiting_boss',currentAgentId:realAgent.id,currentTaskTitle:'等待决策',completed:2,total:8}})]});
+    await wait(200);
+    check('real waiting-boss choreography',!!$('.real-char.state-blocked'));
+    check('real waiting-boss bubble',/审批/.test(($('.real-char.state-blocked .rc-bubble.show')||{}).textContent||''));
+    live.applyOverview({approvals:[],missions:[Object.assign({},fakeMission,{
+      stats:{tasks:8,done:8,progress:100,approvals:0},
+      autoRun:{status:'done',currentAgentId:'',completed:8,total:8}})]});
+    await wait(200);
+    check('real celebration choreography',!!$('.real-char.state-celebrating'));
+    check('real completion cinema',!!$('.real-cinema.kind-done'));
+    check('real confetti burst',$$('.real-confetti').length>0);
+    check('real celebration in roster',/任务完成/.test(($('.external-card.mission-active .team-state')||{}).textContent||''));
     await live.poll();
-    await wait(300);
+    await wait(350);
+    const idleStates = $$('.real-char.state-idle, .real-char.state-reviewing, .real-char.state-coffee, .real-char.state-chatting').length;
+    check('real idle choreography alive',idleStates>=1);
+    check('real feed filter tabs',$$('.real-feed-filters button').length>=5);
+    check('real feed real event rows',$$('.real-feed-row.kind-task, .real-feed-row.kind-artifact, .real-feed-row.kind-model').length>=1);
     check('office title becomes real ops',($('#officeName')||{}).textContent==='REAL OPS');
     check('team subtitle says real mode',/真实模式|Real mode/.test(($('#teamSub')||{}).textContent||''));
     check('real board rendered',!!$('.real-board'));
     check('real feed rendered',!!$('.real-feed-list')||!!$('.real-feed-empty'));
     check('board title changed',($('#boardTitle')||{}).textContent==='REAL BOARD');
-    check('feed title changed',($('#feedTitle')||{}).textContent==='REAL OPS');
+    check('feed title changed',($('#feedTitle')||{}).textContent==='LIVE FEED');
     check('real board empty state or missions',!!$('.real-mission-row')||!!$('.real-board-empty'));
     check('real mode live panel',!!$('#realModeLive'));
     $('#realOpsBtn').click();
     await wait(300);
     check('real panel opens from topbar',!!$('#realModeCover')&&!$('#realModeCover').hidden);
-    check('cover text',/演示已关闭|Demo is off/.test(($('#realModeCover')||{}).textContent||''));
+    check('cover text',/真实运营模式|Real operations/.test(($('#realModeCover')||{}).textContent||''));
+    check('cover keeps product promise',/谁在干|Who's on it/.test(($('#realModeCover')||{}).textContent||''));
     check('real mode create action',!!$('#realModeCover [data-real-create-mission]'));
     check('real mode AI action',!!$('#realModeCover [data-real-open-ai]'));
     const openFromCover=$('#realModeCover [data-real-open-missions]');
@@ -86,8 +128,10 @@
       check('cover dismissal persisted',w.localStorage.getItem('agent-office.real-cover-dismissed.v1')==='1');
       check('real mode stays paused',app.engine.paused===true);
       check('real panel topbar button visible',!!$('#realOpsBtn')&&!$('#realOpsBtn').hidden);
-      check('closed stage note visible',!!$('#realStageNote')&&!$('#realStageNote').hidden);
-      check('stage note reopens mission center',!!$('#realStageNote [data-real-open-missions]'));
+      const stageNote=$('#realStageNote');
+      const hasMissions=!!$('.real-mission-row');
+      check('stage note suppressed once missions exist',hasMissions?!!stageNote&&stageNote.hidden:!!stageNote&&!stageNote.hidden);
+      check('topbar reopens mission center',!!$('#realMissionBtn')&&!$('#realMissionBtn').hidden);
       check('real morale has value',!/—/.test(($('#teamMorale')||{}).textContent||''),($('#teamMorale')||{}).textContent);
       check('real top stats visible',w.getComputedStyle($('.top-stats')).display!=='none');
       check('real stats relabeled',/任务/.test(($('#statLabelTasks')||{}).textContent||''));

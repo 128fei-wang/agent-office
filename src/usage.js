@@ -10,6 +10,19 @@
     });
   }
 
+  function fmtCost(value, currency) {
+    if (value === null || value === undefined) return "—";
+    const code = String(currency || "").toUpperCase();
+    if (code === "MIXED") return "MIXED";
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return "—";
+    const prefix = code === "CNY" ? "¥" : code === "USD" ? "$" :
+      (code ? code + " " : "");
+    const amount = n > 0 && n < 0.0001 ? "<0.0001" :
+      (n >= 1 ? n.toFixed(2) : n.toFixed(4));
+    return prefix + amount;
+  }
+
   function fmt(value) {
     const n = Number(value || 0);
     if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
@@ -181,12 +194,16 @@
         this.stat("usageStatOut", "输出 Tokens", fmt(summary.tokensOut)) +
         this.stat("usageStatLatency", "平均延迟", (summary.avgMs || 0) + " ms") +
         this.stat("usageStatFailures", "失败", summary.failures || 0, summary.failures ? "bad" : "") +
+        this.stat("usageStatCost", "成本",
+          summary.currency === "MIXED" ? this.t("usageCostMixed", "混合币种") :
+            fmtCost(summary.cost, summary.currency),
+          summary.pricedCalls ? "cost" : "") +
         '</div>' +
         '<div class="usage-table-head"><span>' + esc(this.t("usageTime", "时间")) + '</span><span>' +
         esc(this.t("usagePurpose", "类型")) + '</span><span>' + esc(this.t("usageCall", "调用")) +
         '</span><span>' + esc(this.t("usageContext", "上下文")) + '</span><span>' +
-        esc(this.t("usageTokens", "Tokens" )) + '</span><span>' + esc(this.t("usageLatency", "延迟")) +
-        '</span></div>' +
+        esc(this.t("usageTokens", "Tokens" )) + '</span><span>' + esc(this.t("usageCost", "成本")) +
+        '</span><span>' + esc(this.t("usageLatency", "延迟")) + '</span></div>' +
         '<div class="usage-list">' + (rows ||
           '<div class="usage-empty"><span>◇</span><b>' + esc(this.t("usageEmpty", "还没有模型调用")) +
           '</b><p>' + esc(this.t("usageEmptyHint", "执行一次讨论、任务或聊天后，这里会出现真实调用记录。")) +
@@ -221,6 +238,9 @@
         '</b><em>' + fmt(context) + ' chars</em></span>' +
         '<span class="usage-tokens"><b>' + fmt(call.tokensIn) + ' / ' + fmt(call.tokensOut) +
         '</b><em>in / out</em></span>' +
+        '<span class="usage-cost"><b>' + esc(fmtCost(call.cost, call.currency)) +
+        '</b><em>' + esc(call.cost == null ? this.t("usageCostUnknown", "未配置价格") : "model") +
+        '</em></span>' +
         '<span class="usage-latency"><b>' + (call.durationMs || 0) + ' ms</b><em class="' +
         (call.ok === false ? "fail" : "ok") + '">' + (call.ok === false ? esc(this.t("usageFailed", "失败")) : "OK") + '</em></span>' +
         '</button>';
@@ -236,7 +256,15 @@
         '<div><span>Context</span><b>~' + fmt(call.contextTokens) + ' tokens · ' +
         fmt(Number(call.promptChars || 0) + Number(call.systemChars || 0)) + ' chars</b></div>' +
         '<div><span>Tokens in / out</span><b>' + fmt(call.tokensIn) + ' / ' + fmt(call.tokensOut) + '</b></div>' +
+        '<div><span>' + esc(this.t("usageCached", "缓存命中输入")) + '</span><b>' +
+        fmt(call.cachedTokensIn || 0) + '</b></div>' +
+        '<div><span>' + esc(this.t("usagePeak", "峰时")) + '</span><b>' +
+        (call.peak ? esc(this.t("usagePeakYes", "是")) : esc(this.t("usagePeakNo", "否"))) + '</b></div>' +
+        '<div><span>' + esc(this.t("usagePriceSource", "价格来源")) + '</span><b>' +
+        esc(call.priceSource || "—") + '</b></div>' +
         '<div><span>Latency</span><b>' + (call.durationMs || 0) + ' ms</b></div>' +
+        '<div><span>' + esc(this.t("usageCost", "成本")) + '</span><b>' +
+        esc(fmtCost(call.cost, call.currency)) + '</b></div>' +
         '</div>' + (call.error ? '<p class="usage-error">' + esc(call.error) + '</p>' : "") + '</div>';
     }
 

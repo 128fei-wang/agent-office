@@ -3,33 +3,59 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Office · 自主协作模拟</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=1.22.0" />
-  <link rel="stylesheet" href="trace.css?v=1.22.0" />
-  <link rel="stylesheet" href="hiring.css?v=1.22.0" />
-  <link rel="stylesheet" href="external.css?v=1.22.0" />
-  <link rel="stylesheet" href="theme.css?v=1.22.0" />
-  <link rel="stylesheet" href="company.css?v=1.22.0" />
-  <link rel="stylesheet" href="update.css?v=1.22.0" />
-  <link rel="stylesheet" href="missions.css?v=1.22.0" />
-  <link rel="stylesheet" href="features.css?v=1.22.0" />
-  <link rel="stylesheet" href="chat-v2.css?v=1.22.0" />
-  <link rel="stylesheet" href="memory.css?v=1.22.0" />
-  <link rel="stylesheet" href="usage.css?v=1.22.0" />
-  <link rel="stylesheet" href="ai-setup.css?v=1.22.0" />
-  <link rel="stylesheet" href="logos.css?v=1.22.0" />
-  <link rel="stylesheet" href="mission-live.css?v=1.22.0" />
-  <link rel="stylesheet" href="demo-mode.css?v=1.22.0" />
+  <title>Agent Office · 看见 AI 团队把事做完</title>
+  <meta name="description" content="把 AI 团队放进一间办公室：谁在干、干到哪、花了多少、交付了什么，一眼看清。" />
+  <meta name="application-name" content="Agent Office" />
+  <meta name="apple-mobile-web-app-title" content="Agent Office" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#07131d" />
+  <link rel="icon" href="assets/brand/agent-office-favicon.svg?v=1.28.0" type="image/svg+xml" />
+  <link rel="icon" href="assets/brand/favicon-32.png?v=1.28.0" sizes="32x32" type="image/png" />
+  <link rel="icon" href="assets/brand/favicon-16.png?v=1.28.0" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png?v=1.28.0" sizes="180x180" />
+  <link rel="icon" href="assets/brand/favicon.ico?v=1.28.0" sizes="any" />
+  <link rel="manifest" href="site.webmanifest" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Agent Office" />
+  <meta property="og:title" content="Agent Office · 看见 AI 团队，把事做完" />
+  <meta property="og:description" content="本地优先的像素办公室：谁在干、干到哪、花了多少、交付了什么，一眼看清。" />
+  <meta property="og:image" content="assets/brand/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Agent Office pixel logo and wordmark" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Agent Office · 看见 AI 团队，把事做完" />
+  <meta name="twitter:description" content="本地优先的像素办公室：谁在干、干到哪、花了多少、交付了什么，一眼看清。" />
+  <meta name="twitter:image" content="assets/brand/og-image.png" />
+  <link rel="stylesheet" href="styles.css?v=1.28.0" />
+  <link rel="stylesheet" href="trace.css?v=1.28.0" />
+  <link rel="stylesheet" href="hiring.css?v=1.28.0" />
+  <link rel="stylesheet" href="external.css?v=1.28.0" />
+  <link rel="stylesheet" href="theme.css?v=1.28.0" />
+  <link rel="stylesheet" href="company.css?v=1.28.0" />
+  <link rel="stylesheet" href="update.css?v=1.28.0" />
+  <link rel="stylesheet" href="missions.css?v=1.28.0" />
+  <link rel="stylesheet" href="features.css?v=1.28.0" />
+  <link rel="stylesheet" href="chat-v2.css?v=1.28.0" />
+  <link rel="stylesheet" href="memory.css?v=1.28.0" />
+  <link rel="stylesheet" href="usage.css?v=1.28.0" />
+  <link rel="stylesheet" href="ai-setup.css?v=1.28.0" />
+  <link rel="stylesheet" href="logos.css?v=1.28.0" />
+  <link rel="stylesheet" href="mission-live.css?v=1.28.0" />
+  <link rel="stylesheet" href="demo-mode.css?v=1.28.0" />
 </head>
 <body>
   <div class="boot" id="boot">
     <div class="boot-grid"></div>
     <div class="boot-ring"></div>
     <div class="boot-core">
-      <div class="boot-kicker">AGENT OPERATIONS // SECTOR 07</div>
-      <h2 class="boot-title">AGENT OPS</h2>
-      <p class="boot-sub">MULTI-AGENT OFFICE · SIMULATION ONLINE</p>
+      <img class="boot-logo" src="assets/brand/agent-office-mark.svg?v=1.28.0" alt="" width="64" height="64" aria-hidden="true" />
+      <div class="boot-kicker" data-i18n="bootKicker">YOUR AI COMPANY // MISSION CONTROL</div>
+      <h2 class="boot-title">AGENT OFFICE</h2>
+      <p class="boot-sub" data-i18n="tagline">看见 AI 团队，把事做完。</p>
+      <p class="boot-proof" data-i18n="taglineProof">谁在干 · 干到哪 · 交付了什么</p>
       <div class="boot-track"><i id="bootBar"></i></div>
       <div class="boot-meta"><span id="bootPct">00%</span><span id="bootPhase">LINKING AGENT GRID</span></div>
       <div class="boot-log" id="bootLog"></div>
@@ -40,11 +66,12 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <img src="assets/brand/agent-office-mark.svg?v=1.28.0" alt="" width="36" height="36" />
         </div>
         <div class="brand-copy">
           <h1>AGENT OFFICE</h1>
-          <p data-i18n="tagline">一群会自己干活的 agent</p>
+          <p class="brand-tagline" data-i18n="tagline">看见 AI 团队，把事做完。</p>
+          <small class="brand-proof" data-i18n="taglineProof">谁在干 · 干到哪 · 交付了什么</small>
         </div>
       </div>
 
@@ -157,6 +184,7 @@
           <div class="stage-viewport" id="stageViewport">
             <div class="stage" id="stage">
               <div class="office-layer" id="officeLayer"></div>
+              <div class="ambience-layer" id="ambienceLayer" aria-hidden="true"></div>
               <div class="char-layer" id="charLayer"></div>
               <div class="confetti-layer" id="confettiLayer"></div>
             </div>
@@ -178,7 +206,8 @@
                 <button type="button" class="real-cover-close" data-real-cover-close
                   aria-label="关闭面板，保留真实模式" title="关闭面板（保留真实模式）">×</button>
                 <div class="real-mode-kicker"><span>REAL AGENTS ONLY</span><em id="realModeCount">0 agents</em></div>
-                <h3 data-i18n="realModeTitle">演示已关闭</h3>
+                <p class="real-cover-promise" data-i18n="taglineProof">谁在干 · 干到哪 · 交付了什么</p>
+                <h3 data-i18n="realModeTitle">真实运营模式</h3>
                 <p data-i18n="realModeDesc">本地模拟角色、剧本任务和演示 Agent 已停止。任务中心只使用真实外部 Agent。</p>
                 <p class="real-mode-note" data-i18n="realModeOfflineNote">外部 Agent 离线只表示没有心跳；创建任务后仍可由本机 AI 按分配身份执行。要真实外部执行，请启动对应连接器。</p>
                 <div class="real-mode-live" id="realModeLive"></div>
@@ -313,27 +342,27 @@
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
   <aside class="detail-drawer" id="detailDrawer" aria-hidden="true" aria-modal="false" aria-label="详情面板" role="dialog"></aside>
 
-  <script src="src/data.js?v=1.22.0"></script>
-  <script src="src/i18n.js?v=1.22.0"></script>
-  <script src="src/sprites.js?v=1.22.0"></script>
-  <script src="src/logos.js?v=1.22.0"></script>
-  <script src="src/chat-ui.js?v=1.22.0"></script>
-  <script src="src/memory.js?v=1.22.0"></script>
-  <script src="src/usage.js?v=1.22.0"></script>
-  <script src="src/demo-mode.js?v=1.22.0"></script>
-  <script src="src/engine.js?v=1.22.0"></script>
-  <script src="src/fx.js?v=1.22.0"></script>
-  <script src="src/trace.js?v=1.22.0"></script>
-  <script src="src/hiring.js?v=1.22.0"></script>
-  <script src="src/external.js?v=1.22.0"></script>
-  <script src="src/company.js?v=1.22.0"></script>
-  <script src="src/update.js?v=1.22.0"></script>
-  <script src="src/ai-setup.js?v=1.22.0"></script>
-  <script src="src/mission-live.js?v=1.22.0"></script>
-  <script src="src/chat-hub.js?v=1.22.0"></script>
-  <script src="src/missions.js?v=1.22.0"></script>
-  <script src="src/shell.js?v=1.22.0"></script>
-  <script src="src/render.js?v=1.22.0"></script>
-  <script src="src/main.js?v=1.22.0"></script>
+  <script src="src/data.js?v=1.28.0"></script>
+  <script src="src/i18n.js?v=1.28.0"></script>
+  <script src="src/sprites.js?v=1.28.0"></script>
+  <script src="src/logos.js?v=1.28.0"></script>
+  <script src="src/chat-ui.js?v=1.28.0"></script>
+  <script src="src/memory.js?v=1.28.0"></script>
+  <script src="src/usage.js?v=1.28.0"></script>
+  <script src="src/demo-mode.js?v=1.28.0"></script>
+  <script src="src/engine.js?v=1.28.0"></script>
+  <script src="src/fx.js?v=1.28.0"></script>
+  <script src="src/trace.js?v=1.28.0"></script>
+  <script src="src/hiring.js?v=1.28.0"></script>
+  <script src="src/external.js?v=1.28.0"></script>
+  <script src="src/company.js?v=1.28.0"></script>
+  <script src="src/update.js?v=1.28.0"></script>
+  <script src="src/ai-setup.js?v=1.28.0"></script>
+  <script src="src/mission-live.js?v=1.28.0"></script>
+  <script src="src/chat-hub.js?v=1.28.0"></script>
+  <script src="src/missions.js?v=1.28.0"></script>
+  <script src="src/shell.js?v=1.28.0"></script>
+  <script src="src/render.js?v=1.28.0"></script>
+  <script src="src/main.js?v=1.28.0"></script>
 </body>
 </html>
