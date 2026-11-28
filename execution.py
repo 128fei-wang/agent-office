@@ -445,7 +445,13 @@ def _bwrap_command(workspace, runner, argv, env):
         "/etc/nsswitch.conf", "/etc/localtime", "/etc/timezone",
     ):
         command += ["--ro-bind-try", path, path]
-    command += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    empty_tmp = workspace / ".empty-tmp"
+    try:
+        empty_tmp.mkdir(exist_ok=True)
+    except OSError:
+        pass
+    command += ["--dev", "/dev", "--proc", "/proc",
+                "--ro-bind", str(empty_tmp), "/tmp"]
     command += ["--bind", str(workspace), "/workspace", "--chdir", "/workspace"]
     for key, value in env.items():
         command += ["--setenv", str(key), str(value)]

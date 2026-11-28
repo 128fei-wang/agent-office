@@ -52,7 +52,8 @@ class ExecutionCapabilityTest(unittest.TestCase):
         )
         self.assertIn("--unshare-all", command)
         self.assertIn("--clearenv", command)
-        self.assertIn("--tmpfs", command)
+        self.assertIn("--ro-bind", command)
+        self.assertIn("/tmp", command)
         self.assertIn("--bind", command)
         self.assertIn("/workspace", command)
         self.assertNotIn("--share-net", command)
@@ -122,7 +123,7 @@ class SandboxExecutionTest(unittest.TestCase):
                           "import unittest\n"
                           "class T(unittest.TestCase):\n"
                           "    def test_home(self):\n"
-                          "        with self.assertRaises(PermissionError):\n"
+                          "        with self.assertRaises((PermissionError, FileNotFoundError)):\n"
                           "            os.listdir(%r)\n" % home),
         ])
         self.assertEqual(report["status"], "passed", report["output"][-1500:])
