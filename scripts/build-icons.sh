@@ -78,6 +78,7 @@ print(f"wrote {out} ({len(images)} sizes)")
 PY
 
 cp "$BRAND/agent-office-favicon.svg" favicon.svg
+cp "$BRAND/favicon.ico" favicon.ico
 mkdir -p build
 cp "$BRAND/AppIcon.icns" build/AppIcon.icns
 rm -rf build/icon.iconset

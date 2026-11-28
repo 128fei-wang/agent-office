@@ -21,7 +21,7 @@ else
 fi
 
 required=(
-  index.html styles.css trace.css hiring.css external.css theme.css company.css update.css missions.css features.css chat-v2.css memory.css usage.css ai-setup.css logos.css mission-live.css demo-mode.css favicon.svg site.webmanifest sw.js
+  index.html styles.css trace.css hiring.css external.css theme.css company.css update.css missions.css features.css chat-v2.css memory.css usage.css ai-setup.css logos.css mission-live.css demo-mode.css favicon.svg favicon.ico site.webmanifest sw.js
   start.sh update.sh serve.py scripts/sync-local.sh scripts/browser_suite.py bridge.py updater.py missions.py verification.py execution.py evidence.py pricing.py ocr_vision.swift README.md README.en.md LICENSE CONTRIBUTING.md
   CODE_OF_CONDUCT.md SECURITY.md CHANGELOG.md VERSION
   src/data.js src/i18n.js src/sprites.js src/logos.js src/chat-ui.js src/chat-hub.js src/memory.js src/usage.js src/demo-mode.js src/engine.js src/fx.js src/trace.js

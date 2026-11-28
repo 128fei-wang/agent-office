@@ -37,7 +37,7 @@
 | --- | --- |
 | `assets/brand/agent-office-mark.svg` | 主标识（512×512）的规范源文件；header、boot、app icon 都从它派生 |
 | `assets/brand/agent-office-favicon.svg` | 16×16 像素网格的简化 favicon；小尺寸下更清楚 |
-| `favicon.svg` | `agent-office-favicon.svg` 的根目录副本，供旧链接 / GitHub Pages 使用 |
+| `favicon.svg` / `favicon.ico` | 根目录副本，供旧链接、自动 `/favicon.ico` 请求和 GitHub Pages 使用 |
 | `assets/brand/agent-office-logo.svg` | 横向 lockup（1200×360）：标识 + 像素字标 + 品牌句 |
 | `assets/brand/agent-office-logo.png` | lockup 的 PNG 版本，供 README / 发布页使用 |
 | `assets/brand/agent-office-social.svg` / `og-image.png` | 1200×630 社交分享图（Open Graph / Twitter Card） |

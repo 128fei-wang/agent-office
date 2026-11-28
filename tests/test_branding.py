@@ -96,6 +96,8 @@ class BrandingTest(unittest.TestCase):
     def test_root_favicon_matches_brand_source(self):
         self.assertEqual((ROOT / "favicon.svg").read_bytes(),
                          (BRAND / "agent-office-favicon.svg").read_bytes())
+        self.assertEqual((ROOT / "favicon.ico").read_bytes(),
+                         (BRAND / "favicon.ico").read_bytes())
         svg = (ROOT / "favicon.svg").read_text("utf-8")
         self.assertIn('viewBox="0 0 16 16"', svg)
         self.assertIn("#55d6c2", svg)
