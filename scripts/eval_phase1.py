@@ -1,0 +1,716 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+eval_phase1.py — Agent Office Phase 1「真实执行 MVP」黑盒验收评测。
+
+用法（在仓库根目录运行）:
+    python3 scripts/eval_phase1.py --json /tmp/eval-phase1.json
+    python3 scripts/eval_phase1.py --case g1_exit0_done
+    python3 scripts/eval_phase1.py --list
+
+退出码:
+    0  全过，或「仅有 SKIP、无失败」
+    1  存在任一 fail
+    2  用法/参数错误
+
+设计约束（见 docs/RUNNER_DESIGN.md 与交付任务）:
+    - 只用标准库；无网络（不 push/fetch，不访问远端）；无交互。
+    - 全部状态写入 tempfile.mkdtemp()，经 BRIDGE_STATE_DIR / BRIDGE_STATE /
+      BRIDGE_PROVIDERS 指向临时目录；不读写真实 ~/.agent-office。
+    - 每个用例独立空闲端口（bind 0）、独立临时 git 仓库（git init + 少量本地提交）。
+    - 结束 kill 进程组并清理临时目录；不杀非本评测进程。
+    - 评测前后当前仓库 git status 必须一致。
+    - 单用例超时 ≤ 60s，总超时 ≤ 10min；超时判 fail 并留日志。
+    - 反作弊: 只经 HTTP / CLI / 落盘产物（git diff、DB、evidence bundle、日志）断言，
+      不 import runner / bridge 内部函数伪造结果。
+
+CONTRACT（评测假设的实现界面，实现时必须对齐）:
+    bridge  env   BRIDGE_STATE_DIR / BRIDGE_STATE / BRIDGE_PROVIDERS
+    bridge  cli   python3 bridge.py --host 127.0.0.1 --port <N>
+    bridge  http  GET /health → 200；POST /mcp（Streamable HTTP MCP）
+    runner  cli   python3 runner.py --task-id <T> --worktree <dir> --base-commit <H>
+                  [--test-command <cmd>] [--agent-cmd <cmd>]
+    runner  env   AGENT_OFFICE_RUN_TOKEN（只注入该 Agent 进程）、BRIDGE_STATE_DIR
+    mcp submit    POST /mcp, tool = agent_office_submit_evidence,
+                  args {runId, claim{...}}, header AGENT_OFFICE_RUN_TOKEN
+    落盘   SQLite BRIDGE_STATE_DIR/agent-office.db（表 runs / run_evidence / events …）
+    落盘   evidence bundle: GET /missions/<id>/evidence/bundle
+
+已知前提: Phase 1 runner 实现当前被三处验收变更（待老板签字）挡住，尚未落地。
+本评测在实现前运行，依赖 runner 的用例会以「SKIP（实现未落地）」显式标注，不判失败。
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import os
+import shutil
+import signal
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BRIDGE_PY = REPO_ROOT / "bridge.py"
+RUNNER_PY = REPO_ROOT / "runner.py"
+MIGRATION_PY = REPO_ROOT / "migration.py"
+
+PY = sys.executable or "python3"
+
+PER_CASE_TIMEOUT = 60.0
+TOTAL_TIMEOUT = 600.0
+
+
+# --------------------------------------------------------------------------- #
+# 工具
+# --------------------------------------------------------------------------- #
+
+def free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def http_request(method: str, port: int, path: str,
+                 body: bytes | None = None,
+                 headers: dict | None = None,
+                 timeout: float = 5.0):
+    url = f"http://127.0.0.1:{port}{path}"
+    req = urllib.request.Request(url, data=body, method=method)
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, dict(resp.headers), resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+    except Exception as e:  # noqa: BLE001 — 黑盒，网络错误如实返回
+        return None, {}, (f"{type(e).__name__}: {e}").encode()
+
+
+def wait_http(port: int, path: str = "/health", timeout: float = 15.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status, _, _ = http_request("GET", port, path, timeout=1.0)
+        if status == 200:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def run_cmd(args, cwd, env=None, timeout=30.0):
+    """运行一条命令，返回 (returncode, stdout, stderr)。超时抛 TimeoutError。"""
+    merged = dict(os.environ)
+    merged.pop("BRIDGE_STATE_DIR", None)
+    merged.pop("BRIDGE_STATE", None)
+    merged.pop("BRIDGE_PROVIDERS", None)
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        args, cwd=str(cwd), env=merged, capture_output=True, text=True,
+        timeout=timeout, start_new_session=True)
+
+
+def make_git_repo(path: Path) -> str:
+    """在 path 建一个独立本地仓库，返回首个 commit hash。不配 remote、不 push。"""
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "README.md").write_text("# eval repo\n", encoding="utf-8")
+    git = ["git", "-C", str(path)]
+    subprocess.run(git + ["init", "-q"], check=True, capture_output=True)
+    subprocess.run(git + ["config", "user.name", "eval"], check=True, capture_output=True)
+    subprocess.run(git + ["config", "user.email", "eval@example.test"], check=True, capture_output=True)
+    subprocess.run(git + ["add", "-A"], check=True, capture_output=True)
+    subprocess.run(git + ["commit", "-q", "-m", "base"], check=True, capture_output=True)
+    return subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def git_porcelain(path: Path) -> str:
+    r = subprocess.run(["git", "-C", str(path), "status", "--porcelain"],
+                       capture_output=True, text=True)
+    return r.stdout
+
+
+def git_diff(path: Path, base: str) -> str:
+    r = subprocess.run(["git", "-C", str(path), "diff", base],
+                       capture_output=True, text=True)
+    return r.stdout
+
+
+def kill_group(proc):
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+def git_status_snapshot() -> str:
+    r = subprocess.run(["git", "-C", str(REPO_ROOT), "status", "--porcelain=v1"],
+                       capture_output=True, text=True)
+    h = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+                       capture_output=True, text=True)
+    return r.stdout + "@HEAD=" + h.stdout.strip()
+
+
+# --------------------------------------------------------------------------- #
+# 能力探测（决定 SKIP 而非误报 fail）
+# --------------------------------------------------------------------------- #
+
+def has_bridge() -> bool:
+    return BRIDGE_PY.exists()
+
+
+def has_runner() -> bool:
+    return RUNNER_PY.exists() and RUNNER_PY.stat().st_size > 0
+
+
+def has_submit_evidence() -> bool:
+    if not BRIDGE_PY.exists():
+        return False
+    src = BRIDGE_PY.read_text(encoding="utf-8", errors="ignore")
+    return "submit_evidence" in src
+
+
+def has_migration() -> bool:
+    return MIGRATION_PY.exists() and MIGRATION_PY.stat().st_size > 0
+
+
+# --------------------------------------------------------------------------- #
+# 结果与上下文
+# --------------------------------------------------------------------------- #
+
+class Result:
+    def __init__(self, status: str, expected: str, actual: str,
+                 evidence: str = "", repro: str = ""):
+        self.status = status          # pass / fail / skip
+        self.expected = expected
+        self.actual = actual
+        self.evidence = evidence      # 证据路径或说明
+        self.repro = repro            # 复现命令
+
+    @staticmethod
+    def skip(reason: str, expected: str = ""):
+        return Result("skip", expected or "（前置未满足，显式跳过）", reason)
+
+    @staticmethod
+    def fail(expected: str, actual: str, repro: str = "", evidence: str = ""):
+        return Result("fail", expected, actual, evidence=evidence, repro=repro)
+
+    @staticmethod
+    def ok(expected: str, actual: str = "", evidence: str = ""):
+        return Result("pass", expected, actual or "符合预期", evidence=evidence)
+
+
+class Ctx:
+    """一个用例的隔离上下文。"""
+
+    def __init__(self, case_id: str):
+        self.case_id = case_id
+        self.tmp = Path(tempfile.mkdtemp(prefix=f"eval-{case_id}-"))
+        self.state_dir = self.tmp / "state"
+        self.state_dir.mkdir(mode=0o700)
+        self.repo = self.tmp / "repo"
+        self.base_commit = make_git_repo(self.repo)
+        self.port = free_port()
+        self.bridge = None
+        self.procs = []          # 需要一并回收的子进程
+        self.evidence_dir = self.tmp / "evidence"
+        self.evidence_dir.mkdir()
+
+    def bridge_env(self) -> dict:
+        return {
+            "BRIDGE_STATE_DIR": str(self.state_dir),
+            "BRIDGE_STATE": str(self.state_dir / "bridge-state.json"),
+            "BRIDGE_PROVIDERS": str(self.state_dir / "providers.json"),
+        }
+
+    def start_bridge(self):
+        if self.bridge is not None:
+            return
+        self.bridge = subprocess.Popen(
+            [PY, str(BRIDGE_PY), "--host", "127.0.0.1", "--port", str(self.port)],
+            env={**os.environ, **self.bridge_env()},
+            stdout=open(self.tmp / "bridge.log", "wb"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        self.procs.append(self.bridge)
+
+    def spawn(self, args, env=None):
+        p = subprocess.Popen(
+            args, cwd=str(self.tmp), env={**os.environ, **self.bridge_env(), **(env or {})},
+            stdout=open(self.tmp / f"{self.case_id}.out", "wb"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        self.procs.append(p)
+        return p
+
+    def db(self) -> sqlite3.Connection:
+        db_path = self.state_dir / "agent-office.db"
+        if not db_path.exists():
+            raise FileNotFoundError(f"SQLite 未落盘: {db_path}")
+        return sqlite3.connect(str(db_path))
+
+    def cleanup(self):
+        for p in reversed(self.procs):
+            kill_group(p)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+# 用例定义（覆盖矩阵：映射 RUNNER_DESIGN 条款，每条正向 + 反向）
+# --------------------------------------------------------------------------- #
+
+def c_g1_exit0_done(ctx: Ctx) -> Result:
+    """G1 正向：进程退出码 0 → 置 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地（三处验收变更待老板签字）")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应",
+                           repro=f"python3 bridge.py --port {ctx.port}")
+    agent_cmd = f"{PY} -c \"open('{ctx.repo}/x.txt','w').write('hi')\""
+    r = run_cmd([PY, str(RUNNER_PY), "--task-id", "eval-g1", "--worktree", str(ctx.repo),
+                 "--base-commit", ctx.base_commit, "--agent-cmd", agent_cmd],
+                ctx.tmp, ctx.bridge_env())
+    actual = f"runner exit={r.returncode}; stdout={r.stdout[:120]!r}"
+    return Result.fail("exit 0 的任务 run 应置 done（经 DB runs.status 或事件流可见）",
+                       actual + "（实现未落地，无法验证）",
+                       repro="python3 scripts/eval_phase1.py --case g1_exit0_done")
+
+
+def c_g1_nonzero_fail(ctx: Ctx) -> Result:
+    """G1 反向：退出码非 0 → 不得 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("退出码非 0 的 run 应置 failed（fail_reason=non_zero_exit）",
+                       "实现未落地，无法验证",
+                       repro="python3 scripts/eval_phase1.py --case g1_nonzero_fail")
+
+
+def c_g1_timeout_fail(ctx: Ctx) -> Result:
+    """G1 反向：超时 → 不得 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("超时的 run 应置 failed（fail_reason=timeout）", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g1_timeout_fail")
+
+
+def c_g1_sigkill_fail(ctx: Ctx) -> Result:
+    """G1 反向：被 SIGKILL → 不得 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("被 SIGKILL 的 run 应置 failed（fail_reason=killed）", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g1_sigkill_fail")
+
+
+def c_g2_diff_pass(ctx: Ctx) -> Result:
+    """G2 正向：有 diff → 通过。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("有 diff 的任务应通过 G2", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g2_diff_pass")
+
+
+def c_g2_empty_diff_blocked(ctx: Ctx) -> Result:
+    """G2 反向：空 diff 且无「无改动论证」→ blocked。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("空 diff 且无 claim 的 run 应置 blocked（fail_reason=empty_run）",
+                       "实现未落地", repro="python3 scripts/eval_phase1.py --case g2_empty_diff_blocked")
+
+
+def c_g2_empty_diff_claim_review(ctx: Ctx) -> Result:
+    """G2 正向：空 diff + claim → 走人审，不自动 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("空 diff + claim 应置 waiting_approval(review_reason=no_change_claim)，不自动 done",
+                       "实现未落地", repro="python3 scripts/eval_phase1.py --case g2_empty_diff_claim_review")
+
+
+def c_g2_untracked_in_diff(ctx: Ctx) -> Result:
+    """G2 反向：untracked 新文件必须进 diffHash（只 add 部分，验证未跟踪也采集）。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    (ctx.repo / "new_untracked.txt").write_text("untracked", encoding="utf-8")
+    (ctx.repo / "tracked.txt").write_text("tracked", encoding="utf-8")
+    run_cmd(["git", "-C", str(ctx.repo), "add", "tracked.txt"], ctx.tmp)
+    # 只 add 了 tracked.txt，new_untracked.txt 仍未跟踪；采集须同时覆盖两者
+    porcelain = git_porcelain(ctx.repo)
+    if "new_untracked.txt" not in porcelain:
+        return Result.fail("untracked 文件应出现在 git status --porcelain",
+                           porcelain or "（空）",
+                           repro="git -C <repo> status --porcelain")
+    return Result.fail("untracked 文件必须进 diffHash 与 merge（需 runner 落地后验证）",
+                       "前置条件成立，实现未落地", repro="python3 scripts/eval_phase1.py --case g2_untracked_in_diff")
+
+
+def c_g3_test_pass(ctx: Ctx) -> Result:
+    """G3 正向：测试通过 → done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("任务声明的测试通过应置 done", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g3_test_pass")
+
+
+def c_g3_test_fail(ctx: Ctx) -> Result:
+    """G3 反向：测试失败 → 不得 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("测试失败应置 failed/blocked，不得 done", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g3_test_fail")
+
+
+def c_g3_no_tests_doc(ctx: Ctx) -> Result:
+    """G3 规则：文档类任务（no_tests）不得静默 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("no_tests 的文档类任务应走 diff+人审，不得静默 done", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g3_no_tests_doc")
+
+
+def c_g3_custom_cmd_not_allowlist(ctx: Ctx) -> Result:
+    """G3 反向：自定义命令不在 allowlist → 明确 SKIP/失败原因。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("不在 allowlist 的自定义命令应被拒并给出明确原因", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g3_custom_cmd_not_allowlist")
+
+
+def c_g4_submit_normal(ctx: Ctx) -> Result:
+    """G4 正向：submit_evidence 正常签发回执。"""
+    if not has_submit_evidence():
+        return Result.skip("MCP submit_evidence 未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    return Result.fail("持有效 run token 的 submit_evidence 应签发回执", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g4_submit_normal")
+
+
+def c_g4_forged_runid(ctx: Ctx) -> Result:
+    """G4 反向：伪造 runId → 拒绝。"""
+    if not has_submit_evidence():
+        return Result.skip("MCP submit_evidence 未落地")
+    return Result.fail("伪造 runId 的 submit_evidence 应被拒", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g4_forged_runid")
+
+
+def c_g4_missing_token(ctx: Ctx) -> Result:
+    """G4 反向：缺 run token → 拒绝。"""
+    if not has_submit_evidence():
+        return Result.skip("MCP submit_evidence 未落地")
+    return Result.fail("缺 AGENT_OFFICE_RUN_TOKEN 的 submit_evidence 应被拒", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g4_missing_token")
+
+
+def c_g4_duplicate_submit(ctx: Ctx) -> Result:
+    """G4 反向：重复提交 → 拒绝。"""
+    if not has_submit_evidence():
+        return Result.skip("MCP submit_evidence 未落地")
+    return Result.fail("同一 run 重复 submit_evidence 应被拒", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g4_duplicate_submit")
+
+
+def c_g4_agent_hash_ignored(ctx: Ctx) -> Result:
+    """G4 正向：Agent 提交的 hash 字段被忽略（篡改 hash 不影响最终证据）。"""
+    if not has_submit_evidence():
+        return Result.skip("MCP submit_evidence 未落地")
+    return Result.fail("Agent claim 里的 hash 字段应被忽略、由 bridge 重算", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case g4_agent_hash_ignored")
+
+
+def c_tamper_pinned(ctx: Ctx) -> Result:
+    """测试篡改（反向）：pinnedTests 被改 → 不得自动 done。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("pinnedTests 被改应标 tampered_test、不得自动 done", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case tamper_pinned")
+
+
+def c_tamper_config(ctx: Ctx) -> Result:
+    """测试篡改（反向）：conftest/pytest.ini/package.json scripts 被改 → 拦截。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("测试配置（conftest/pytest.ini/package.json scripts）被改应拦截", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case tamper_config")
+
+
+def c_tamper_deliverable(ctx: Ctx) -> Result:
+    """测试篡改（正向）：deliverableTests 新增 → 允许并记录。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("deliverableTests 新增应作为证据允许并记录", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case tamper_deliverable")
+
+
+def c_approval_modify_after(ctx: Ctx) -> Result:
+    """审批（反向）：批准后修改工作区 → 审批失效、merge 阻断。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("批准后改动工作区应使审批失效并阻断 merge", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case approval_modify_after")
+
+
+def c_approval_diff_base(ctx: Ctx) -> Result:
+    """审批（反向）：同一 diff 不同 baseCommit → 审批不通用。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("同一 diff 在不同 baseCommit 上的审批不应通用", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case approval_diff_base")
+
+
+def c_approval_not_stopped(ctx: Ctx) -> Result:
+    """审批（反向）：审批前 run 未 stop → 拒绝 merge。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("run 未停止前应拒绝 merge", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case approval_not_stopped")
+
+
+def c_restart_orphan(ctx: Ctx) -> Result:
+    """重启（正/反）：run 中 kill bridge 再启动 → 无主 run 不得永远 running。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("bridge 重启后无主 run 应归 failed(orphaned) 或重连，不得永远 running",
+                       "实现未落地", repro="python3 scripts/eval_phase1.py --case restart_orphan")
+
+
+def c_isolation_second_bridge(ctx: Ctx) -> Result:
+    """隔离（反向）：第二个 bridge 共用 STATE_DIR → 拒绝启动。"""
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("首个 bridge 应在 15s 内响应 /health", "未响应")
+    # 第二个 bridge 复用同一 state_dir，应拒绝启动（单实例锁，见安全评审 #6）
+    p = subprocess.Popen(
+        [PY, str(BRIDGE_PY), "--host", "127.0.0.1", "--port", str(free_port())],
+        env={**os.environ, **ctx.bridge_env()},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+    )
+    try:
+        out, _ = p.communicate(timeout=8)
+    except subprocess.TimeoutExpired:
+        kill_group(p)
+        return Result.fail("第二个 bridge 共用 STATE_DIR 应拒绝启动（单实例锁）",
+                           "第二个实例持续运行未退出",
+                           repro="python3 bridge.py --port <other>  (同一 BRIDGE_STATE_DIR)")
+    if p.returncode != 0:
+        return Result.ok("第二个 bridge 共用 STATE_DIR 应拒绝启动", f"退出码 {p.returncode}",
+                         evidence=str(ctx.tmp / "bridge.log"))
+    return Result.fail("第二个 bridge 共用 STATE_DIR 应拒绝启动（单实例锁）",
+                       f"第二个实例正常启动退出码 0（out={out[:200]!r}）",
+                       repro="python3 bridge.py --port <other>  (同一 BRIDGE_STATE_DIR)")
+
+
+def c_isolation_expected_paths_conflict(ctx: Ctx) -> Result:
+    """隔离（反向）：两个任务 expectedPaths 冲突 → 串行或 merge-prep 报冲突。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("expectedPaths 有交集的两个任务应串行化或 merge-prep 报冲突", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case isolation_expected_paths_conflict")
+
+
+def c_migration_10x(ctx: Ctx) -> Result:
+    """迁移（正向）：真实 missions.json 样本迁移 10 次 + 随机 SIGKILL，行数/校验和一致。"""
+    if not has_migration():
+        return Result.skip("migration.py 未落地")
+    return Result.fail("1.5MB missions.json 迁 10 次 + 随机 SIGKILL 后行数/校验和一致",
+                       "实现未落地", repro="python3 scripts/eval_phase1.py --case migration_10x")
+
+
+def c_migration_rollback(ctx: Ctx) -> Result:
+    """迁移（正向）：回退路径可用。"""
+    if not has_migration():
+        return Result.skip("migration.py 未落地")
+    return Result.fail("cutover 后回退应可用且不丢 post-cutover 写入", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case migration_rollback")
+
+
+def c_view_5state_map(ctx: Ctx) -> Result:
+    """视图（正向）：run 5 态与 task 状态映射表一致。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("办公室只渲染 queued/running/waiting_approval/failed/done 五态，映射正确",
+                       "实现未落地", repro="python3 scripts/eval_phase1.py --case view_5state_map")
+
+
+def c_view_kill_5s(ctx: Ctx) -> Result:
+    """视图（正向）：kill 后 ≤5s 事件流出现失败。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    return Result.fail("kill 后 ≤5s 事件流应出现 failed", "实现未落地",
+                       repro="python3 scripts/eval_phase1.py --case view_kill_5s")
+
+
+def c_negative_reason(ctx: Ctx) -> Result:
+    """负向通用：每类失败必须给出可读 reason 与证据，不能只回 500。"""
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    # 现有 bridge 对未知路径返回 404（带可读体），以此验证「失败带可读 reason」的基础面
+    status, _, body = http_request("GET", ctx.port, "/no-such-route-eval")
+    if status in (404, 405) and body:
+        return Result.ok("失败响应应带可读 reason 而非裸 500",
+                         f"status={status} body={body[:120]!r}",
+                         evidence=str(ctx.tmp / "bridge.log"))
+    return Result.fail("失败响应应带可读 reason 而非裸 500",
+                       f"status={status} body={body[:120]!r}",
+                       repro="curl -i http://127.0.0.1:<port>/no-such-route-eval")
+
+
+# --------------------------------------------------------------------------- #
+# 用例注册表
+# --------------------------------------------------------------------------- #
+
+CASES = [
+    ("g1_exit0_done", "G1 退出码 0 → done", "RUNNER_DESIGN §1 G1", c_g1_exit0_done),
+    ("g1_nonzero_fail", "G1 退出码非 0 → 不得 done", "RUNNER_DESIGN §1 G1", c_g1_nonzero_fail),
+    ("g1_timeout_fail", "G1 超时 → 不得 done", "RUNNER_DESIGN §1 G1", c_g1_timeout_fail),
+    ("g1_sigkill_fail", "G1 SIGKILL → 不得 done", "RUNNER_DESIGN §1 G1", c_g1_sigkill_fail),
+    ("g2_diff_pass", "G2 有 diff → 通过", "RUNNER_DESIGN §1 G2", c_g2_diff_pass),
+    ("g2_empty_diff_blocked", "G2 空 diff 无 claim → blocked", "RUNNER_DESIGN §1 G2", c_g2_empty_diff_blocked),
+    ("g2_empty_diff_claim_review", "G2 空 diff + claim → 人审", "RUNNER_DESIGN §1 G2", c_g2_empty_diff_claim_review),
+    ("g2_untracked_in_diff", "G2 untracked 进 diffHash", "RUNNER_DESIGN §12 B3", c_g2_untracked_in_diff),
+    ("g3_test_pass", "G3 测试通过 → done", "RUNNER_DESIGN §1 G3", c_g3_test_pass),
+    ("g3_test_fail", "G3 测试失败 → 不得 done", "RUNNER_DESIGN §1 G3", c_g3_test_fail),
+    ("g3_no_tests_doc", "G3 文档类 no_tests 不静默 done", "RUNNER_DESIGN §12 B2", c_g3_no_tests_doc),
+    ("g3_custom_cmd_not_allowlist", "G3 自定义命令不在 allowlist → 明确原因", "RUNNER_DESIGN §12 B2", c_g3_custom_cmd_not_allowlist),
+    ("g4_submit_normal", "G4 submit_evidence 正常签发回执", "RUNNER_DESIGN §2 G4", c_g4_submit_normal),
+    ("g4_forged_runid", "G4 伪造 runId → 拒绝", "RUNNER_DESIGN §2 B8", c_g4_forged_runid),
+    ("g4_missing_token", "G4 缺 run token → 拒绝", "RUNNER_DESIGN §2 B8", c_g4_missing_token),
+    ("g4_duplicate_submit", "G4 重复提交 → 拒绝", "RUNNER_DESIGN §2 G4", c_g4_duplicate_submit),
+    ("g4_agent_hash_ignored", "G4 Agent hash 被忽略", "RUNNER_DESIGN §2", c_g4_agent_hash_ignored),
+    ("tamper_pinned", "pinnedTests 被改 → 拦截", "RUNNER_DESIGN §6", c_tamper_pinned),
+    ("tamper_config", "conftest/pytest.ini/package.json 被改 → 拦截", "RUNNER_DESIGN §6 B4", c_tamper_config),
+    ("tamper_deliverable", "deliverableTests 新增 → 允许并记录", "RUNNER_DESIGN §6", c_tamper_deliverable),
+    ("approval_modify_after", "批准后改工作区 → 审批失效", "RUNNER_DESIGN §8 B5", c_approval_modify_after),
+    ("approval_diff_base", "同 diff 不同 base → 审批不通用", "RUNNER_DESIGN §8 B5", c_approval_diff_base),
+    ("approval_not_stopped", "审批前未 stop → 拒 merge", "RUNNER_DESIGN §8 B5", c_approval_not_stopped),
+    ("restart_orphan", "bridge 重启无主 run 不得永远 running", "RUNNER_DESIGN §9 A3", c_restart_orphan),
+    ("isolation_second_bridge", "第二 bridge 共用 STATE_DIR → 拒绝", "安全评审 #6", c_isolation_second_bridge),
+    ("isolation_expected_paths_conflict", "expectedPaths 冲突 → 串行/报冲突", "RUNNER_DESIGN §4", c_isolation_expected_paths_conflict),
+    ("migration_10x", "迁移 10 次 + SIGKILL 一致", "RUNNER_DESIGN §7 B6", c_migration_10x),
+    ("migration_rollback", "迁移回退可用", "RUNNER_DESIGN §7 B6", c_migration_rollback),
+    ("view_5state_map", "run 5 态 ↔ task 状态映射", "RUNNER_DESIGN §9 B7", c_view_5state_map),
+    ("view_kill_5s", "kill 后 ≤5s 事件流 failed", "RUNNER_DESIGN §9", c_view_kill_5s),
+    ("negative_reason", "每类失败带可读 reason + 证据", "RUNNER_DESIGN §9 C5", c_negative_reason),
+]
+
+CASES_BY_ID = {c[0]: c for c in CASES}
+
+
+def git_commit() -> str:
+    r = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+                       capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def run_one(case_id: str) -> dict:
+    title = CASES_BY_ID[case_id][1]
+    clause = CASES_BY_ID[case_id][2]
+    fn = CASES_BY_ID[case_id][3]
+    ctx = Ctx(case_id)
+    t0 = time.time()
+    expected = ""
+    actual = ""
+    status = "fail"
+    evidence = ""
+    repro = ""
+    try:
+        res = fn(ctx)
+        status, expected, actual = res.status, res.expected, res.actual
+        evidence, repro = res.evidence, res.repro
+    except subprocess.TimeoutExpired as e:
+        status, expected = "fail", "用例应在 60s 内完成"
+        actual = f"超时: {e}"
+    except Exception as e:  # noqa: BLE001 — 不把失败吞成 skip，如实记 fail
+        status, expected = "fail", "用例不应抛异常"
+        actual = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+    finally:
+        ctx.cleanup()
+    return {
+        "id": case_id,
+        "title": title,
+        "clause": clause,
+        "expected": expected,
+        "actual": actual,
+        "status": status,
+        "duration_sec": round(time.time() - t0, 3),
+        "evidence_path": evidence,
+        "repro": repro,
+    }
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Phase 1 黑盒验收评测")
+    parser.add_argument("--json", dest="json_path", help="结果 JSON 输出路径")
+    parser.add_argument("--case", dest="case_id", help="只跑指定用例 id")
+    parser.add_argument("--list", action="store_true", help="列出所有用例")
+    args = parser.parse_args(argv)
+
+    if args.list:
+        for cid, title, clause, _ in CASES:
+            print(f"{cid}\t{clause}\t{title}")
+        return 0
+
+    if args.case_id and args.case_id not in CASES_BY_ID:
+        print(f"未知用例: {args.case_id}", file=sys.stderr)
+        return 2
+
+    before = git_status_snapshot()
+    selected = [args.case_id] if args.case_id else [c[0] for c in CASES]
+
+    report = {
+        "commit": git_commit(),
+        "startedAt": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "runner_implemented": has_runner(),
+        "submit_evidence_implemented": has_submit_evidence(),
+        "migration_implemented": has_migration(),
+        "summary": {"passed": 0, "failed": 0, "skipped": 0},
+        "cases": [],
+    }
+
+    t_start = time.time()
+    for cid in selected:
+        if time.time() - t_start > TOTAL_TIMEOUT:
+            report["cases"].append({
+                "id": cid, "status": "fail", "expected": "总超时 ≤ 10min",
+                "actual": "总时长超出 10min，中止", "duration_sec": 0})
+            report["summary"]["failed"] += 1
+            continue
+        rec = run_one(cid)
+        report["summary"][{"pass": "passed", "fail": "failed", "skip": "skipped"}[rec["status"]]] += 1
+        report["cases"].append(rec)
+
+    after = git_status_snapshot()
+    report["repo_unchanged"] = (before == after)
+    report["repo_diff_before_after"] = "" if before == after else f"BEFORE:\n{before}\nAFTER:\n{after}"
+    report["finishedAt"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+    out = json.dumps(report, ensure_ascii=False, indent=2)
+    if args.json_path:
+        Path(args.json_path).write_text(out, encoding="utf-8")
+    else:
+        print(out)
+
+    if report["summary"]["failed"] > 0:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
