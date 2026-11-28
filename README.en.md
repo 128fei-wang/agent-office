@@ -1,19 +1,22 @@
 # Agent Office
 
-[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Chat workspace](docs/CHAT_UI.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
+[中文](README.md) · [Architecture](docs/ARCHITECTURE.md) · [External agent pairing](docs/PAIRING.md) · [Model APIs](docs/PROVIDERS.md) · [AI setup](docs/AI_SETUP.md) · [Task delegation](docs/TASK_DELEGATION.md) · [One-person company](docs/COMPANY_OS.md) · [Mission Control](docs/MISSIONS.md) · [Chat workspace](docs/CHAT_UI.md) · [MCP deployment](docs/MCP.md) · [2026 trends](docs/TRENDS.md) · [Delivery verification](docs/VERIFICATION.md) · [Animation states](docs/ANIMATION.md) · [Usage guide](docs/GUIDE.md) · [Layout notes](docs/LAYOUT.md) · [Self-update](docs/UPGRADING.md) · [Event protocol](docs/EVENT_PROTOCOL.md) · [Roadmap](docs/ROADMAP.md)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![No build step](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)
 
-A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, a two-pane group/DM chat workspace with QQ/WeChat styles, day/night themes and a mobile layout.
+> **Watch an AI team get work done.**<br>
+> Who's on it · How far · What shipped.
+
+A zero-dependency, local-first pixel-art office, one-person company and mission workspace: six autonomous agents claim work, review each other, hold meetings, handle incidents and ship a product — with mission charters, real-external-agent-first recommendations, editable appointments and avatars, per-task executors, time/token evaluation, optional price tables with real cost accounting, groups/DMs, document/image upload and recognition, boss-only approval gates, structured reports, an evidence ledger, delivery verification with file hashes and syntax checks, sandboxed Python/Node test execution and tamper-evident evidence receipts, audit view, Trace Lab, deterministic evals, external-agent pairing, task delegation, real-time chat, bilingual UI, self-update, a left function navigation rail, a two-pane group/DM chat workspace with QQ/WeChat styles, day/night themes and a mobile layout.
 
 No Node, no build step, no image assets. Every character sprite and every piece of furniture is drawn in code.
 
 ![Agent Office](docs/screenshots/office.jpg)
 
-> **Status:** early-stage open-source prototype. It is not a production observability platform and not a real code-execution sandbox. See the [Roadmap](docs/ROADMAP.md) for the boundaries.
+> **Status:** early-stage open-source prototype. It is not a production observability platform or a hardened VM. Delivery verification checks file presence, placeholders and syntax/structure without executing generated apps; project tests are explicit opt-in actions inside a macOS seatbelt / Linux bubblewrap process sandbox. Evidence receipts are bridge-local HMAC evidence, not external-agent identity signatures. See the [Roadmap](docs/ROADMAP.md) for the boundaries.
 >
 > **First time?** Read the [Usage guide](docs/GUIDE.md). Turn off demo with the topbar **Turn off demo** button, or Settings → Demo & presets.
 
@@ -590,12 +593,12 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - State is in memory. Snapshots can be saved/restored manually, but reload does not auto-restore, and clearing browser data loses them. No per-tick replay persistence yet.
 - Two hot desks, so eight agents total. No fire/release-desk UI.
 - File paths, line numbers, diffs, and skill calls are **simulated evidence**, not real repository changes.
-- Trace Lab token / cost / duration values are **reproducible simulated telemetry**, not real billing. The OTLP JSON follows OpenTelemetry / GenAI semantics so real data can replace it, but there is no trace ingest endpoint yet.
+- Trace Lab token / cost / duration values are **reproducible simulated telemetry**, not real billing. The real model-call ledger computes cost from actual provider tokens and your optional price table. The OTLP JSON follows OpenTelemetry / GenAI semantics so real data can replace it, but there is no trace ingest endpoint yet.
 - The rule engine's “autonomy” is a designed behavior space, not open-ended reasoning. The ledger and audit model are reusable for real agents.
 - External task delegation is **pull-based and self-reported**: the bridge does not push a webhook, and external completion bypasses local review. Unverified checks remain as risk/missed audit gaps.
 - Assignments are scoped to the current scenario and `runId`; a new run does not automatically reuse old delegation results.
 - The one-person company auto-dispatches tasks, but real completion requires binding a worker agent. Model API agents are one-shot and excluded from task rooms.
-- SSE is a localhost stream without authentication; company data lives in `~/.agent-office/bridge-state.json`.
+- SSE is a localhost stream by default; remote mode requires a bridge token and can use TLS, but there is no per-user identity model. Company data lives in `~/.agent-office/bridge-state.json`.
 - Bilingual coverage includes UI, statuses, task templates and company content; authored simulation dialogue stays in its original language.
 - Mission AI discussion/AI run needs a reachable model service. When local WorkBuddy/Ollama is not running, the rule plan remains and the UI says so. PDF extraction needs `pdftotext`; image OCR uses a vision model, macOS Vision as a local fallback, or `tesseract` on other platforms.
 - Time/token values are estimates and consumption telemetry, not vendor billing. Estimates use local heuristics (role baseline, complexity, skill match, load) and do not yet learn from historical variance. Actual tokens depend on what a provider or external agent reports.
@@ -604,7 +607,7 @@ CI runs Python/JS syntax checks and required-file checks. Browser self-checks ar
 - Mission data lives in `~/.agent-office/missions.json`; large deployments should move to SQLite/Postgres.
 - Self-update never installs in the background. Automatic update needs the official GitHub Release; manual update needs a local archive newer than the running version. Both need the bridge and restart it. Versions 1.2.0 and older need one manual upgrade to 1.3.0+ before the in-app tools panel exists.
 - Archive updates do not delete files removed upstream; stale files are harmless and can be cleaned manually.
-- Pairing codes are an invitation mechanism, not authentication. The bridge has no auth or TLS and should only be used on localhost.
-- Model APIs are one-shot adapters, not autonomous task execution. Cost is not computed from vendor prices; token counts use provider usage when available.
+- Pairing codes are an invitation mechanism, not authentication. The bridge is loopback-only by default; remote mode requires a token and can use TLS, but it is not a multi-tenant identity system and should not be exposed publicly without an authenticated proxy.
+- Model APIs are one-shot adapters, not autonomous task execution. Token counts use provider usage; monetary cost is computed only after you enter a user price table, and vendor prices are never fetched automatically. Trace Lab cost remains reproducible simulated telemetry.
 - The office uses fixed coordinates; many more desks require adjusting `AO.HUBS` and obstacles.
 - All art is generated in code and can be rebranded.

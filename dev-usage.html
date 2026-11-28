@@ -25,26 +25,28 @@
     check('usage panel opens',!$('#usageRoot').hidden&&!!$('.usage-window'));
     check('usage title',/模型调用/.test($('.usage-window').textContent));
     check('usage filters',!!$('#usageSearch')&&$$('#usagePurpose option').length>=4);
-    check('usage stats',$$('.usage-stat').length===5);
+    check('usage stats',$$('.usage-stat').length===6);
     usage.calls=[{
       id:'call-test-1',createdAt:new Date().toISOString(),provider:'test-provider',model:'test-model',
       purpose:'task',missionId:'m1',missionTitle:'测试任务',taskId:'t1',taskTitle:'需求边界',
       agentId:'a1',agentName:'Test Agent',promptChars:4200,systemChars:600,contextTokens:1500,
-      tokensIn:900,tokensOut:300,durationMs:1234,ok:true,error:''
+      tokensIn:900,tokensOut:300,durationMs:1234,ok:true,error:'',cost:0.0012,currency:'USD'
     },{
       id:'call-test-2',createdAt:new Date().toISOString(),provider:'test-provider',model:'test-model',
       purpose:'deliverable',missionId:'m1',missionTitle:'测试任务',taskId:'t1',taskTitle:'交付物',
       agentId:'a1',agentName:'Test Agent',promptChars:800,systemChars:100,contextTokens:280,
-      tokensIn:100,tokensOut:40,durationMs:600,ok:false,error:'placeholder deliverable'
+      tokensIn:100,tokensOut:40,durationMs:600,ok:false,error:'placeholder deliverable',cost:0.0004,currency:'USD'
     }];
-    usage.summary={calls:2,tokensIn:1000,tokensOut:340,durationMs:1834,failures:1,avgMs:917};
+    usage.summary={calls:2,tokensIn:1000,tokensOut:340,durationMs:1834,failures:1,avgMs:917,pricedCalls:2,currency:'USD',cost:0.0016};
     usage.renderBody();await wait(80);
     check('usage rows render',$$('.usage-row').length===2);
     check('usage token stats',/1\.0K|1K/.test($('.usage-stats').textContent));
     check('usage failure visible',$$('.usage-row.failed').length===1);
+    check('usage cost visible',/\$0\.0016/.test($('.usage-stats').textContent)&&/\$0\.0012/.test(($('[data-usage-row="call-test-1"]')||{}).textContent||''));
     const row=$('[data-usage-row="call-test-1"]');if(row){row.click();await wait(80);}
     check('usage detail expands',!!$('.usage-detail'));
     check('usage detail has context',/Context/.test($('.usage-detail').textContent));
+    check('usage detail has cost',/\$0\.0012/.test($('.usage-detail').textContent));
     const api=await fetch(usage.bridge()+'/model-calls').then(r=>r.json()).catch(()=>({calls:[],summary:{}}));
     check('model call API responds',Array.isArray(api.calls)&&!!api.summary);
     const missions=await fetch(usage.bridge()+'/missions').then(r=>r.json()).catch(()=>({missions:[]}));

@@ -1,5 +1,107 @@
 # Changelog
 
+## [1.27.0] - 2026-11-28
+
+### Added
+- **Provider price tables and real cost accounting**: AI setup can store optional input/output prices per 1M tokens and a currency per provider. The bridge computes cost from the provider's actual token counts after each response and stores it on the model-call ledger. Usage shows cost statistics/rows/details; mission evaluation shows model cost and per-agent actual cost. Missing price tables render `—`, not zero; mixed currencies render `MIXED`.
+- **Signed MCP requests**: agents receive a one-time 32-byte signing secret on creation/claim. `X-Agent-Timestamp` + `X-Agent-Signature` sign the exact JSON-RPC body with HMAC-SHA256. Valid signatures mark evidence receipts `identityBasis: agent-hmac` and `identityVerified: true`; missing signatures remain self-declared, while invalid/expired/replayed signatures are rejected. Secrets can be rotated with `POST /agents/<id>/signing-key`; the UI exposes a signing-key action and never puts the secret in public agent data, browser storage or exports.
+- **Linux sandbox preflight**: bubblewrap is tested with a real namespace probe; if user namespaces are unavailable the result is `unavailable`, not a fake test failure or unsandboxed fallback.
+- **State hardening**: `bridge-state.json` is now written atomically with mode `0600` because it contains per-agent signing secrets.
+- **Restart recovery**: bridge startup marks auto-run/discussion states left `running`/`queued` as interrupted instead of leaving the UI stuck. Model work is not blindly restarted (to avoid duplicate spend); the mission can be resumed explicitly.
+- **Real validation**: a temporary state clone ran one real provider task (512/5165 tokens, 10 artifacts), produced a valid evidence receipt with a validation price table cost of 0.010842 USD, and a real pytest sandbox run found 3 passed / 3 failed model-generated tests. See `docs/VALIDATION_1.27.md`.
+
+### Verified
+- Python: **120** tests pass (1 Node test skipped because Node.js is not installed on this machine).
+- `dev-missions.html`: **134** checks; `dev-demo-mode.html`: 88 checks; `dev-usage.html`, `dev-ai-setup.html` and `dev-external.html` cover cost and signing surfaces; browser runner: 28/28 pages.
+- Cost is user-supplied and does not include cache/batch discounts or taxes. Replay protection is in-memory and resets on bridge restart.
+- Still not 9.8: HMAC is not public-key/real-world identity, whole-file evidence rollback is not prevented, Windows has no sandbox backend, Linux is not exercised on this machine, and model prices are not fetched automatically.
+
+## [1.26.0] - 2026-11-28
+
+### Added
+- **Cross-platform test executor**: `execution.py` now requires a real sandbox backend (macOS `sandbox-exec`, Linux `bubblewrap`) and reports `unavailable` instead of silently running unsandboxed. It supports Python `unittest`, Python `pytest` when installed, Node `node --test` (Node >= 18), and an allowlisted custom test command. Network is denied, home reads are denied, only a throw-away workspace is writable, host secrets are stripped, output is bounded, and the process group is killed on timeout.
+- **Sandbox escape tests**: real tests attempt outbound connections, home-directory reads, `/tmp` writes, host-secret inheritance, traversal names, symlinks, oversized output and timeouts; all are blocked or bounded as expected.
+- **Evidence receipts**: every report creates an HMAC-SHA256-signed receipt with the report hash, artifact SHA-256s/sizes, sequence number, previous hash and key id. `evidence.py` verifies the payload, signature, hash chain, log head, current report and current files. The UI adds **证据回执 / 验证回执 / 导出 JSON** and labels the result honestly: local tamper evidence, not external identity and not rollback-proof.
+- **MCP deliverables**: `agent_office_upload_deliverable` lets an external MCP agent attach a text file to its task; `agent_office_report_task` accepts `artifactIds`, and the evidence receipt hashes them. External identity remains self-declared (`mcp-header`, not verified).
+- **Executor UI**: task cards show the sandbox backend, runner, command, timeout/truncation flags and a custom test-command field. `POST .../run-tests` accepts an optional `command`.
+- **Capabilities endpoint**: `GET /execution/capabilities` exposes backend/runtime/limits and why a runner is unavailable.
+
+### Changed
+- Evidence and verification are separate: a task can be file-verified but have no receipt, or have a valid receipt with a changed report; both are shown independently.
+- Discussion thread shutdown is defensive when a mission is deleted while a model call is in flight; `set_discussion` is lock-protected.
+
+### Verified
+- Python: **114** tests pass (1 Node test skipped because Node.js is not installed on this machine), including evidence-chain tamper tests and executor isolation tests.
+- `dev-missions.html`: **132** checks pass; `dev-demo-mode.html`: 88 checks pass; browser runner: **28/28** pages.
+- macOS seatbelt execution was exercised on this machine. Linux bubblewrap is implemented but not exercised on real Linux here; Windows returns `unavailable`.
+- Still not 9.8 and still not an external-attestation platform: external identity signatures, rollback-proof evidence, model price/cost accounting, multi-tenancy and bridge modularization remain.
+
+## [1.25.0] - 2026-11-28
+
+### Added
+- **Cinematic real-mode transitions**: mission start, boss-approval pause and mission-complete now play a stage briefing with crew logos, task progress and a scanline overlay. The first demo load plays a Sprint 01 briefing with the product promise.
+- **Live collaboration network**: real agents draw routed, animated data links to the whiteboard/meeting room/boss office, with flowing beads and status-coloured nodes; the current agent gets a moving floor spotlight.
+- **Office ambience**: dust, light shafts, pendant lamps, monitor bloom, coffee steam, screen chart animation, whiteboard scanline, room-state pulses, a roaming cleaner robot and character-held props (laptop, paper, cup, tablet, warning badge, celebration sparks).
+- **Real artifact diffs**: task runs now compute actual added/modified/removed files and line counts from previous artifacts, storing unified diff previews; Mission Control renders the evidence.
+- **Opt-in sandboxed tests**: a task can run generated Python `unittest` suites under macOS `sandbox-exec` with network denied, home-directory reads denied and a temporary workspace. Exit code, duration and output are stored as evidence; it is never automatic and is not a general-purpose sandbox.
+- **Task completion pulse**: completed tasks trigger a +N TASK stage pulse and a short lighting wash.
+- **Positioning**: "看见 AI 团队，把事做完。" is used on the boot screen, topbar, real-mode cover and page title, with the proof line "谁在干 · 干到哪 · 交付了什么".
+- **Next action**: when no mission is active, the real board shows a next-step card with the latest mission, progress, open/new-mission actions and an AI setup shortcut when needed.
+
+### Changed
+- Stage whiteboard and meeting screen now show real mission state; the wall clock follows local time in real mode.
+- Delivery verification now clears stale evidence when a task is rerun, and attaches fresh evidence before the completion gate.
+- The “重新交付” action is wired to the existing rerun endpoint and refreshes task evidence.
+
+### Verified
+- Python: 82 tests pass, including artifact-diff, verification-engine and sandbox-execution tests.
+- `dev-missions.html`: 125 checks pass, including verification, diff and test-run UI.
+- `dev-demo-mode.html`: 88 checks pass, including cinema, collaboration web, spotlight, ambience and completion states.
+- Browser E2E runner: 28/28 `dev-*.html` pages pass.
+- Still not a general sandboxed code-execution platform and not externally attested; the opt-in Python test sandbox is deliberately narrow.
+
+## [1.24.0] - 2026-11-28
+
+### Added
+- **Positioning line**: the product now says what it is on first paint and in the topbar: **“看见 AI 团队，把事做完。”** (“Watch an AI team get work done.”), with the proof line “谁在干 · 干到哪 · 交付了什么”. The boot screen, real-mode cover and page title use the same promise.
+- **Delivery verification**: `verification.py` produces local evidence for generated task files — existence, size, SHA-256, placeholder rejection, JSON parsing, Python compilation, JavaScript syntax (`node --check` or macOS JavaScriptCore), Shell (`bash -n`), HTML parsing and CSS brace checks. The result is shown in Mission Control and can be run on existing tasks with `POST /missions/<id>/tasks/<taskId>/verify`.
+- **Honest completion gate**: auto-run now stops and blocks a task when verification fails; it never marks a task done with missing, empty, placeholder or syntactically invalid deliverables. Passed/presence-only tasks are labelled instead of being presented as fully verified.
+- **Browser E2E runner**: `scripts/browser_suite.py` serves the repo, runs the `dev-*.html` pages in headless Chromium in parallel, parses PASS/CLEAN/TRACE/DEBUG results and returns a non-zero exit on failure. CI now runs a no-bridge smoke subset via `browser-actions/setup-chrome`.
+- **Remote trust boundary**: non-loopback bridge binding is refused unless `BRIDGE_ALLOW_REMOTE=1` and `BRIDGE_TOKEN` are set. Remote clients must send the token; loopback keeps zero-config. Host/Origin gates remain. Optional `BRIDGE_TLS_CERT`/`BRIDGE_TLS_KEY` enables TLS 1.2+ for remote deployments.
+
+### Fixed
+- **“重新交付” button**: the UI called `rerunTask`, which did not exist. It now calls the existing `/missions/<id>/tasks/<taskId>/rerun` endpoint, shows progress/failure, and refreshes the task.
+- **External provenance**: task verification panels explicitly label external-agent reports as self-reported until locally checked.
+- **Trace honesty**: Trace Lab is labelled `DEMO TELEMETRY`.
+
+### Verified
+- Python: 78 tests pass, including 6 verification-engine tests and verification persistence/revision.
+- `dev-missions.html`: 123 checks pass (verification UI/endpoint and rerun method included).
+- `dev-demo-mode.html`: 83 checks pass (positioning line and real panel promise included).
+- Browser E2E runner: all 28 `dev-*.html` pages pass; CI smoke subset passes with no bridge running.
+- Delivery verification on the existing “实现与技术方案” task: 21 syntax checks passed, 3 runtime/presence checks skipped, 0 failed; the UI records hashes and the “tests not executed” limitation.
+
+## [1.23.0] - 2026-11-27
+
+### Added
+- **Real business event feed**: `GET /missions/overview` now returns up to 60 real office events built from task status changes, approvals, deliverables, discussions and model calls. Deleted/archived missions are excluded. The real-mode LIVE FEED renders them with kind filters (全部/任务/交付/模型/审批), real timestamps, actors and deep links.
+- **Real mission focus board**: an active mission now fills the REAL BOARD with 进行中 / 评审中 / 待开始 / 已完成 groups, assignees and per-task progress. Recent deliverables are listed below the mission list with direct Mission Control links.
+- **Real office choreography**: external agents now share the demo character visual language (aura, ring, badge, nametag, logo, paper speech bubble, progress bar) and a full state machine: routed walking, work typing, review, coffee, group-message replies, whiteboard/deck checks, meeting seats, boss approvals, ship-it celebration and confetti.
+- **Idle life**: when no mission is running, agents rotate between desk review, coffee, lounge, quiet corners and office patrol. Bubbles use real completed task titles, artifact names and delivery context instead of fabricated chat.
+- **Live presence**: real mode shows a local LIVE clock, "可调度" instead of a dead "0 在线", full-brightness ready agents, and per-agent task/status in the team rail.
+
+### Changed
+- Real-mode stage whiteboard now shows the focused real mission, completion count, live day marker and progress instead of the demo scenario.
+- The redundant stage note is suppressed once real missions exist; the topbar Real panel and Mission Center remain available.
+- Real agent movement uses the same obstacle/hub path graph as the demo so characters route through aisles instead of walking through furniture.
+- Real feed header is now LIVE FEED with a real-event subtitle; the demo-off clock pill is kept and shows local time.
+- Version 1.23.0 cache-busts all CSS/JS assets.
+
+### Verified
+- `dev-demo-mode.html`: 80 checks, including real working bubble/progress, mission focus board, meeting speaker, waiting-boss state, celebration confetti and idle life.
+- Python: 71 tests pass, including real activity feed extraction and archived-mission exclusion.
+- Browser: all 28 `dev-*.html` pages pass (24 PASS, 2 CLEAN, trace and path debug).
+
 ## [1.22.0] - 2026-11-27
 
 ### Added

@@ -58,6 +58,11 @@
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  function tr(key, fallback) {
+    const value = AO.t(key);
+    return value === key ? (fallback || key) : value;
+  }
+
   function timeShort(epoch) {
     const d = new Date(Number(epoch) * 1000);
     return String(d.getHours()).padStart(2, "0") + ":" +
@@ -270,6 +275,11 @@
           if (agent && self.renderer.renameDialog) {
             self.renderer.renameDialog.open("external", agent.id, agent.name);
           }
+          return;
+        }
+        const signing = e.target.closest("[data-ext-signing]");
+        if (signing) {
+          self.rotateSigning(signing.getAttribute("data-ext-signing"));
           return;
         }
         const remove = e.target.closest("[data-ext-remove]");
@@ -1027,14 +1037,17 @@
         const role = AO.lang === "en" ? a.roleLabelEn : a.roleLabelZh;
         const detail = [role || a.role, a.brand, a.runtime || "external", a.model,
           (a.eventCount || 0) + " events", a.demo ? "DEMO" : "",
-          a.managed ? "API" : ""].filter(Boolean).join(" · ");
+          a.managed ? "API" : "",
+          a.signingKeyId ? "SIG " + String(a.signingKeyId).slice(0, 8) : ""].filter(Boolean).join(" · ");
         return '<div class="ext-item"><span class="ext-logo' +
           (a.logoSource === "preset" ? " emoji" : "") + AO.logoClass(a) + '" style="--c:' +
           esc(a.logoColor || "#b58cff") + '" title="' + esc(a.brand || "External agent") + '">' +
           AO.logoMarkHTML(a) + '</span><span class="ext-item-dot ' + (online ? "online" : "offline") + '"></span>' +
           '<div class="ext-item-copy"><b>' + esc(a.name) + '</b><em>' + esc(detail) + "</em></div>" +
           '<div class="ext-item-actions"><button type="button" data-ext-open="' + esc(a.id) +
-          '" title="职务与头像">⚙</button><button type="button" data-ext-rename="' + esc(a.id) +
+          '" title="职务与头像">⚙</button><button type="button" data-ext-signing="' + esc(a.id) +
+          '" title="' + esc(tr("extSigningRotate", "生成签名密钥")) +
+          '" aria-label="' + esc(tr("extSigningRotate", "生成签名密钥")) + '">⚿</button><button type="button" data-ext-rename="' + esc(a.id) +
           '" title="重命名">✎</button><button type="button" data-ext-remove="' + esc(a.id) +
           '" title="移除">×</button></div></div>';
       }).join("");

@@ -8,8 +8,7 @@ html[data-demo="off"] .done-banner,
 html[data-demo="off"] .inspector,
 html[data-demo="off"] .stage-hint,
 html[data-demo="off"] .stage-tools .legend,
-html[data-demo="off"] .stage-tools .hud-readout,
-html[data-demo="off"] .clock-pill {
+html[data-demo="off"] .stage-tools .hud-readout {
   display: none !important;
 }
 
@@ -79,6 +78,14 @@ html[data-demo="off"] .stage-viewport {
   color: #7f96a6;
   font-style: normal;
   letter-spacing: 0;
+}
+
+.real-cover-promise {
+  margin: 5px 0 0;
+  color: #9fe1d7;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.6px;
 }
 
 .real-mode-card h3 {
@@ -372,6 +379,198 @@ html[data-demo="off"] .stage-viewport {
   font-style: normal;
 }
 
+/* Active mission focus: the real-mode counterpart of the sprint board. */
+.real-board-focus {
+  padding: 9px;
+  border: 1px solid rgba(85, 214, 194, 0.28);
+  border-radius: 8px;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(85, 214, 194, 0.09), transparent 55%),
+    linear-gradient(180deg, #12222d, #0c1720);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.real-focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #55d6c2;
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 1px;
+}
+.real-focus-head b { color: #b8fff2; font-size: 8px; }
+.real-focus-title {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #e6f6ff;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-focus-bar {
+  height: 3px;
+  margin: 6px 0 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.real-focus-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #55d6c2, #b8fff2);
+  transition: width 0.4s ease;
+}
+.real-focus-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #78909f;
+  font-size: 6.8px;
+}
+.real-focus-meta span:last-child {
+  overflow: hidden;
+  color: #9db5c2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-focus-group { margin-top: 5px; }
+.real-focus-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 1px;
+  color: #7f95a4;
+  font-family: var(--mono);
+  font-size: 6px;
+  letter-spacing: 0.4px;
+}
+.real-focus-label b { color: #607887; font-size: 6px; font-weight: 500; }
+.real-focus-task {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  margin-top: 3px;
+  padding: 4px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.015);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.real-focus-task:hover { border-color: rgba(85, 214, 194, 0.32); background: rgba(85, 214, 194, 0.04); }
+.real-focus-task > i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4c6171;
+}
+.real-focus-task.status-in_progress > i { background: #55d6c2; box-shadow: 0 0 5px rgba(85, 214, 194, 0.8); }
+.real-focus-task.status-review > i { background: #b58cff; box-shadow: 0 0 5px rgba(181, 140, 255, 0.7); }
+.real-focus-task.status-blocked > i { background: #ff6b6b; }
+.real-focus-task.status-done > i { background: #7bd88f; }
+.real-focus-task > span { min-width: 0; }
+.real-focus-task b {
+  display: block;
+  overflow: hidden;
+  color: #cfe2ee;
+  font-size: 7.8px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-focus-task em {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: #718898;
+  font-size: 6.2px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-focus-task strong {
+  color: #7c9aa7;
+  font-family: var(--mono);
+  font-size: 6.4px;
+  font-weight: 400;
+}
+.real-focus-task.status-in_progress strong { color: #55d6c2; }
+.real-focus-task.status-review strong { color: #c2a3ff; }
+.real-focus-task.status-done strong { color: #7bd88f; }
+.real-focus-none {
+  padding: 8px;
+  color: #78909f;
+  font-size: 7px;
+  text-align: center;
+}
+
+.real-board-head.deliverables {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 9px;
+}
+.real-deliverable-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 7px;
+  border: 1px solid #1d2e3d;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.014);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.real-deliverable-row:hover {
+  border-color: rgba(123, 216, 143, 0.34);
+  background: rgba(123, 216, 143, 0.04);
+}
+.real-deliverable-row > i {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(123, 216, 143, 0.3);
+  border-radius: 3px;
+  color: #7bd88f;
+  font-size: 7px;
+  font-style: normal;
+}
+.real-deliverable-row > span { min-width: 0; }
+.real-deliverable-row b {
+  display: block;
+  overflow: hidden;
+  color: #d4e7ef;
+  font-size: 8px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-deliverable-row em {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: #6f8796;
+  font-size: 6.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-deliverable-row strong {
+  color: #7bd88f;
+  font-size: 8px;
+  font-weight: 400;
+}
+
 .real-board-empty {
   padding: 20px 14px;
   border: 1px dashed #2b3f4f;
@@ -453,7 +652,7 @@ html[data-demo="off"] .team-card[data-agent] {
 }
 
 html[data-demo="off"] .team-mood {
-  opacity: 0.4;
+  opacity: 0.75;
 }
 
 /* ------------------------------------------------------------- settings */
@@ -620,6 +819,30 @@ html[data-theme="day"] .real-agent-logo { color: #25343d; }
 html[data-theme="day"] .real-mode-actions button { border-color: #ded0bf; background: #fffaf2; color: #40545f; }
 html[data-theme="day"] .real-mode-actions button.primary { border-color: #9ed3c8; background: #e8f7f3; color: #0b6c61; }
 html[data-theme="day"] .real-board-head b { color: #2b3d47; }
+html[data-theme="day"] .real-board-focus {
+  border-color: #b9ded6;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(85, 214, 194, 0.12), transparent 55%),
+    #fffaf2;
+}
+html[data-theme="day"] .real-focus-head { color: #2f8f80; }
+html[data-theme="day"] .real-focus-head b { color: #1e6b61; }
+html[data-theme="day"] .real-focus-title { color: #2a3a43; }
+html[data-theme="day"] .real-focus-meta { color: #7b8d95; }
+html[data-theme="day"] .real-focus-meta span:last-child { color: #586f79; }
+html[data-theme="day"] .real-focus-task { border-color: #eadfce; background: #fffdf8; }
+html[data-theme="day"] .real-focus-task b { color: #2f434d; }
+html[data-theme="day"] .real-focus-task em { color: #7b8d95; }
+html[data-theme="day"] .real-focus-task strong { color: #5d7a84; }
+html[data-theme="day"] .real-deliverable-row { border-color: #e0d2c0; background: #fffaf2; }
+html[data-theme="day"] .real-deliverable-row b { color: #2b3d47; }
+html[data-theme="day"] .real-deliverable-row em { color: #788891; }
+html[data-theme="day"] .real-feed-filters button { border-color: #e2d6c7; color: #6d7f87; }
+html[data-theme="day"] .real-feed-filters button.active { border-color: #8fcfc2; background: #e8f7f3; color: #1f6b61; }
+html[data-theme="day"] .real-feed-row.activity { border-color: #e6dac9; background: #fffaf2; }
+html[data-theme="day"] .real-feed-row.activity b { color: #2c3d46; }
+html[data-theme="day"] .real-feed-row.activity em { color: #788891; }
+html[data-theme="day"] .real-feed-row.activity time { color: #8a9aa1; }
 html[data-theme="day"] .real-mission-row { border-color: #e0d2c0; background: #fffaf2; }
 html[data-theme="day"] .real-mission-row b { color: #2c3d46; }
 html[data-theme="day"] .real-mission-copy > span { color: #788891; }
@@ -768,10 +991,10 @@ html[data-theme="day"] .team-real-empty button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2px 4px;
+  padding: 0 2px 2px;
   color: var(--muted-2);
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 7.5px;
   letter-spacing: 1px;
 }
 .real-feed-head b { color: var(--cyan); font-size: 9px; }
@@ -806,3 +1029,194 @@ html[data-theme="day"] .team-real-empty button {
   font-size: 8px;
   cursor: pointer;
 }
+
+/* Real business event stream. Every row comes from the mission store. */
+.real-feed-list.activity-feed { gap: 2px; }
+.real-feed-head em {
+  margin-left: auto;
+  padding: 1px 4px;
+  border: 1px solid rgba(85, 214, 194, 0.28);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-style: normal;
+  font-size: 6px;
+  letter-spacing: 0.8px;
+}
+.real-feed-head em::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 5px rgba(85, 214, 194, 0.8);
+  animation: mlh-pulse 1.4s ease-in-out infinite;
+}
+.real-feed-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 0 3px;
+}
+.real-feed-filters button {
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 7.5px;
+  cursor: pointer;
+}
+.real-feed-filters button em {
+  margin-left: 4px;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  font-style: normal;
+}
+.real-feed-filters button.active {
+  border-color: rgba(85, 214, 194, 0.45);
+  background: rgba(85, 214, 194, 0.12);
+  color: #c8fff7;
+}
+.real-feed-filters button.active em { color: var(--cyan); }
+.real-feed-filters button:hover { border-color: rgba(85, 214, 194, 0.38); color: #d6fff8; }
+.real-feed-row.activity {
+  min-height: 21px;
+  padding: 3px 6px;
+  gap: 5px;
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.014);
+}
+.real-feed-row.activity > span {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.real-feed-row.activity b {
+  flex: 0 1 auto;
+  font-size: 8.4px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-feed-row.activity em {
+  flex: 1 1 auto;
+  font-size: 6.8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-feed-row.activity time {
+  flex: none;
+  align-self: center;
+  margin: 0;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 6.2px;
+}
+.real-feed-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 7px;
+  font-style: normal;
+}
+.real-feed-row.kind-task .real-feed-icon { color: #55d6c2; border-color: rgba(85, 214, 194, 0.3); background: rgba(85, 214, 194, 0.07); }
+.real-feed-row.kind-task.status-blocked .real-feed-icon { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); background: rgba(255, 107, 107, 0.07); }
+.real-feed-row.kind-task.status-review .real-feed-icon { color: #b58cff; border-color: rgba(181, 140, 255, 0.3); background: rgba(181, 140, 255, 0.07); }
+.real-feed-row.kind-artifact .real-feed-icon { color: #7bd88f; border-color: rgba(123, 216, 143, 0.3); background: rgba(123, 216, 143, 0.07); }
+.real-feed-row.kind-model .real-feed-icon { color: #b58cff; border-color: rgba(181, 140, 255, 0.3); background: rgba(181, 140, 255, 0.07); }
+.real-feed-row.kind-approval .real-feed-icon { color: #f2b544; border-color: rgba(242, 181, 68, 0.3); background: rgba(242, 181, 68, 0.07); }
+.real-feed-row.kind-discussion .real-feed-icon { color: #ff9ec0; border-color: rgba(255, 158, 192, 0.3); background: rgba(255, 158, 192, 0.07); }
+.real-feed-row.status-error .real-feed-icon { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); }
+.real-feed-none {
+  padding: 14px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+  color: var(--muted-2);
+  text-align: center;
+  font-size: 8px;
+}
+
+
+/* Real mode keeps a live local clock in the topbar. */
+html[data-demo="off"] .clock-pill {
+  border-color: rgba(85, 214, 194, 0.22);
+  background: linear-gradient(180deg, rgba(16, 32, 41, 0.94), rgba(8, 18, 25, 0.96));
+}
+html[data-demo="off"] .clock-pill span { color: #7fa3ad; }
+html[data-demo="off"] .clock-pill b { color: #8ff3e3; }
+
+
+/* Day-theme contrast for real-mode topbar actions. */
+html[data-theme="day"] .demo-quick.is-real {
+  border-color: #c69a42 !important;
+  background: #fdf3dc !important;
+  color: #7a520d !important;
+}
+html[data-theme="day"] .real-ops-trigger,
+html[data-theme="day"] .real-mission-trigger {
+  border-color: #9bcfc3 !important;
+  background: #fffaf2 !important;
+  color: #1f6b61 !important;
+}
+html[data-theme="day"] .real-ops-trigger.is-dismissed {
+  background: #e8f7f3 !important;
+}
+
+/* Next action keeps the real workspace from ending in an empty board. */
+.real-next-action {
+  padding: 9px;
+  border: 1px solid rgba(85, 214, 194, 0.3);
+  border-radius: 8px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(85, 214, 194, 0.1), transparent 58%),
+    linear-gradient(180deg, #12242e, #0c1820);
+}
+.real-next-action > span {
+  color: #55d6c2;
+  font-family: var(--mono);
+  font-size: 6.4px;
+  letter-spacing: 1.1px;
+}
+.real-next-action > b { display: block; margin-top: 3px; color: #e3f6fb; font-size: 10px; }
+.real-next-action > p {
+  margin: 3px 0 7px;
+  overflow: hidden;
+  color: #8fa8b4;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.real-next-action > div { display: flex; gap: 4px; flex-wrap: wrap; }
+.real-next-action button {
+  height: 23px;
+  padding: 0 7px;
+  border: 1px solid rgba(85, 214, 194, 0.28);
+  border-radius: 4px;
+  background: rgba(85, 214, 194, 0.06);
+  color: #a9e7dd;
+  font: inherit;
+  font-size: 7px;
+  cursor: pointer;
+}
+.real-next-action button.primary { background: rgba(85, 214, 194, 0.17); color: #d6fff8; }
+.real-next-action button:hover { background: rgba(85, 214, 194, 0.22); }
+html[data-theme="day"] .real-next-action {
+  border-color: #b9ded6;
+  background: radial-gradient(120% 100% at 100% 0%, rgba(85, 214, 194, 0.12), transparent 58%), #fffaf2;
+}
+html[data-theme="day"] .real-next-action > b { color: #263a43; }
+html[data-theme="day"] .real-next-action > p { color: #758991; }

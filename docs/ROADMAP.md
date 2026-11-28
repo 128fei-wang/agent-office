@@ -49,9 +49,19 @@ This is an early open-source prototype, not a production observability or agent-
 - [x] Demo/preset shutdown with real-agent-only recommendations and a REAL OPS home view.
 - [x] Mission context memory from uploads, decisions, reports, evidence and approved gates.
 - [x] Unlimited task execution with per-task token estimates, context insight and a model-call ledger (1.22.0); one-shot auto-retry remains.
+- [x] Real-mode office animation parity: live activity feed, mission focus board, routed walking, ambient idle/meeting/celebration states, task bubbles and progress (1.23.0).
+- [x] Delivery evidence: file hashes, placeholder rejection and syntax checks; auto-run blocks failed evidence (1.24.0).
+- [x] Cinematic mission transitions, live collaboration web, office ambience, held props and real artifact diffs (1.25.0).
+- [x] Opt-in macOS sandbox-exec Python test execution with evidence (1.25.0).
+- [x] Cross-platform sandbox backends (macOS seatbelt, Linux bubblewrap), Python unittest/pytest, Node --test, allowlisted custom commands, output/timeout limits and explicit `unavailable` fallback (1.26.0).
+- [x] HMAC-signed, hash-chained evidence receipts for reports and artifacts, verification UI/export and MCP text-deliverable uploads (1.26.0).
+- [x] Optional per-agent HMAC signing keys for MCP requests, rotation UI and receipt identity attestation (1.27.0).
+- [x] Optional provider price tables and real token cost accounting in the model-call ledger, usage and mission evaluation (1.27.0).
+- [ ] External-agent public-key/third-party attestation, rollback-proof evidence and independent evaluation; local HMAC receipts are not identity signatures (optional HMAC signing exists in 1.27.0).
+- [ ] Windows sandbox backend and automatic project-test execution.
+- [ ] Fetch and update provider prices automatically; user-supplied prices/cost are done (1.27.0).
 - [ ] Durable queue/scheduler, checkpoints and idempotent resume.
 - [x] Workspace and agent memory with retrieval and prompt injection (1.21.0); citations and expiry remain open.
-- [ ] Budget-aware model routing and price table.
 - [ ] Agent registry/health and A2A interoperability.
 - [x] Deliverable quality gate, focused regeneration, per-task files and ZIP bundles (1.21.1).
 - [ ] Provider-backed independent evaluation of deliverable correctness.
@@ -71,7 +81,7 @@ This is an early open-source prototype, not a production observability or agent-
 - Mission AI discussion/run requires a reachable model service. Local provider gateways are probed; when none is available the rule plan remains, but agents cannot generate AI deliverables.
 - PDF extraction needs `pdftotext`; image OCR needs a vision model or `tesseract`. QR login is an approval gate, not a provider OAuth implementation.
 - Mission data is a local JSON store with search but without retention/export or multi-user authentication.
-- Model API calls are one-shot; auto-run retries a failed task once, but there is no streaming, durable checkpoint or provider price calculation.
+- Model API calls are one-shot; auto-run retries a failed task once, but there is no streaming or durable checkpoint; provider cost is user-configured (1.27.0).
 - External agent endpoints are metadata only; the bridge does not call them.
 - The bridge has no auth, TLS, multi-tenancy or retention policy.
 - Simulation evidence (files/lines/diffs/tokens/cost) is synthetic; real external events carry their own fields.

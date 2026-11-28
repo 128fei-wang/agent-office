@@ -135,6 +135,12 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
     check('evaluation tab renders',/预计/.test($('.mission-detail-body').textContent)&&/Token/i.test($('.mission-detail-body').textContent));
     check('context insight panel rendered',!!$('.mission-context-card')&&/预估输入/.test($('.mission-detail-body').textContent));
     check('no token budget editor',!$('#missionTokenBudget')&&!$('[data-mission-budget-save]'));
+    check('model cost panel rendered',/模型成本|Model cost/.test($('.mission-detail-body').textContent));
+    const originalEval=mission.evaluation;
+    mission.evaluation=Object.assign({},mission.evaluation||{},{modelCost:0.123,currency:'USD',pricedModelCalls:2});
+    view.render();await wait(100);
+    check('priced model cost rendered',/\$0\.12/.test($('.mission-detail-body').textContent));
+    mission.evaluation=originalEval;view.render();
     check('rules present',(mission.rules||[]).length>=5);
     check('document attachment stored',(mission.artifacts||[]).some(a=>a.name==='brief.md'&&/自检文档内容/.test(a.extractedText||'')));
     check('image attachment stored',(mission.artifacts||[]).some(a=>a.kind==='image'));
@@ -179,6 +185,52 @@ pre{white-space:pre-wrap;background:#121c26;border:1px solid #233545;border-radi
       check('task accept action rendered',!!d.querySelector('[data-task-accept="'+patchTarget.id+'"]'));
       check('task reassign control rendered',!!d.querySelector('[data-task-reassign="'+patchTarget.id+'"]'));
       check('task block action rendered',!!d.querySelector('[data-task-block="'+patchTarget.id+'"]'));
+      check('task rerun method exists',typeof view.rerunTask==='function');
+      check('task verify method exists',typeof view.verifyTask==='function');
+      check('task verification panel rendered',!!d.querySelector('.mission-verification'));
+      const verifyBtn=d.querySelector('[data-task-verify="'+patchTarget.id+'"]');
+      check('task verify action rendered',!!verifyBtn);
+      if(verifyBtn){
+        await view.verifyTask(patchTarget.id);
+        await wait(900);
+        const verified=(view.mission&&view.mission.tasks||[]).find(t=>t.id===patchTarget.id);
+        check('task verification persisted',!!verified&&!!verified.verification,verified&&verified.verification&&verified.verification.status);
+        check('task without files fails honestly',!!verified&&verified.verification&&verified.verification.status==='failed');
+        view.detailTab='tasks';view.render();await wait(120);
+        check('verification evidence in UI',/交付验证|Verification/.test(($('.mission-verification')||{}).textContent||''));
+        check('task verification mark rendered',!!d.querySelector('.mission-verify-mark'));
+        check('task verification summary rendered',!!d.querySelector('.mission-verify-summary'));
+        const diffTarget=(view.mission&&view.mission.tasks||[]).find(t=>t.id===patchTarget.id);
+        if(diffTarget){
+          const originalDiff=diffTarget.diff;
+          diffTarget.diff={changed:1,added:2,removed:1,files:[{name:'src/app.py',status:'modified',added:2,removed:1,preview:'@@ -1 +1 @@\n-old\n+new'}]};
+          view.detailTab='tasks';view.render();await wait(100);
+          check('task diff evidence rendered',!!d.querySelector('.mission-diff'));
+          diffTarget.diff=originalDiff;
+          const originalTestRun=diffTarget.testRun;
+          diffTarget.testRun={status:'passed',reason:'Python 测试通过',exitCode:0,durationMs:12,output:'OK',backend:'macos-seatbelt',runner:'python-unittest',command:'python -m unittest discover'};
+          view.render();await wait(100);
+          check('task test-run evidence rendered',!!d.querySelector('.mission-test-run.status-passed'));
+          check('test sandbox backend rendered',/seatbelt|bubblewrap|sandbox/i.test(($('.mission-test-run')||{}).textContent||''));
+          check('test runner rendered',/python-unittest/.test(($('.mission-test-run')||{}).textContent||''));
+          const originalArtifactIds=diffTarget.artifactIds;
+          const originalArtifacts=view.mission.artifacts;
+          view.mission.artifacts=(originalArtifacts||[]).concat([{id:'artifact-ui-selfcheck',name:'test_ok.py',size:128,uploadedBy:diffTarget.assigneeId}]);
+          diffTarget.artifactIds=['artifact-ui-selfcheck'];
+          diffTarget.evidence=[{seq:1,source:'bridge-ai',agentId:diffTarget.assigneeId,agentName:diffTarget.assigneeName,payloadHash:'abcdef1234567890',attestation:{identityBasis:'local-member',identityVerified:true},artifacts:[{id:'artifact-ui-selfcheck',sha256:'deadbeef'}]}];
+          view.render();await wait(100);
+          check('custom test command rendered',!!d.querySelector('.mission-test-custom'));
+          check('evidence receipts rendered',!!d.querySelector('.mission-receipts'));
+          check('evidence verify action rendered',!!d.querySelector('[data-task-evidence-verify]'));
+          check('evidence export action rendered',!!d.querySelector('[data-task-evidence-export]'));
+          check('evidence verification methods exist',typeof view.verifyEvidence==='function'&&typeof view.exportEvidence==='function');
+          diffTarget.evidence=[];
+          diffTarget.artifactIds=originalArtifactIds;
+          view.mission.artifacts=originalArtifacts;
+          diffTarget.testRun=originalTestRun;
+          view.render();
+        }
+      }
       const editBtn=d.querySelector('[data-task-edit="'+patchTarget.id+'"]');
       check('task edit action rendered',!!editBtn);
       if(editBtn){

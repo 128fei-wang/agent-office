@@ -1,6 +1,6 @@
 # Agent animation and task linkage
 
-> Updated: 2026-11-26 · Version 1.14.2
+> Updated: 2026-11-28 · Version 1.27.0
 
 The office is a state-driven animation system, not a video loop. Every character
 state comes from the simulation engine; task progress and agent state must stay
@@ -53,6 +53,76 @@ watchdog. The UI could keep saying "working" without any visible change.
 - The bridge stamps `autoRun.currentTaskStartedAt` when a task starts, so the
   timer is tied to the actual task, not just the page load.
 
+## Real business mode (1.23.0)
+
+Demo mode always felt alive; real mode used to switch the office off and leave a
+few tiny external agents at hot desks. 1.23.0 makes the real office share the
+demo's visual language without inventing business facts.
+
+### Character language
+
+Real external agents are rendered with the same `.agent` children as demo
+agents: sprite, shadow, aura, ring, badge, nametag, brand logo, paper bubble and
+task progress. "Offline" only means no heartbeat; it no longer grays out or dims
+an agent that the local AI can still dispatch.
+
+### State source
+
+| State | Real trigger |
+| --- | --- |
+| working | `autoRun.currentAgentId` or an `in_progress` task assigned to the agent |
+| reviewing | a task in `review` |
+| meeting | `discussion.status` or auto-run `discussing/queued`; seats come from `AO.MEETING.seats` |
+| blocked / waiting | auto-run `waiting_boss`, agent walks to the boss office |
+| celebrating | auto-run `done` while the completed mission is still transient (12s), with recurring confetti |
+| coffee / chatting / idle-review / patrol | no active mission; a staggered 11s phase rotates agents through real data-backed ambient activities |
+
+Idle bubbles use the latest mission's real task titles and artifact names. If
+there is no real basis, the bubble stays generic ("续一杯", "巡一下办公室",
+"回群里看一眼") rather than fabricating a task.
+
+### Routing
+
+`src/mission-live.js` reuses `AO.OBSTACLES` and `AO.HUBS` with the same
+segment/hub path search as `src/engine.js`. Movement is a Web Animation over the
+computed waypoints, with duration based on distance (420–3600ms). This avoids
+walking through the meeting-room glass or desks and gives real mode the same
+"walk the aisle" feel as the demo.
+
+### Surrounding surfaces
+
+- **LIVE FEED**: real events from tasks, approvals, artifacts, discussions and
+  model calls, with filters and times; actions deep-link to Mission Control.
+- **REAL BOARD**: active mission task groups and per-task progress; idle mode
+  lists recent deliverables.
+- **Whiteboard**: focused mission title, done/total, live progress and `LIVE`
+  day marker instead of the demo scenario.
+- **Topbar**: local `LIVE HH:MM` clock and a "可调度" count instead of `0 在线`.
+- **Stage note**: suppressed when real missions exist; topbar Real panel and
+  Mission Center remain the entry points.
+
+## Cinematic layer and continuous motion (1.25.0)
+
+The office now has two animation layers: the state machine (working, meeting,
+waiting, celebrating) and an always-on ambience layer.
+
+- **Mission transitions**: start/wait/done briefings are stage overlays with crew
+  logos, a real progress bar, scanlines and a completion stamp. A new demo load
+  plays a Sprint 01 briefing; it is skipped with `?intro=0` and shown once per
+  browser session.
+- **Collaboration web**: real working/reviewing/meeting/waiting agents draw
+  routed SVG links to the relevant room, with animated beads and status colours.
+  The current agent gets a floor spotlight that follows the walking animation.
+- **Ambience**: dust motes, light shafts, pendant lamps, monitor bloom, steam,
+  whiteboard scan, meeting-screen chart animation, room pulses, a small cleaner
+  robot and character props (laptop, paper, cup, tablet, warning badge,
+  celebration sparks). All are CSS/SVG; no new runtime dependency.
+- **Feedback**: task completion produces a +N TASK pulse and a brief lighting
+  wash. Motion is disabled under `prefers-reduced-motion` and the FX toggle.
+
+The state and data still come from the real mission store; the visual layer never
+invents a completed task.
+
 ## Verification
 
 `dev-activity.html` checks:
@@ -66,6 +136,12 @@ watchdog. The UI could keep saying "working" without any visible change.
 5. the New sprint button clears the completion state and resumes the simulation.
 
 `dev-mission-live.html` checks the HUD/hot-desk elapsed timer and Stop action.
+
+`dev-demo-mode.html` (80 checks) now also verifies real working bubbles and
+progress, the mission-focus board, a single meeting speaker, waiting-boss state,
+celebration confetti, celebration status in the roster, real idle choreography,
+feed filters and real event rows. Python tests verify the activity feed is built
+from real events and excludes archived missions.
 
 ## References
 

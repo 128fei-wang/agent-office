@@ -27,7 +27,7 @@ sequenceDiagram
 - Code format: 8 chars from an unambiguous alphabet.
 - Code is one-time, expires after 30 minutes.
 - Every generation creates a new code; older codes remain valid until their own expiry.
-- A claim creates an agent identity and a greeting event.
+- A claim creates an agent identity and a greeting event. The claim response also returns `signingSecret` (shown once) for optional HMAC-signed MCP requests; store it in the agent process, never in the browser.
 - The UI shows a `WAITING FOR AGENT` card while pending and a `CONNECTED` card after claim.
 - There is no hard cap on the number of external agents.
 - Each agent needs its own code and profile; do not reuse one code for two agents.

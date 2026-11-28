@@ -66,7 +66,7 @@ flowchart LR
 | 5173 | `python3 -m http.server` | static app |
 | 8787 | `bridge.py` | external agent pairing, heartbeats, event ingestion |
 
-`start.sh` starts both. The bridge binds to `127.0.0.1` only, and rejects non-local `Host`/`Origin` headers by default. Browser access must come from `http://127.0.0.1:<port>` or `http://localhost:<port>`; command-line clients without an `Origin` header are accepted.
+`start.sh` starts both. The bridge binds to `127.0.0.1` only, and rejects non-local `Host`/`Origin` headers by default. Browser access must come from `http://127.0.0.1:<port>` or `http://localhost:<port>`; command-line clients without an `Origin` header are accepted. Non-loopback binding requires `BRIDGE_ALLOW_REMOTE=1` and `BRIDGE_TOKEN`; remote requests must pass the token. Delivery verification and evidence receipts are separate local evidence layers; project tests run only through the explicit sandboxed executor.
 
 ## Tests
 
@@ -94,8 +94,12 @@ flowchart LR
 | `src/shell.js` | pinned left function bar, floating group/DM chat, settings center and QQ/WeChat chat styles |
 | `missions.py` | mission plan, recommendation scoring, brand logos, estimates, preferred-executor assignment, no-idle coverage, chat, artifact metadata, report/approval rules, usage evaluation |
 | `ocr_vision.swift` | macOS Vision local OCR fallback used by the bridge |
+| `verification.py` | deterministic delivery evidence: file existence/hashes, placeholder rejection, JSON/Python/JS/Shell/HTML/CSS syntax checks; never executes app code |
+| `execution.py` | opt-in sandboxed test execution (macOS seatbelt / Linux bubblewrap), Python unittest/pytest, Node --test, allowlisted custom commands; no unsandboxed fallback |
+| `evidence.py` | HMAC-signed, hash-chained report receipts, artifact hashes, verification and JSON bundles; local tamper evidence only |
+| provider pricing | optional per-million token prices in `providers.json`; the bridge computes cost from real token usage; unpriced calls stay null |
 | `updater.py` | release check, local archive install, backup, git/archive apply, verification, rollback, CLI |
-| `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files, updates and MCP JSON-RPC |
+| `bridge.py` | localhost API for pairing, agents, heartbeats, events, missions, files, execution, evidence, updates and MCP JSON-RPC |
 | `trace.css` / `hiring.css` / `external.css` / `update.css` / `missions.css` / `features.css` | feature-specific styling |
 
 ## Data flow
@@ -112,7 +116,7 @@ flowchart LR
 10. External agent names/runtimes are matched against a local brand table to add `brand`, `logoText` and `logoColor`; no external service is called. Users can appoint an external agent to a mission role and choose a built-in/custom avatar through `PATCH /agents/<id>`; mission members and external API responses expose the same fields.
 11. Mission attachments are stored under `~/.agent-office/uploads`; document text is extracted on upload, image OCR is on demand.
 12. The pinned function bar opens group/DM popups through the mission conversation API, and the settings modal switches QQ/WeChat chat styles.
-13. `POST /mcp` exposes a stateless MCP tools server: initialize, tools/list and seven task/chat tools. `X-Agent-Id` selects the acting external agent.
+13. `POST /mcp` exposes a stateless MCP tools server: initialize, tools/list, task/chat tools and a text-deliverable upload tool. `X-Agent-Id` selects the acting external agent; optional HMAC headers (`X-Agent-Timestamp`, `X-Agent-Signature`) prove possession of the bridge-issued agent secret. Without a signature the identity remains self-declared.
 14. The tools panel asks `updater.py` for the latest GitHub release, or uploads a local archive; either path backs up to `~/.agent-office/backups`, updates the app, verifies it, then `os.execv` restarts the bridge with the same arguments.
 
 ## State and persistence

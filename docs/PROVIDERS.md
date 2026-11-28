@@ -239,12 +239,42 @@ external event that was recorded. It does not mutate simulated task status.
 | Empty response | The provider returned no text (safety block/tool-only response) |
 | Browser says page blocked | Serve the app from localhost; `file://` is blocked by default |
 
+## Optional price table
+
+AI setup → provider → Advanced exposes **Price table (optional)**. You can also
+store it in `~/.agent-office/providers.json`:
+
+```json
+{
+  "deepseek": {
+    "apiKey": "sk-...",
+    "model": "deepseek-chat",
+    "pricing": {
+      "inputPerMillion": 0.14,
+      "outputPerMillion": 0.28,
+      "currency": "USD"
+    }
+  }
+}
+```
+
+- Values are per **1,000,000 tokens**, in the currency you enter.
+- Both values may be zero/empty to disable pricing for that provider.
+- The bridge computes `cost = in/1M × inputPrice + out/1M × outputPrice` after
+  each real provider response and stores it on the model-call ledger. Saving a
+  price table also reprices that provider’s historical unpriced calls.
+- Unpriced calls appear as `—`; the app never invents a price.
+- Cache discounts, batch discounts and taxes are not modeled.
+
 ## Limits
 
 - One prompt per request; no streaming UI.
 - No automatic task claiming or completion writeback.
-- Token counts come from the provider response when available; cost stays `0`
-  because prices change and are not guessed.
+- Token counts come from the provider response when available. Monetary cost is
+  **not guessed**: it is `null` unless you enter an optional per-million-token
+  price table (input, output, currency) in AI setup or `providers.json`. The
+  ledger then computes `cost` from real tokens. Prices are user-supplied and may
+  be stale; the app does not fetch vendor price lists.
 - Provider errors are returned as text and are not logged as ledger events.
 - The bridge does not retry automatically; use **试跑** again after fixing the
   configuration.
