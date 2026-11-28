@@ -47,9 +47,14 @@ _ALLOWED_TEST_HINTS = (
 )
 
 
-def _shell(cmd, cwd, timeout, env=None):
+def _shell(cmd, cwd, timeout, env=None, on_spawn=None):
     """Run a shell command in its own process group; returns
-    (returncode_or_None_on_timeout, output, timed_out)."""
+    (returncode_or_None_on_timeout, output, timed_out).
+
+    ``on_spawn(proc)``, when given, is called immediately after the child is
+    spawned (before waiting) so the caller can record the child's process-group
+    id — which is the bridge's kill target while the run is still in flight.
+    """
     merged = dict(os.environ)
     if env:
         merged.update(env)
@@ -57,6 +62,11 @@ def _shell(cmd, cwd, timeout, env=None):
         cmd, cwd=str(cwd), env=merged, shell=True,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         start_new_session=True)
+    if on_spawn:
+        try:
+            on_spawn(proc)
+        except Exception:
+            pass  # recording liveness must never kill the run itself
     try:
         out, _ = proc.communicate(timeout=timeout)
         return proc.returncode, out.decode("utf-8", "replace"), False
@@ -243,6 +253,28 @@ def main(argv):
         conn, task_id=args.task_id, mission_id=args.mission_id,
         worktree_path=str(worktree), base_commit=args.base_commit,
         agent_id=args.agent_id, test_command=args.test_command, token_hash=thash)
+
+    # expectedPaths conflict pre-flight (RUNNER_DESIGN §4): two tasks touching
+    # the same paths must not run concurrently — the second reports a conflict
+    # instead of clobbering the first's worktree.
+    agentdb.set_task_expected_paths(conn, args.task_id, expected_paths)
+    if expected_paths:
+        clash = agentdb.conflicting_in_flight_run(conn, expected_paths, args.task_id)
+        if clash:
+            clash_run, overlap = clash
+            note = ("expectedPaths overlap with in-flight run %s: %s"
+                    % (clash_run, ", ".join(overlap)))
+            agentdb.set_run_status(conn, run_id, "failed",
+                                   fail_reason="expected_paths_conflict",
+                                   blocked_note=note)
+            agentdb.add_event(conn, "run", args.agent_id, "run", run_id,
+                              {"fail_reason": "expected_paths_conflict",
+                               "note": note, "conflicting_run": clash_run})
+            print(json.dumps({"runId": run_id, "status": "failed",
+                              "fail_reason": "expected_paths_conflict",
+                              "note": note}, ensure_ascii=False))
+            return 0
+
     agentdb.set_run_status(conn, run_id, "running")
 
     # G1: run the agent in its own process group, token injected.
@@ -251,9 +283,16 @@ def main(argv):
     exit_code = 0
     agent_out = ""
     if args.agent_cmd.strip():
+        def _on_spawn(proc):
+            # Record liveness + the agent's process-group id so the bridge can
+            # kill this run while it is still in flight (RUNNER_DESIGN §9).
+            agentdb.heartbeat(conn, run_id)
+            conn.execute("UPDATE runs SET session_pgid=? WHERE id=?",
+                         (proc.pid, run_id))
+            conn.commit()
         exit_code, agent_out, timed_out = _shell(
             args.agent_cmd, worktree, args.timeout,
-            env={"AGENT_OFFICE_RUN_TOKEN": token})
+            env={"AGENT_OFFICE_RUN_TOKEN": token}, on_spawn=_on_spawn)
     if exit_code is None:
         timed_out = True
         exit_code = -1
@@ -347,7 +386,7 @@ def main(argv):
         exit_code=exit_code, diff_hash=diff_hash, test_output_hash=test_output_hash,
         claim_hash=claim_hash, test_command_hash=run["test_command_hash"],
         receipt_hash=receipt, prev_receipt_hash=prev, head_commit=head,
-        fail_reason=fail_reason, review_reason=review_reason)
+        fail_reason=fail_reason, review_reason=review_reason, frozen=1)
 
     agentdb.add_event(conn, "run", args.agent_id, "run", run_id,
                       {"status": status, "fail_reason": fail_reason,

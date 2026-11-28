@@ -418,6 +418,96 @@ def add_event(conn, type_, agent_id="", resource_type="", resource_id="",
 
 
 # --------------------------------------------------------------------------- #
+# tasks / orchestration (expected-path conflict, RUNNER_DESIGN §4)
+# --------------------------------------------------------------------------- #
+
+def set_task_expected_paths(conn, task_id, expected_paths):
+    """Persist a task's expectedPaths so later runs can detect overlap."""
+    conn.execute(
+        "UPDATE tasks SET expected_paths=? WHERE id=?",
+        (json.dumps(list(expected_paths or [])), task_id),
+    )
+    conn.commit()
+
+
+def conflicting_in_flight_run(conn, expected_paths, exclude_task_id):
+    """Return (run_id, overlap) when another *in-flight* run's task overlaps
+    this task's expectedPaths, else None.
+
+    In-flight = queued / running / waiting_approval (not yet merged to done).
+    Overlap is a path-prefix match: ``src/a`` and ``src/a/b`` collide.
+    """
+    if not expected_paths:
+        return None
+    rows = conn.execute(
+        "SELECT r.id, r.task_id, t.expected_paths FROM runs r "
+        "LEFT JOIN tasks t ON t.id = r.task_id "
+        "WHERE r.status IN ('queued','running','waiting_approval') "
+        "AND r.task_id != ?", (exclude_task_id,),
+    ).fetchall()
+    mine = [p.rstrip("/") for p in expected_paths]
+    for row in rows:
+        try:
+            other = json.loads(row["expected_paths"] or "[]")
+        except ValueError:
+            other = []
+        other = [p.rstrip("/") for p in other if isinstance(p, str)]
+        overlap = sorted({a for a in mine for b in other
+                          if a == b or a.startswith(b + "/") or b.startswith(a + "/")})
+        if overlap:
+            return row["id"], overlap
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# approvals (RUNNER_DESIGN §8)
+# --------------------------------------------------------------------------- #
+
+def add_approval(conn, *, run_id, mission_id="", task_id="", status="approved",
+                 base_commit="", merge_target="", diff_hash="",
+                 test_output_hash="", claim_hash="", test_command_hash="",
+                 payload=None):
+    ap_id = new_id("apv")
+    now = now_iso()
+    data = dict(payload or {})
+    data.setdefault("runId", run_id)
+    data.setdefault("status", status)
+    conn.execute(
+        """INSERT INTO approvals
+           (id, mission_id, task_id, status, created_at, resolved_at, run_id,
+            base_commit, merge_target, diff_hash, test_output_hash, claim_hash,
+            test_command_hash, data)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (ap_id, mission_id, task_id, status, now, now, run_id, base_commit,
+         merge_target, diff_hash, test_output_hash, claim_hash,
+         test_command_hash, json.dumps(data, ensure_ascii=False)),
+    )
+    conn.commit()
+    return ap_id
+
+
+def mark_orphaned_runs(conn, stale_before_iso):
+    """Fail any run still queued/running with a stale heartbeat (RUNNER_DESIGN
+    §9 A3): the runner process died, so the run must not linger forever.
+
+    Returns the number of runs transitioned to failed(orphaned)."""
+    rows = conn.execute(
+        "SELECT r.id, r.task_id, COALESCE(rt.agent_id, '') AS agent_id "
+        "FROM runs r LEFT JOIN run_tokens rt ON rt.run_id = r.id "
+        "WHERE r.status IN ('queued','running') AND r.heartbeat_at < ?",
+        (stale_before_iso,),
+    ).fetchall()
+    n = 0
+    for row in rows:
+        set_run_status(conn, row["id"], "failed", fail_reason="orphaned",
+                       blocked_note="bridge restart: no live runner heartbeat")
+        add_event(conn, "run", row["agent_id"], "run", row["id"],
+                  {"status": "failed", "fail_reason": "orphaned"})
+        n += 1
+    return n
+
+
+# --------------------------------------------------------------------------- #
 # receipt hash chain (RUNNER_DATA_MODEL §4)
 # --------------------------------------------------------------------------- #
 

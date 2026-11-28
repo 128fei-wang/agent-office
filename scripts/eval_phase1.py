@@ -227,6 +227,28 @@ def mcp_tool_call(port: int, name: str, arguments: dict,
     return status, result
 
 
+BROWSER_ORIGIN = "http://127.0.0.1:5173"  # a port in the bridge's allowlist
+
+
+def browser_post(port: int, path: str, body: dict | None = None):
+    """POST as a trusted browser (Origin header). Returns (status, parsed JSON)."""
+    status, _, raw = http_request(
+        "POST", port, path, body=json.dumps(body or {}).encode(),
+        headers={"Content-Type": "application/json", "Origin": BROWSER_ORIGIN})
+    try:
+        return status, (json.loads(raw) if raw else None)
+    except Exception:  # noqa: BLE001
+        return status, None
+
+
+def run_agent_writes(ctx: "Ctx", task_id: str, filename: str = "x.txt",
+                     content: str = "hi", **flags):
+    """Run a runner whose agent writes one file (produces a diff)."""
+    agent_cmd = f"{PY} -c \"open('{ctx.repo}/{filename}','w').write('{content}')\""
+    return run_runner(ctx, task_id, ctx.repo, ctx.base_commit,
+                      agent_cmd=agent_cmd, **flags)
+
+
 def make_run_with_token(ctx: "Ctx", task_id: str = "eval-g4",
                         token: str = "eval-token", agent_id: str = "eval-agent"):
     """用一个真实 runner run 建 schema + run，然后把 token 换成已知明文。
@@ -848,26 +870,121 @@ def c_tamper_deliverable(ctx: Ctx) -> Result:
 
 def c_approval_modify_after(ctx: Ctx) -> Result:
     """审批（反向）：批准后修改工作区 → 审批失效、merge 阻断。"""
-    return Result.skip("审批 + merge 流程超出 Phase 1「真实执行 MVP」范围（runner 只产出 waiting_approval，审批+merge 属后续阶段）",
-                       "批准后改动工作区应使审批失效并阻断 merge")
+    if not (has_runner() and has_bridge()):
+        return Result.skip("runner 或 bridge 实现未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    _, res = run_agent_writes(ctx, "eval-ama")
+    run_id = res.get("runId")
+    if not run_id:
+        return Result.fail("runner 应返回 runId", json.dumps(res, ensure_ascii=False))
+    row = get_run_row(ctx, run_id)
+    if not row or row["status"] != "waiting_approval":
+        return Result.fail("run 应先进入 waiting_approval",
+                           f"status={(row or {}).get('status')!r} res={res}")
+    # 批准（run 收集完）之后，工作区又被改动 → merge 必须失效
+    (ctx.repo / "y.txt").write_text("tampered-after-approval", encoding="utf-8")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    if status == 409 and (payload or {}).get("code") == "worktree_modified":
+        return Result.ok("批准后改动工作区应使审批失效并阻断 merge",
+                         f"status={status} code={(payload or {}).get('code')!r}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("批准后改动工作区应使审批失效并阻断 merge",
+                       f"status={status} payload={payload}",
+                       repro="python3 scripts/eval_phase1.py --case approval_modify_after")
 
 
 def c_approval_diff_base(ctx: Ctx) -> Result:
     """审批（反向）：同一 diff 不同 baseCommit → 审批不通用。"""
-    return Result.skip("审批 + merge 流程超出 Phase 1「真实执行 MVP」范围（runner 只产出 waiting_approval，审批+merge 属后续阶段）",
-                       "同一 diff 在不同 baseCommit 上的审批不应通用")
+    if not (has_runner() and has_bridge()):
+        return Result.skip("runner 或 bridge 实现未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    _, res = run_agent_writes(ctx, "eval-adb")
+    run_id = res.get("runId")
+    if not run_id:
+        return Result.fail("runner 应返回 runId", json.dumps(res, ensure_ascii=False))
+    row = get_run_row(ctx, run_id)
+    if not row or row["status"] != "waiting_approval":
+        return Result.fail("run 应先进入 waiting_approval",
+                           f"status={(row or {}).get('status')!r}")
+    # 工作区 base 前移（把 diff 落成一个新 base 提交），审批绑定旧 base → 不通用
+    subprocess.run(["git", "-C", str(ctx.repo), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(ctx.repo), "commit", "-q", "-m", "advance base"],
+                   check=True, capture_output=True)
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    if status == 409 and (payload or {}).get("code") in ("base_mismatch", "worktree_modified"):
+        return Result.ok("同一 diff 在不同 baseCommit 上不应通用（审批绑定 base）",
+                         f"status={status} code={(payload or {}).get('code')!r}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("同一 diff 在不同 baseCommit 上不应通用",
+                       f"status={status} payload={payload}",
+                       repro="python3 scripts/eval_phase1.py --case approval_diff_base")
 
 
 def c_approval_not_stopped(ctx: Ctx) -> Result:
     """审批（反向）：审批前 run 未 stop → 拒绝 merge。"""
-    return Result.skip("审批 + merge 流程超出 Phase 1「真实执行 MVP」范围（runner 只产出 waiting_approval，审批+merge 属后续阶段）",
-                       "run 未停止前应拒绝 merge")
+    if not (has_runner() and has_bridge()):
+        return Result.skip("runner 或 bridge 实现未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    # 先落一个 schema（任意一次 runner 即可），再直接造一条仍在 running 的 run
+    run_agent_writes(ctx, "eval-ans-seed")
+    conn = ctx.db()
+    try:
+        conn.execute(
+            "INSERT INTO runs(id, task_id, mission_id, status, worktree_path, "
+            "base_commit, head_commit, heartbeat_at, started_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("run-still-running", "eval-ans", "", "running", str(ctx.repo),
+             ctx.base_commit, ctx.base_commit,
+             "2026-11-28T00:00:00Z", "2026-11-28T00:00:00Z"))
+        conn.commit()
+    finally:
+        conn.close()
+    status, payload = browser_post(ctx.port, "/runs/run-still-running/merge")
+    if status == 409 and (payload or {}).get("code") == "not_stopped":
+        return Result.ok("run 未停止前应拒绝 merge",
+                         f"status={status} code={(payload or {}).get('code')!r}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("run 未停止前应拒绝 merge",
+                       f"status={status} payload={payload}",
+                       repro="python3 scripts/eval_phase1.py --case approval_not_stopped")
 
 
 def c_restart_orphan(ctx: Ctx) -> Result:
     """重启（正/反）：run 中 kill bridge 再启动 → 无主 run 不得永远 running。"""
-    return Result.skip("bridge 重启后的无主 run 回收（orphaned 重连/归失败）超出 Phase 1「真实执行 MVP」范围（runner 同步执行、bridge 不持有 run 会话）",
-                       "bridge 重启后无主 run 应归 failed(orphaned) 或重连，不得永远 running")
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    # 先落 schema（任意一次 runner），再造一条心跳早已过期的 running run
+    run_agent_writes(ctx, "eval-ro-seed")
+    conn = ctx.db()
+    try:
+        conn.execute(
+            "INSERT INTO runs(id, task_id, mission_id, status, worktree_path, "
+            "base_commit, head_commit, heartbeat_at, started_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("run-orphan", "eval-ro", "", "running", str(ctx.repo),
+             ctx.base_commit, ctx.base_commit,
+             "2000-01-01T00:00:00Z", "2000-01-01T00:00:00Z"))
+        conn.commit()
+    finally:
+        conn.close()
+    # bridge 启动时扫描并回收无主 run（recover_orphaned_runs 在 serve 前同步执行）
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    row = get_run_row(ctx, "run-orphan")
+    if row and row["status"] == "failed" and row["fail_reason"] == "orphaned":
+        return Result.ok("bridge 重启后无主 run 应归 failed(orphaned)，不得永远 running",
+                         f"status={row['status']} fail_reason={row['fail_reason']}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("bridge 重启后无主 run 应归 failed(orphaned)",
+                       f"status={(row or {}).get('status')!r} fail_reason={(row or {}).get('fail_reason')!r}",
+                       repro="python3 scripts/eval_phase1.py --case restart_orphan")
 
 
 def c_isolation_second_bridge(ctx: Ctx) -> Result:
@@ -897,9 +1014,32 @@ def c_isolation_second_bridge(ctx: Ctx) -> Result:
 
 
 def c_isolation_expected_paths_conflict(ctx: Ctx) -> Result:
-    """隔离（反向）：两个任务 expectedPaths 冲突 → 串行或 merge-prep 报冲突。"""
-    return Result.skip("跨任务的 expectedPaths 冲突检测/串行化超出 Phase 1「真实执行 MVP」范围（runner 单任务独立执行，无任务编排器）",
-                       "expectedPaths 有交集的两个任务应串行化或 merge-prep 报冲突")
+    """隔离（反向）：两个任务 expectedPaths 冲突 → 串行或报冲突。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    expected = json.dumps(["src/shared"])
+    agent_cmd = (f"{PY} -c \"import os; "
+                 f"os.makedirs('{ctx.repo}/src/shared', exist_ok=True); "
+                 f"open('{ctx.repo}/src/shared/a.txt','w').write('a')\"")
+    _, res1 = run_runner(ctx, "eval-conf-1", ctx.repo, ctx.base_commit,
+                         agent_cmd=agent_cmd, expected_paths=expected)
+    run1 = res1.get("runId")
+    if not run1:
+        return Result.fail("第一个 run 应返回 runId", json.dumps(res1, ensure_ascii=False))
+    row1 = get_run_row(ctx, run1)
+    if not row1 or row1["status"] != "waiting_approval":
+        return Result.fail("第一个 run 应处于 in-flight(waiting_approval)",
+                           f"status={(row1 or {}).get('status')!r} res={res1}")
+    # 第二个任务 expectedPaths 重叠 → 应在开工前报冲突，不得并发跑
+    _, res2 = run_runner(ctx, "eval-conf-2", ctx.repo, ctx.base_commit,
+                         agent_cmd=agent_cmd, expected_paths=expected)
+    if res2.get("status") == "failed" and res2.get("fail_reason") == "expected_paths_conflict":
+        return Result.ok("expectedPaths 有交集的两个任务应串行化/报冲突",
+                         f"fail_reason={res2.get('fail_reason')!r} note={res2.get('note')!r}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("expectedPaths 有交集的两个任务应报冲突",
+                       f"res2={res2}",
+                       repro="python3 scripts/eval_phase1.py --case isolation_expected_paths_conflict")
 
 
 def c_migration_10x(ctx: Ctx) -> Result:
@@ -1005,8 +1145,61 @@ def c_view_5state_map(ctx: Ctx) -> Result:
 
 def c_view_kill_5s(ctx: Ctx) -> Result:
     """视图（正向）：kill 后 ≤5s 事件流出现失败。"""
-    return Result.skip("kill 后 ≤5s 事件流告警依赖 bridge 的 kill-endpoint + 事件流（SSE）能力，超出 Phase 1「真实执行 MVP」范围",
-                       "kill 后 ≤5s 事件流出现 failed")
+    if not (has_runner() and has_bridge()):
+        return Result.skip("runner 或 bridge 实现未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    # 后台跑一个长 runner，进入 running 并记录 session_pgid
+    agent_cmd = f"{PY} -c \"import time; time.sleep(60)\""
+    ctx.spawn([PY, str(RUNNER_PY), "--task-id", "eval-kill",
+               "--worktree", str(ctx.repo), "--base-commit", ctx.base_commit,
+               "--agent-cmd", agent_cmd])
+    run_id = None
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        db_path = ctx.state_dir / "agent-office.db"
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            try:
+                row = conn.execute(
+                    "SELECT id FROM runs WHERE task_id='eval-kill' AND status='running' "
+                    "AND session_pgid IS NOT NULL").fetchone()
+                if row:
+                    run_id = row["id"]
+                    conn.close()
+                    break
+            finally:
+                conn.close()
+        time.sleep(0.1)
+    if not run_id:
+        return Result.fail("runner 应进入 running 并记录 session_pgid", "未等到 running")
+    t0 = time.time()
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/kill")
+    ok = False
+    while time.time() - t0 < 5:
+        row = get_run_row(ctx, run_id)
+        if row and row["status"] == "failed" and row["fail_reason"] == "killed":
+            ok = True
+            break
+        time.sleep(0.1)
+    if not ok:
+        return Result.fail("kill 后 ≤5s 事件流应出现 failed(killed)",
+                           f"status={status} payload={payload} run={(get_run_row(ctx, run_id) or {}).get('status')!r}")
+    conn = ctx.db()
+    try:
+        ev = conn.execute(
+            "SELECT id FROM events WHERE type='kill' AND resource_id=?", (run_id,)).fetchone()
+    finally:
+        conn.close()
+    if ev:
+        return Result.ok("kill 后 ≤5s 事件流出现 failed(killed)",
+                         f"run_status=failed kill_event=True",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("kill 后应写入 kill 事件到事件流",
+                       "SQLite events 无 type='kill' 记录",
+                       repro="python3 scripts/eval_phase1.py --case view_kill_5s")
 
 
 def c_negative_reason(ctx: Ctx) -> Result:

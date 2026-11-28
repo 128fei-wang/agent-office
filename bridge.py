@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import ssl
 import subprocess
@@ -69,11 +70,18 @@ try:
     import agentdb
 except Exception:  # Phase 1 run database is optional for old installations
     agentdb = None
+try:
+    import runner as runner_module
+except Exception:  # runner's diff collection is optional too
+    runner_module = None
 
 STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-office")).expanduser()
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
 LOCK = threading.RLock()
 DEMO_STOP = threading.Event()
+# Serialises the verify-then-commit step of run merges so two concurrent
+# approvals cannot race the same worktree (RUNNER_DESIGN §8 B5).
+MERGE_LOCK = threading.Lock()
 # Idempotency-Key → created resource id, for POST /missions and /messages
 # (security review #9). Bounded to avoid unbounded growth from a hostile key spray.
 IDEMPOTENCY_CACHE = {}
@@ -3884,6 +3892,134 @@ def record_read(resource: str, caller: str, resource_id: str = "", detail: str =
         return event
 
 
+def merge_run(run_id):
+    """Approve + merge a ``waiting_approval`` run (browser-side write).
+
+    Re-verifies the approval binding — {baseCommit, headCommit, diffHash} — and
+    the worktree freeze *inside* MERGE_LOCK, then commits the worktree diff and
+    closes the run to ``done``. Any mutation of the worktree or base after the
+    run invalidates the approval (RUNNER_DESIGN §8 B5).
+    """
+    if not agentdb:
+        return 503, {"error": "run database is not available", "code": "no_db"}
+    if not runner_module:
+        return 503, {"error": "runner module is not available", "code": "no_runner"}
+    db_path = agentdb.default_db_path(STATE_DIR)
+    if not db_path.exists():
+        return 404, {"error": "no run database", "code": "no_db"}
+    with MERGE_LOCK:
+        conn = agentdb.connect(db_path)
+        try:
+            run = agentdb.get_run(conn, run_id)
+            if not run:
+                return 404, {"error": "run not found", "code": "not_found"}
+            if run["status"] != "waiting_approval":
+                return 409, {"error": "run is not waiting for approval (status=%s)"
+                                     % run["status"], "code": "not_stopped"}
+            if not run["frozen"]:
+                return 409, {"error": "worktree is not frozen", "code": "worktree_not_frozen"}
+            worktree = Path(run["worktree_path"] or "")
+            base = run["base_commit"] or ""
+            if not worktree.is_dir() or not base:
+                return 409, {"error": "run worktree or base commit missing", "code": "bad_run"}
+            diff, porcelain, head = runner_module.collect_diff(worktree, base)
+            diff_hash = agentdb.sha256_text(
+                agentdb.canonical({"diff": diff, "porcelain": porcelain}))
+            if head != run["head_commit"]:
+                return 409, {"error": "worktree HEAD moved (base changed since the run)",
+                             "code": "base_mismatch",
+                             "detail": {"stored_head": run["head_commit"], "now_head": head}}
+            if diff_hash != run["diff_hash"]:
+                return 409, {"error": "worktree modified after the run; approval invalidated",
+                             "code": "worktree_modified"}
+            had_diff = not runner_module.diff_empty(diff, porcelain)
+            merge_commit = run["head_commit"]
+            if had_diff:
+                add = subprocess.run(["git", "-C", str(worktree), "add", "-A"],
+                                     capture_output=True, text=True)
+                if add.returncode != 0:
+                    return 500, {"error": "git add failed", "code": "git_add_failed",
+                                 "detail": (add.stderr or "")[:300]}
+                commit = subprocess.run(
+                    ["git", "-C", str(worktree), "commit", "-m",
+                     "agent-office merge: run %s (task %s)" % (run_id, run["task_id"] or "")],
+                    capture_output=True, text=True)
+                if commit.returncode != 0:
+                    return 500, {"error": "git commit failed", "code": "git_commit_failed",
+                                 "detail": (commit.stderr or "")[:300]}
+                merge_commit = subprocess.run(
+                    ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+                    capture_output=True, text=True).stdout.strip()
+            agentdb.add_approval(
+                conn, run_id=run_id, mission_id=run["mission_id"] or "",
+                task_id=run["task_id"] or "", status="approved",
+                base_commit=base, merge_target=run["merge_target"] or "",
+                diff_hash=run["diff_hash"], test_output_hash=run["test_output_hash"],
+                claim_hash=run["claim_hash"], test_command_hash=run["test_command_hash"],
+                payload={"mergeCommit": merge_commit, "hadDiff": had_diff})
+            agentdb.set_run_status(conn, run_id, "done", head_commit=merge_commit)
+            agentdb.add_event(conn, "approval", "browser", "run", run_id,
+                              {"status": "done", "merge_commit": merge_commit})
+            return 200, {"ok": True, "runId": run_id, "status": "done",
+                         "mergeCommit": merge_commit, "hadDiff": had_diff}
+        finally:
+            conn.close()
+
+
+def kill_run(run_id):
+    """Kill an in-flight run (browser-side write): SIGKILL the recorded agent
+    process group, then mark the run failed(killed) and log a kill event."""
+    if not agentdb:
+        return 503, {"error": "run database is not available", "code": "no_db"}
+    db_path = agentdb.default_db_path(STATE_DIR)
+    if not db_path.exists():
+        return 404, {"error": "no run database", "code": "no_db"}
+    conn = agentdb.connect(db_path)
+    try:
+        run = agentdb.get_run(conn, run_id)
+        if not run:
+            return 404, {"error": "run not found", "code": "not_found"}
+        if run["status"] not in ("queued", "running"):
+            return 409, {"error": "run is not in flight (status=%s)" % run["status"],
+                         "code": "not_running"}
+        pgid = run.get("session_pgid")
+        signaled = False
+        if pgid:
+            try:
+                os.killpg(int(pgid), signal.SIGKILL)
+                signaled = True
+            except (ProcessLookupError, PermissionError, OSError):
+                signaled = False
+        agentdb.set_run_status(conn, run_id, "failed", fail_reason="killed")
+        agentdb.add_event(conn, "kill", "browser", "run", run_id,
+                          {"status": "failed", "fail_reason": "killed",
+                           "pgid": pgid, "signaled": signaled})
+        return 200, {"ok": True, "runId": run_id, "status": "failed",
+                     "failReason": "killed", "signaled": signaled}
+    finally:
+        conn.close()
+
+
+def recover_orphaned_runs():
+    """On startup, fail queued/running runs whose heartbeat predates this bridge
+    (RUNNER_DESIGN §9 A3). The runner heartbeats only while it runs, so a stale
+    heartbeat means the previous bridge/runner crashed and the run must not stay
+    ``running`` forever."""
+    if not agentdb:
+        return 0
+    db_path = agentdb.default_db_path(STATE_DIR)
+    if not db_path.exists():
+        return 0
+    conn = agentdb.connect(db_path)
+    try:
+        agentdb.init_schema(conn)
+        stale_before = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                     time.gmtime(time.time() - 60))
+        return agentdb.mark_orphaned_runs(conn, stale_before)
+    finally:
+        conn.close()
+
+
 DEMO_SEQUENCE = [
     {
         "kind": "skill", "action": "读取仓库并生成变更计划",
@@ -4368,6 +4504,25 @@ class Handler(BaseHTTPRequestHandler):
             }, 500)
             return
         self.send_json(payload)
+
+    def handle_run_action(self, path, body):
+        """Browser-only run lifecycle: /runs/<runId>/merge and /runs/<runId>/kill."""
+        if not self._require_browser_write():
+            return
+        parts = [p for p in path.split("/") if p]
+        if len(parts) != 3 or parts[0] != "runs":
+            self.send_json({"error": "not found"}, 404)
+            return
+        run_id, action = parts[1], parts[2]
+        if action == "merge":
+            status, payload = merge_run(run_id)
+            self.send_json(payload, status)
+            return
+        if action == "kill":
+            status, payload = kill_run(run_id)
+            self.send_json(payload, status)
+            return
+        self.send_json({"error": "not found"}, 404)
 
     def handle_mission_action(self, path, body):
         if not self._require_browser_write():
@@ -5162,7 +5317,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 self.send_json({
                     "service": "agent-office-bridge",
-                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/execution/capabilities", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/autorun", "/missions/<id>/autorun/stop", "/missions/<id>/budget", "/missions/<id>/tasks/<taskId>/run", "/missions/<id>/tasks/<taskId>/verify", "/missions/<id>/tasks/<taskId>/run-tests", "/missions/<id>/evidence", "/missions/<id>/evidence/bundle", "/missions/<id>/evidence/verify", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/configure", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/agents/<id>/signing-key", "/demo/start", "/demo/stop"],
+                    "endpoints": ["/health", "/update/check", "/update/status", "/update/apply", "/update/rollback", "/update/manual/token", "/update/manual", "/execution/capabilities", "/missions", "/missions/overview", "/missions/agents", "/missions/<id>", "/missions/<id>/discuss", "/missions/<id>/autorun", "/missions/<id>/autorun/stop", "/missions/<id>/budget", "/missions/<id>/tasks/<taskId>/run", "/missions/<id>/tasks/<taskId>/verify", "/missions/<id>/tasks/<taskId>/run-tests", "/missions/<id>/evidence", "/missions/<id>/evidence/bundle", "/missions/<id>/evidence/verify", "/mission-tasks", "/mission-tasks/<id>", "/conversations", "/conversations/<id>/messages", "/approvals", "/approvals/<id>/resolve", "/files", "/files/<id>", "/files/<id>/raw", "/files/<id>/vision", "/missions/stream", "/mcp", "/company", "/rooms", "/messages", "/stream", "/agents", "/providers", "/assignments", "/assignments/<id>", "/events?since=N", "/pair/code", "/pairs", "/pair/<code>/claim", "/providers/<id>/configure", "/providers/<id>/connect", "/providers/<id>/test", "/providers/<id>/run", "/agents/<id>/signing-key", "/runs/<id>/merge", "/runs/<id>/kill", "/demo/start", "/demo/stop"],
                 })
                 return
         self.send_json({"error": "not found"}, 404)
@@ -5232,6 +5387,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(exc), "code": exc.code}, exc.status)
                 return
             self.send_json({"memory": memory}, 201)
+            return
+        if path.startswith("/runs/"):
+            self.handle_run_action(path, body)
             return
         if path.startswith(("/missions", "/conversations", "/approvals", "/files/")):
             self.handle_mission_action(path, body)
@@ -5964,6 +6122,9 @@ def main():
         print("Refusing to start: another bridge instance already holds the state "
               "directory lock (%s)." % (STATE_DIR / "state.lock"), file=sys.stderr)
         sys.exit(1)
+    orphaned = recover_orphaned_runs()
+    if orphaned:
+        print("Recovered %d orphaned run(s) from a previous bridge/runner exit." % orphaned)
     if STATE.get("demo"):
         start_demo()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
