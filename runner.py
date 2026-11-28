@@ -27,9 +27,11 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -81,6 +83,57 @@ def _shell(cmd, cwd, timeout, env=None, on_spawn=None):
             pass
         out, _ = proc.communicate()
         return None, out.decode("utf-8", "replace"), True
+
+
+def install_git_wrapper(tmp_dir: Path, audit_path: Path) -> Path:
+    """Create a ``git`` shim that logs every invocation (100% 留痕) and blocks
+    the dangerous subcommands (push / reset --hard / update-ref) from
+    RUNNER_DESIGN §3. Returns the directory to prepend to the agent's PATH.
+
+    Only the *agent's* git calls go through this shim: the runner's own
+    ``collect_diff`` uses the real git (its subprocess env is untouched), so
+    evidence collection can never be blocked by the wrapper it installs.
+    """
+    real_git = shutil.which("git") or "/usr/bin/git"
+    wrap_dir = tmp_dir / "bin"
+    wrap_dir.mkdir(parents=True, exist_ok=True)
+    script = f'''#!/bin/sh
+# agent-office git 薄包装: 100% 留痕 + 拦危险操作
+audit="{audit_path}"
+[ -n "$audit" ] && printf '%s\\n' "$*" >> "$audit"
+blocked=""
+case "$1" in
+  push) blocked="push" ;;
+  update-ref) blocked="update-ref" ;;
+  reset) for a in "$@"; do [ "$a" = "--hard" ] && blocked="reset --hard" && break; done ;;
+esac
+[ -n "$blocked" ] && {{ printf 'BLOCKED %s\\n' "$blocked" >> "$audit"; echo "agent-office: git $blocked 被薄包装拦截（越权 git 操作）" >&2; exit 1; }}
+exec "{real_git}" "$@"
+'''
+    shim = wrap_dir / "git"
+    shim.write_text(script, encoding="utf-8")
+    shim.chmod(0o755)
+    return wrap_dir
+
+
+def read_git_audit(audit_path: Path, conn, run_id, agent_id=""):
+    """Read the agent's git audit trail, write one ``events(type=git)`` row per
+    line (the 100% 留痕 from RUNNER_DESIGN §3), and return the blocked
+    subcommands (e.g. ``["push"]``)."""
+    if not audit_path.exists():
+        return []
+    lines = audit_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    blocked = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        is_blocked = line.startswith("BLOCKED ")
+        if is_blocked:
+            blocked.append(line[len("BLOCKED "):].strip())
+        agentdb.add_event(conn, "git", agent_id, "run", run_id,
+                          {"line": line, "blocked": is_blocked})
+    return blocked
 
 
 def collect_diff(worktree: Path, base_commit: str):
@@ -277,11 +330,19 @@ def main(argv):
 
     agentdb.set_run_status(conn, run_id, "running")
 
+    # git 薄包装 (RUNNER_DESIGN §3): 给 Agent 的 PATH 前置一个 `git` shim，
+    # 拦 push / reset --hard / update-ref，并把每次调用 100% 留痕到
+    # events(type=git)。shim 与审计日志都在工作区之外，不污染 diff。
+    git_tmp = Path(tempfile.mkdtemp(prefix="agent-office-gitwrap-"))
+    audit_path = git_tmp / "git-audit.log"
+    wrap_dir = install_git_wrapper(git_tmp, audit_path)
+
     # G1: run the agent in its own process group, token injected.
     timed_out = False
     killed = False
     exit_code = 0
     agent_out = ""
+    git_blocked = []
     if args.agent_cmd.strip():
         def _on_spawn(proc):
             # Record liveness + the agent's process-group id so the bridge can
@@ -292,7 +353,11 @@ def main(argv):
             conn.commit()
         exit_code, agent_out, timed_out = _shell(
             args.agent_cmd, worktree, args.timeout,
-            env={"AGENT_OFFICE_RUN_TOKEN": token}, on_spawn=_on_spawn)
+            env={"AGENT_OFFICE_RUN_TOKEN": token,
+                 "PATH": str(wrap_dir) + os.pathsep + os.environ.get("PATH", "")},
+            on_spawn=_on_spawn)
+        git_blocked = read_git_audit(audit_path, conn, run_id, args.agent_id)
+    shutil.rmtree(git_tmp, ignore_errors=True)
     if exit_code is None:
         timed_out = True
         exit_code = -1
@@ -331,9 +396,13 @@ def main(argv):
     status = None
     fail_reason = None
     review_reason = None
+    blocked_note = None
     has_diff = not diff_empty(diff, porcelain)
 
-    if timed_out:
+    if git_blocked:
+        status, fail_reason = "failed", "git_boundary"
+        blocked_note = "git 薄包装拦截越权操作: " + ", ".join(git_blocked)
+    elif timed_out:
         status, fail_reason = "failed", "timeout"
     elif killed:
         status, fail_reason = "failed", "killed"
@@ -386,7 +455,8 @@ def main(argv):
         exit_code=exit_code, diff_hash=diff_hash, test_output_hash=test_output_hash,
         claim_hash=claim_hash, test_command_hash=run["test_command_hash"],
         receipt_hash=receipt, prev_receipt_hash=prev, head_commit=head,
-        fail_reason=fail_reason, review_reason=review_reason, frozen=1)
+        fail_reason=fail_reason, review_reason=review_reason,
+        blocked_note=blocked_note, frozen=1)
 
     agentdb.add_event(conn, "run", args.agent_id, "run", run_id,
                       {"status": status, "fail_reason": fail_reason,

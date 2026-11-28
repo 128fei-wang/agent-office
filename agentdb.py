@@ -21,7 +21,7 @@ import secrets
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 GENESIS = hashlib.sha256(b"agent-office.runs.genesis.v1").hexdigest()
 SIGNING_PREFIX = b"agent-office.runs.v1:"
@@ -180,6 +180,8 @@ CREATE TABLE IF NOT EXISTS runs (
     heartbeat_at       TEXT,
     started_at         TEXT,
     ended_at           TEXT,
+    merged_at          TEXT,
+    post_merge_defects INTEGER DEFAULT 0,
     FOREIGN KEY (task_id) REFERENCES tasks(id)
 );
 
@@ -225,8 +227,21 @@ CREATE INDEX IF NOT EXISTS idx_events_agent    ON events(agent_id);
 """
 
 
+def _ensure_column(conn, table, column, ddl):
+    """Add a column if missing (idempotent), so pre-existing DBs created before
+    this column was introduced still open cleanly (no ALTER migration infra)."""
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA_SQL)
+    # Phase 1 adds these columns after the first release cut; older DBs may not
+    # have them, so add idempotently instead of requiring a destructive rebuild.
+    _ensure_column(conn, "runs", "merged_at", "merged_at TEXT")
+    _ensure_column(conn, "runs", "post_merge_defects",
+                   "post_merge_defects INTEGER DEFAULT 0")
     conn.execute(
         "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
         (json.dumps(SCHEMA_VERSION),),
@@ -296,7 +311,8 @@ def set_run_status(conn, run_id, status, **fields):
         "exit_code", "diff_hash", "test_output_hash", "claim_hash",
         "test_command_hash", "receipt_hash", "prev_receipt_hash",
         "session_pgid", "frozen", "review_reason", "fail_reason",
-        "blocked_note", "head_commit", "ended_at", "heartbeat_at",
+        "blocked_note", "head_commit", "ended_at", "merged_at",
+        "post_merge_defects", "heartbeat_at",
     }
     updates = {"status": status}
     for key, value in fields.items():
@@ -328,6 +344,41 @@ def latest_prev_receipt_hash(conn):
         "SELECT receipt_hash FROM runs WHERE receipt_hash IS NOT NULL "
         "ORDER BY started_at DESC, id DESC LIMIT 1").fetchone()
     return row["receipt_hash"] if row else GENESIS
+
+
+def _parse_iso(ts):
+    """Parse ``now_iso()`` timestamps into aware datetimes (None on bad input)."""
+    if not ts:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def run_metrics(conn, run_id):
+    """The two validation metrics from RUNNER_DESIGN §10.
+
+    Returns ``time_to_trusted_merge_sec`` (started_at → merged_at) and
+    ``post_merge_defects``, or ``None`` when the run does not exist. The
+    approval + evidence-collection overhead is kept separate by reading the
+    ``approvals`` table, not folded into the merge clock.
+    """
+    row = conn.execute(
+        "SELECT started_at, merged_at, post_merge_defects FROM runs WHERE id=?",
+        (run_id,),
+    ).fetchone()
+    if not row:
+        return None
+    started, merged = _parse_iso(row["started_at"]), _parse_iso(row["merged_at"])
+    ttm = (merged - started).total_seconds() if (started and merged) else None
+    return {
+        "run_id": run_id,
+        "started_at": row["started_at"],
+        "merged_at": row["merged_at"],
+        "time_to_trusted_merge_sec": ttm,
+        "post_merge_defects": row["post_merge_defects"] or 0,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -469,6 +520,11 @@ def add_approval(conn, *, run_id, mission_id="", task_id="", status="approved",
                  payload=None):
     ap_id = new_id("apv")
     now = now_iso()
+    # mission_id / task_id are nullable FKs; an empty string is not a valid
+    # reference, so normalise to NULL (the runner may run standalone without a
+    # mission and never create a parent missions row).
+    mission_id = mission_id or None
+    task_id = task_id or None
     data = dict(payload or {})
     data.setdefault("runId", run_id)
     data.setdefault("status", status)

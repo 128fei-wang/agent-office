@@ -1218,6 +1218,98 @@ def c_negative_reason(ctx: Ctx) -> Result:
                        repro="curl -i http://127.0.0.1:<port>/no-such-route-eval")
 
 
+def c_git_boundary_block(ctx: Ctx) -> Result:
+    """第 3 条 git 边界（拦）：Agent 尝试 git push → 被薄包装拦 + 100% 留痕。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    agent_cmd = "git push origin main"
+    _, res = run_runner(ctx, "eval-gitb", ctx.repo, ctx.base_commit, agent_cmd=agent_cmd)
+    run_id = res.get("runId")
+    if not run_id:
+        return Result.fail("runner 应返回 runId", json.dumps(res, ensure_ascii=False))
+    row = get_run_row(ctx, run_id)
+    conn = ctx.db()
+    try:
+        rows = conn.execute(
+            "SELECT payload FROM events WHERE type='git' AND resource_id=?",
+            (run_id,)).fetchall()
+    finally:
+        conn.close()
+    blocked = [r for r in rows if json.loads(r["payload"]).get("blocked")]
+    if row and row["status"] == "failed" and row["fail_reason"] == "git_boundary" and blocked:
+        return Result.ok("git push 应被薄包装拦（failed/git_boundary）并 100% 留痕",
+                         f"fail_reason={row['fail_reason']!r} git_events={len(rows)} blocked={len(blocked)}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("git push 应被薄包装拦并 100% 留痕",
+                       f"status={(row or {}).get('status')!r} fail_reason={(row or {}).get('fail_reason')!r} git_events={len(rows)} blocked={len(blocked)}",
+                       repro="python3 scripts/eval_phase1.py --case git_boundary_block")
+
+
+def c_git_boundary_log(ctx: Ctx) -> Result:
+    """第 3 条 git 边界（放行+留痕）：Agent 走安全 git 命令 → 放行且 100% 留痕。"""
+    if not has_runner():
+        return Result.skip("runner 实现未落地")
+    agent_cmd = f"git status >/dev/null; {PY} -c \"open('{ctx.repo}/x.txt','w').write('hi')\""
+    _, res = run_runner(ctx, "eval-gitlog", ctx.repo, ctx.base_commit, agent_cmd=agent_cmd)
+    run_id = res.get("runId")
+    if not run_id:
+        return Result.fail("runner 应返回 runId", json.dumps(res, ensure_ascii=False))
+    row = get_run_row(ctx, run_id)
+    conn = ctx.db()
+    try:
+        rows = conn.execute(
+            "SELECT payload FROM events WHERE type='git' AND resource_id=?",
+            (run_id,)).fetchall()
+    finally:
+        conn.close()
+    if row and row["status"] == "waiting_approval" and not row["fail_reason"] and rows:
+        return Result.ok("安全 git 命令应放行（不拦截）并 100% 留痕",
+                         f"status={row['status']} git_events={len(rows)}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("安全 git 命令应放行并 100% 留痕",
+                       f"status={(row or {}).get('status')!r} fail_reason={(row or {}).get('fail_reason')!r} git_events={len(rows)}",
+                       repro="python3 scripts/eval_phase1.py --case git_boundary_log")
+
+
+def c_metric_ttm(ctx: Ctx) -> Result:
+    """第 10 条指标：merge 后 merged_at 落库、time-to-trusted-merge 可算、post_merge_defects 默认 0。"""
+    if not (has_runner() and has_bridge()):
+        return Result.skip("runner 或 bridge 实现未落地")
+    ctx.start_bridge()
+    if not wait_http(ctx.port):
+        return Result.fail("bridge 应在 15s 内响应 /health", "未响应")
+    _, res = run_agent_writes(ctx, "eval-ttm")
+    run_id = res.get("runId")
+    if not run_id:
+        return Result.fail("runner 应返回 runId", json.dumps(res, ensure_ascii=False))
+    row = get_run_row(ctx, run_id)
+    if not row or row["status"] != "waiting_approval":
+        return Result.fail("run 应先进入 waiting_approval",
+                           f"status={(row or {}).get('status')!r}")
+    status, payload = browser_post(ctx.port, f"/runs/{run_id}/merge")
+    if status != 200:
+        return Result.fail("merge 应成功", f"status={status} payload={payload}")
+    row = get_run_row(ctx, run_id)
+    conn = ctx.db()
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        defects = conn.execute(
+            "SELECT post_merge_defects FROM runs WHERE id=?", (run_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    merged_at = (row or {}).get("merged_at")
+    started_at = (row or {}).get("started_at")
+    ttm_ok = bool(merged_at and started_at and merged_at >= started_at)
+    if (row and row["status"] == "done" and "post_merge_defects" in cols
+            and ttm_ok and defects == 0):
+        return Result.ok("merge 后 merged_at 落库、time-to-trusted-merge 可算、post_merge_defects 默认 0",
+                         f"status={row['status']} merged_at={merged_at!r} defects={defects}",
+                         evidence=str(ctx.state_dir / "agent-office.db"))
+    return Result.fail("merge 后应落 merged_at、可算 time-to-trusted-merge、post_merge_defects 默认 0",
+                       f"status={(row or {}).get('status')!r} merged_at={merged_at!r} started_at={started_at!r} defects={defects} cols_has_post={('post_merge_defects' in cols)}",
+                       repro="python3 scripts/eval_phase1.py --case metric_ttm")
+
+
 # --------------------------------------------------------------------------- #
 # 用例注册表
 # --------------------------------------------------------------------------- #
@@ -1254,6 +1346,9 @@ CASES = [
     ("view_5state_map", "run 5 态 ↔ task 状态映射", "RUNNER_DESIGN §9 B7", c_view_5state_map),
     ("view_kill_5s", "kill 后 ≤5s 事件流 failed", "RUNNER_DESIGN §9", c_view_kill_5s),
     ("negative_reason", "每类失败带可读 reason + 证据", "RUNNER_DESIGN §9 C5", c_negative_reason),
+    ("git_boundary_block", "git push 被薄包装拦 + 100% 留痕", "RUNNER_DESIGN §3", c_git_boundary_block),
+    ("git_boundary_log", "安全 git 命令放行 + 100% 留痕", "RUNNER_DESIGN §3", c_git_boundary_log),
+    ("metric_ttm", "merge 落 merged_at、time-to-trusted-merge 可算", "RUNNER_DESIGN §10", c_metric_ttm),
 ]
 
 CASES_BY_ID = {c[0]: c for c in CASES}

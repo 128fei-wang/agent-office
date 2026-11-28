@@ -3957,7 +3957,8 @@ def merge_run(run_id):
                 diff_hash=run["diff_hash"], test_output_hash=run["test_output_hash"],
                 claim_hash=run["claim_hash"], test_command_hash=run["test_command_hash"],
                 payload={"mergeCommit": merge_commit, "hadDiff": had_diff})
-            agentdb.set_run_status(conn, run_id, "done", head_commit=merge_commit)
+            agentdb.set_run_status(conn, run_id, "done", head_commit=merge_commit,
+                                   merged_at=agentdb.now_iso())
             agentdb.add_event(conn, "approval", "browser", "run", run_id,
                               {"status": "done", "merge_commit": merge_commit})
             return 200, {"ok": True, "runId": run_id, "status": "done",
