@@ -6,7 +6,7 @@
 
 ## 0. 范围与硬约束（本阶段承诺不碰）
 
-- **先交设计、后写实现**：三处验收变更（第 3/10 条、第 1 条 G2 出口）需老板明确「接受」后才开工实现（见第 13 节）；其余技术决策我已定稿、不逐项请示。
+- **先交设计、后写实现**：三处验收变更（第 3/10 条、第 1 条 G2 出口）需老板明确「接受」后才开工实现（见第 13 节）；第二轮评审 A/B/C 逐条回应见第 14 节；其余技术决策我已定稿、不逐项请示。
 - 不改前端视觉、不加新 provider、不做一人公司模板。
 - 不自动 push / merge；所有 git 操作可回滚；不动仓库以外的用户文件。
 - 每项改动配套测试；验收命令写进任务描述。
@@ -202,7 +202,7 @@
 
 ---
 
-## 13. 待老板确认的三处验收变更
+## 13. 待老板签字的三处验收变更（签字前不写实现）
 
 以下三处属于**改验收标准**，我按此已定稿并写进本文，但按「先交设计、老板确认后写实现」的边界，**等你一句「接受 / 不接受」才开工实现**：
 
@@ -215,6 +215,31 @@
 **其余决策我已定稿、不逐项请示**（属技术实现范围）。**唯一外部依赖**仍是第 10 条 3 个真实用户（我无法自造）；你提供前我先自跑 A 臂存档。
 
 **开工边界**：上述三处你确认后按本文落实现。每项改动配测试，验收命令写进任务描述；不改前端视觉、不加 provider、不自动 push/merge、不动仓库以外的用户文件。
+
+---
+
+## 14. 评审回应矩阵（第二轮 RUNNER_DESIGN 评审 A/B/C · 逐条）
+
+> 逐条回应第二轮只读 reviewer 的 A1–A3 / B1–B8 / C1–C5 共 16 条。**全部「接受」**（我已逐条对源码与 git 语义验真，无一条误报）；无「拒绝」条。C4 的三处验收变更单列见 §13，标注「待老板签字」。验收命令列在实现后验证时执行；其中标注「文档断言」的现在即可用 grep 复核。
+
+| 条目 | 结论 | 理由（一锤） | 验收命令 | 落点 |
+|---|---|---|---|---|
+| A1 密钥同 UID 可读 | 接受（诚实降级，不选现在做 OS 隔离） | `0600` 只防别的 OS 用户、不防同 UID 的 Agent——能 `cat` key、能 curl loopback 伪造 claim | 非成员身份 `curl /files?missionId=<他人>` → 403；UI 文案 =「已完成 · 待桥核验」（文档断言：`grep -q "已完成 · 待桥核验"` 相关源码/文案） | `docs/THREAT_MODEL.md` §1/§2/§5；RUNNER_DESIGN §2；UI 文案 |
+| A2 第 3 节自相矛盾 | 接受 | linked worktree 与主仓**共享 gitdir 和 remote**，「worktree 不配 remote」「权威仓库 Agent 够不着」均不成立，两句已删 | `git -C <worktree> remote -v` 显示与主仓相同 origin；文档断言 `grep -c "不配 remote\|够不着" docs/RUNNER_DESIGN.md` = 0 | RUNNER_DESIGN §3；`docs/THREAT_MODEL.md` §4 |
+| A3 状态机没覆盖 bridge 重启 | 接受 | 补 runner 生命周期：PTY `start_new_session` 独立进程组 + bridge 启动扫描无主 run | kill bridge → 重启 → 所有 run 一次扫描归 `failed(orphaned)` 或重连，无「永远 running」 | RUNNER_DESIGN §9；`docs/RUNNER_DATA_MODEL.md` §3 `session_pgid` |
+| B1 G4 对 provider 直跑不成立 | 接受 | Phase 1 真实执行只走 CLI runner；provider 直跑对执行类任务停用，不两套路径并存 | 执行类任务必须经 `runner.py` 产 run；provider 直跑不产 run、不改任务状态 | RUNNER_DESIGN §12 |
+| B2 G3 边界未定义 | 接受 | 文档类任务 `no_tests`；自定义命令派发时必须进 allowlist；0 用例通过 ≠ 通过 | `./scripts/test.sh` 未进 allowlist → runner 拒跑并给明原因（不静默放行） | RUNNER_DESIGN §12 B2；`tasks.no_tests`/`test_command` |
+| B3 diff 漏 untracked | 接受 | 采集前 `git add -N` + `git status --porcelain` 逐文件 hash；base 锁固定 commit hash（非分支名） | 新建文件未 add 也进 diffHash 与 merge（反向：只 add 部分文件，验证未跟踪文件仍被采集） | RUNNER_DESIGN §12 B3 |
+| B4 测试钉扎太窄 | 接受 | 钉「命令 + 配置 + pinned 文件集」；pinned 基线 mission 创建时自动生成、不可选择性省略 | 改 `conftest.py`/`pytest.ini`/`package.json` scripts → 不自动 done，标 `tampered_test` | RUNNER_DESIGN §6；`tasks.pinned_tests` |
+| B5 审批缺 baseCommit + TOCTOU | 接受 | 绑 `{baseCommit, mergeTarget, runId, diffHash, testOutputHash, claimHash, testCommandHash}` 整包；审批前 stop + 冻结；merge 锁内重算 | 批准后改工作区 → 审批失效、merge 阻断；同 diff 不同 baseCommit 不通用；审批前未 stop → 拒 merge | RUNNER_DESIGN §8；`approvals.*` |
+| B6 迁移双写冲突 | 接受 | 维护模式停写 + `schema_version` + 快照回退 + 连接按线程建 | 真实 1.5MB missions.json 迁 10 次 + 随机 SIGKILL，行数/校验和一致；cutover 后回退可用 | RUNNER_DESIGN §7；`docs/RUNNER_DATA_MODEL.md` §1 |
+| B7 状态映射缺失 | 接受 | task×run 完整映射表；`cancelled`/`timeout` 并入 `failed` 不另设态 | 「任务 done 但 run failed」不得出现（run 唯一真相源，task 只是投影） | `docs/RUNNER_DATA_MODEL.md` §3.5 |
+| B8 run token 未定义 | 接受 | `AGENT_OFFICE_RUN_TOKEN` 只注入该 Agent 进程 env；校验 `token→runId→agentId` 三元组 | 伪造 runId / 缺 token / 重复提交 → 拒；异 Agent token 替跑 → 拒 | RUNNER_DESIGN §2；`run_tokens` |
+| C1 并发回收 | 接受 | 并行上限、磁盘 cap、崩溃残留清理、merge 后删分支 | 超并行上限 → 进队列；merge 后分支 + worktree 删除 | RUNNER_DESIGN §11 |
+| C2 大仓二进制 | 接受 | diff 大小上限、二进制只 hash 标 `binary`、submodule 只记指针 hash | 超大文件 → 只存摘要 + 抽样并标人审 | RUNNER_DESIGN §11 |
+| C3 对照验证口径 | 接受 | A 臂记机器/模型/任务版本；B 臂单列审批 + 取证开销；n=3 只当方向不给数字 | `docs/RUNNER_VALIDATION.md` 双臂结论，B 臂审批/取证开销单列 | RUNNER_DESIGN §10 |
+| C4 三处验收变更 | 接受（三处标注「待老板签字」，见 §13） | 属**改验收标准**，实现方不自宣布定稿 | 老板回「接受/不接受」→ **签字前不写实现** | RUNNER_DESIGN §13 + §0 |
+| C5 可观测性 | 接受 | run 状态/心跳/重启/kill/git 留痕全进同一 `events` 流 | `events` 流可查到心跳丢失、重启、kill、git 留痕 | RUNNER_DESIGN §11；`docs/RUNNER_DATA_MODEL.md` `events` |
 
 ---
 
