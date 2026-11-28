@@ -1372,7 +1372,30 @@ def git_commit() -> str:
     return r.stdout.strip()
 
 
-def run_one(case_id: str) -> dict:
+def preserve_evidence(evidence: str, ctx: "Ctx", root: Path | None) -> str:
+    """把证据文件从一次性 tmp 目录拷到持久结果目录，使结果在 cleanup 后仍可回放。
+
+    evidence 可能是绝对路径（state_dir/agent-office.db、tmp/bridge.log）或相对
+    路径；empty 或已不存在的路径原样返回。拷贝失败不打断评测，退回原字符串。
+    """
+    if not evidence or root is None:
+        return evidence
+    src = Path(evidence)
+    if not src.is_absolute():
+        src = ctx.tmp / src
+    if not src.exists():
+        return evidence
+    try:
+        dst_dir = root / ctx.case_id
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        dst = dst_dir / src.name
+        shutil.copy2(src, dst)
+        return str(dst)
+    except OSError:
+        return evidence
+
+
+def run_one(case_id: str, evidence_root: Path | None = None) -> dict:
     title = CASES_BY_ID[case_id][1]
     clause = CASES_BY_ID[case_id][2]
     fn = CASES_BY_ID[case_id][3]
@@ -1394,6 +1417,7 @@ def run_one(case_id: str) -> dict:
         status, expected = "fail", "用例不应抛异常"
         actual = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
     finally:
+        evidence = preserve_evidence(evidence, ctx, evidence_root)
         ctx.cleanup()
     return {
         "id": case_id,
@@ -1427,12 +1451,19 @@ def main(argv):
     before = git_status_snapshot()
     selected = [args.case_id] if args.case_id else [c[0] for c in CASES]
 
+    # 证据落到 --json 同目录的 <stem>.evidence/ 下，cleanup 后仍可回放。
+    evidence_root = None
+    if args.json_path:
+        jp = Path(args.json_path)
+        evidence_root = jp.parent / (jp.stem + ".evidence")
+
     report = {
         "commit": git_commit(),
         "startedAt": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "runner_implemented": has_runner(),
         "submit_evidence_implemented": has_submit_evidence(),
         "migration_implemented": has_migration(),
+        "evidence_root": str(evidence_root) if evidence_root else "",
         "summary": {"passed": 0, "failed": 0, "skipped": 0},
         "cases": [],
     }
@@ -1445,7 +1476,7 @@ def main(argv):
                 "actual": "总时长超出 10min，中止", "duration_sec": 0})
             report["summary"]["failed"] += 1
             continue
-        rec = run_one(cid)
+        rec = run_one(cid, evidence_root)
         report["summary"][{"pass": "passed", "fail": "failed", "skip": "skipped"}[rec["status"]]] += 1
         report["cases"].append(rec)
 
