@@ -103,3 +103,9 @@ After pushing `verify/linux-ci-1.27`, GitHub Actions passed:
 
 The Linux run found and drove fixes for three real issues: absolute unittest
 discovery, a hyphenated workspace name and a writable `/tmp` inside bubblewrap.
+
+- Branch: `verify/linux-ci-1.27`
+- Run: https://github.com/128fei-wang/agent-office/actions/runs/46116007678
+- Verified commit: `1dbef74`
+- Jobs: `syntax-and-files` success, `linux-sandbox` success,
+  `browser-smoke` success, `windows-compat` success.
