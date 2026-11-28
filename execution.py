@@ -584,8 +584,8 @@ def _prepare_runner(workspace, requested_command):
                             pass
                     parent = parent.parent
             relative = [str(path.relative_to(workspace)) for path in python_files]
-            return ([sys.executable, "-m", "unittest", "discover", "-s",
-                     str(workspace), "-p", "test*.py", "-v"],
+            return ([sys.executable, "-m", "unittest", "discover", "-s", ".",
+                     "-p", "test*.py", "-v"],
                     "python-unittest", relative, "")
         if pytest_style:
             return None, "python-pytest", [], "检测到 pytest 风格测试，但沙箱 Python 未安装 pytest；未执行"
