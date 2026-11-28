@@ -33,6 +33,10 @@ import urllib.request
 import io
 import zipfile
 import uuid
+try:
+    import fcntl  # POSIX only; single-instance state-directory lock
+except ImportError:  # pragma: no cover - non-POSIX fallback degrades to no-op
+    fcntl = None
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
@@ -61,6 +65,10 @@ try:
     import evidence as evidence_module
 except Exception:  # evidence receipts are optional for old installations
     evidence_module = None
+try:
+    import agentdb
+except Exception:  # Phase 1 run database is optional for old installations
+    agentdb = None
 
 STATE_DIR = Path(os.environ.get("BRIDGE_STATE_DIR") or (Path.home() / ".agent-office")).expanduser()
 STATE_FILE = Path(os.environ.get("BRIDGE_STATE") or (STATE_DIR / "bridge-state.json")).expanduser()
@@ -2537,6 +2545,16 @@ MCP_TOOLS = [
         "description": "List conversations visible to the MCP agent.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "agent_office_submit_evidence",
+        "description": "Submit a run's completion claim. Requires the run-scoped "
+                       "AGENT_OFFICE_RUN_TOKEN header; the bridge recomputes all "
+                       "hashes and ignores any hash the agent supplies.",
+        "inputSchema": {"type": "object", "properties": {
+            "runId": {"type": "string"},
+            "claim": {"type": "object"},
+        }, "required": ["runId", "claim"], "additionalProperties": False},
+    },
 ]
 
 
@@ -2555,8 +2573,52 @@ def mcp_text_result(payload, is_error=False):
     }
 
 
-def mcp_tool_call(agent_id, agent, name, arguments, identity_verified=False):
+def mcp_submit_evidence(agent_id, args, run_token=""):
+    """Handle ``agent_office_submit_evidence``.
+
+    Validates the run-scoped token -> runId -> agentId triple, rejects forged /
+    duplicate submissions, and records only the canonical claim — any hash the
+    agent supplies is recomputed, never trusted (RUNNER_DESIGN §2 / §12 B8).
+    """
+    run_id = str(args.get("runId") or "").strip()
+    claim = args.get("claim") if isinstance(args.get("claim"), dict) else {}
+    if not run_id:
+        return mcp_text_result({"ok": False, "error": "runId is required"}, True)
+    if not run_token:
+        return mcp_text_result({"ok": False, "error": "missing AGENT_OFFICE_RUN_TOKEN"}, True)
+    if not agentdb:
+        return mcp_text_result({"ok": False, "error": "run database is not available"}, True)
+    db_path = agentdb.default_db_path(STATE_DIR)
+    if not db_path.exists():
+        return mcp_text_result({"ok": False, "error": "no run database (no runner has started)"}, True)
+    conn = agentdb.connect(db_path)
+    ok, reason = agentdb.verify_run_token(conn, run_token, run_id, agent_id)
+    if not ok:
+        return mcp_text_result({"ok": False, "error": reason}, True)
+    if agentdb.get_claim(conn, run_id):
+        return mcp_text_result({"ok": False, "error": "claim already submitted for this run"}, True)
+    # Canonical claim only — drop any hash field the agent injected.
+    cleaned = {k: v for k, v in claim.items() if not str(k).lower().endswith("hash")}
+    claim_hash = agentdb.sha256_text(agentdb.canonical(cleaned))
+    agentdb.add_run_evidence(conn, run_id, "claim", agentdb.canonical(cleaned))
+    conn.execute("UPDATE runs SET claim_hash=? WHERE id=?", (claim_hash, run_id))
+    conn.commit()
+    agentdb.add_event(conn, "evidence", agent_id, "run", run_id,
+                      {"claim_hash": claim_hash})
+    receipt = {
+        "runId": run_id,
+        "claimHash": claim_hash,
+        "submittedBy": agent_id,
+        "issuedAt": agentdb.now_iso(),
+    }
+    return mcp_text_result({"ok": True, "receipt": receipt})
+
+
+def mcp_tool_call(agent_id, agent, name, arguments, identity_verified=False,
+                  run_token=""):
     args = arguments if isinstance(arguments, dict) else {}
+    if name == "agent_office_submit_evidence":
+        return mcp_submit_evidence(agent_id, args, run_token)
     if name == "agent_office_status":
         return mcp_text_result({
             "ok": True,
@@ -2667,7 +2729,7 @@ def mcp_tool_call(agent_id, agent, name, arguments, identity_verified=False):
 
 
 def mcp_response(payload, header_value="", query_value="", signature="",
-                 timestamp="", raw_body=b""):
+                 timestamp="", raw_body=b"", run_token=""):
     if not isinstance(payload, dict):
         return {"jsonrpc": "2.0", "id": None,
                 "error": {"code": -32600, "message": "invalid request"}}
@@ -2691,8 +2753,16 @@ def mcp_response(payload, header_value="", query_value="", signature="",
     if method == "prompts/list":
         return {"jsonrpc": "2.0", "id": request_id, "result": {"prompts": []}}
     if method == "tools/call":
-        agent_id, agent = mcp_identity(header_value, query_value)
         name = str(params.get("name") or "")
+        if name == "agent_office_submit_evidence":
+            # The run token -> runId -> agentId triple is the authority here,
+            # not the bridge agent directory (the runner may run standalone with
+            # an --agent-id the bridge has never registered). Other tools keep
+            # the directory check so they cannot run with an unknown identity.
+            agent_id = str(header_value or query_value or "").strip()
+            agent = find_agent(agent_id) if agent_id else None
+        else:
+            agent_id, agent = mcp_identity(header_value, query_value)
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
         identity_verified = False
         if signature or timestamp:
@@ -2711,7 +2781,8 @@ def mcp_response(payload, header_value="", query_value="", signature="",
                 }
         try:
             result = mcp_tool_call(agent_id, agent, name, arguments,
-                                   identity_verified=identity_verified)
+                                   identity_verified=identity_verified,
+                                   run_token=run_token)
         except ValueError as exc:
             result = mcp_text_result({"ok": False, "error": str(exc)}, True)
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
@@ -4902,6 +4973,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.headers.get("X-Agent-Timestamp") or
                     (query.get("timestamp") or [""])[0],
                     getattr(self, "raw_body", b""),
+                    self.headers.get("AGENT_OFFICE_RUN_TOKEN") or "",
                 )
             except ValueError as exc:
                 self.send_json({
@@ -5589,6 +5661,45 @@ def queue_chat_reply(conversation_id, message):
     return True
 
 
+_SINGLE_INSTANCE_LOCK_FD = None
+
+
+def acquire_single_instance_lock():
+    """Take an exclusive, advisory lock on the state directory.
+
+    Two bridges sharing one BRIDGE_STATE_DIR would overwrite each other's
+    state (security review #6). This holds ``state.lock`` with ``flock`` for
+    the process lifetime; a second instance fails to acquire and exits non-zero.
+    ``flock`` is released by the OS on process exit, so a stale lock file never
+    blocks a fresh start.
+    """
+    global _SINGLE_INSTANCE_LOCK_FD
+    if fcntl is None:
+        return True  # non-POSIX: no lock available, degrade to no-op
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(STATE_DIR, 0o700)
+        except OSError:
+            pass
+        lock_path = STATE_DIR / "state.lock"
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        return True  # cannot even open the lock file; let startup proceed
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return False
+    try:
+        os.ftruncate(fd, 0)
+        os.write(fd, ("pid=%d\n" % os.getpid()).encode("utf-8"))
+    except OSError:
+        pass
+    _SINGLE_INSTANCE_LOCK_FD = fd
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
@@ -5604,6 +5715,10 @@ def main():
     if bool(BRIDGE_TLS_CERT) != bool(BRIDGE_TLS_KEY):
         print("BRIDGE_TLS_CERT and BRIDGE_TLS_KEY must be set together.", file=sys.stderr)
         sys.exit(2)
+    if not acquire_single_instance_lock():
+        print("Refusing to start: another bridge instance already holds the state "
+              "directory lock (%s)." % (STATE_DIR / "state.lock"), file=sys.stderr)
+        sys.exit(1)
     if STATE.get("demo"):
         start_demo()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
